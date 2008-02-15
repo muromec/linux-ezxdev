@@ -9,6 +9,8 @@
  *	modify it under the terms of the GNU General Public License
  *	as published by the Free Software Foundation; either version
  *	2 of the License, or (at your option) any later version.
+ *
+ *  2005-Apr-05 Motorola   Add security patch
  */
  
 #ifndef _LINUX_SKBUFF_H
@@ -214,6 +216,9 @@ struct sk_buff {
 
 #ifdef CONFIG_NET_SCHED
        __u32           tc_index;               /* traffic control index */
+#endif
+#ifdef CONFIG_SECURITY_NETWORK
+	void		*lsm_security;		/* replaces the above security field */
 #endif
 };
 

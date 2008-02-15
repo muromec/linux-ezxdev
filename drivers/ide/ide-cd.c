@@ -2646,6 +2646,13 @@ int ide_cdrom_probe_capabilities (ide_drive_t *drive)
 	 * but they do support reading TOC & audio datas
 	 */
 	if (strcmp (drive->id->model, "MATSHITADVD-ROM SR-8187") == 0 ||
+	    strcmp (drive->id->model, "MATSHITADVD-ROM SR-8186") == 0)
+		CDROM_CONFIG_FLAGS (drive)->audio_play = 1;
+
+	/* Some drives used by Apple don't advertise audio play
+	 * but they do support reading TOC & audio datas
+	 */
+	if (strcmp (drive->id->model, "MATSHITADVD-ROM SR-8187") == 0 ||
 	    strcmp (drive->id->model, "MATSHITADVD-ROM SR-8186") == 0 ||
 	    strcmp (drive->id->model, "MATSHITADVD-ROM SR-8176") == 0 ||
 	    strcmp (drive->id->model, "MATSHITADVD-ROM SR-8174") == 0)

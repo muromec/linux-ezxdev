@@ -5,6 +5,7 @@ typedef unsigned int dmach_t;
 
 #include <linux/config.h>
 #include <linux/spinlock.h>
+#include <linux/sched.h>
 #include <asm/system.h>
 #include <asm/memory.h>
 #include <asm/scatterlist.h>
@@ -73,6 +74,10 @@ extern void enable_dma(dmach_t channel);
  * disabling an interrupt or whatever.
  */
 extern void disable_dma(dmach_t channel);
+
+/* Test whether the specified channel has an active DMA transfer
+ */
+extern int dma_channel_active(dmach_t channel);
 
 /* Set the DMA scatter gather list for this channel
  *

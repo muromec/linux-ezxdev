@@ -2,6 +2,7 @@
  *  linux/fs/proc/base.c
  *
  *  Copyright (C) 1991, 1992 Linus Torvalds
+ *  Copyright (c) 2005 Motorola Inc.
  *
  *  proc base directory handling functions
  *
@@ -11,6 +12,12 @@
  *  go into icache. We cache the reference to task_struct upon lookup too.
  *  Eventually it should become a filesystem in its own. We don't use the
  *  rest of procfs anymore.
+ *
+ *  2005 Susan Gu modified for EzX 
+ * 
+ *  2005-Feb - Motorola - add domaintype info into proc for Security AC by Wang Witty
+ *
+ *  2005-Apr-05 - Motorola - Add security LSM patch, Ni Jili
  */
 
 #include <asm/uaccess.h>
@@ -25,7 +32,12 @@
 #include <linux/string.h>
 #include <linux/seq_file.h>
 #include <linux/namespace.h>
+#include <linux/mm.h>
+#include <linux/security.h>
 
+#ifdef CONFIG_MEMORY_ACCOUNTING
+#include <asm/memory.h>
+#endif
 /*
  * For hysterical raisins we keep the same inumbers as in the old procfs.
  * Feel free to change the macro below - just keep the range distinct from
@@ -41,6 +53,19 @@ int proc_pid_stat(struct task_struct*,char*);
 int proc_pid_status(struct task_struct*,char*);
 int proc_pid_statm(struct task_struct*,char*);
 int proc_pid_cpu(struct task_struct*,char*);
+#ifdef CONFIG_SECURITY_MOTOAC
+int proc_pid_domain(struct task_struct*,char*);
+#endif
+
+#ifdef CONFIG_MEMORY_ACCOUNTING
+ssize_t proc_pid_read_mem_map (struct task_struct *task, struct file *file,
+			       char *buf, int count, loff_t *ppos);
+ssize_t proc_pid_read_node_map (struct task_struct *task, struct file *file,
+				char *buf, int count, loff_t *ppos);
+#endif
+#ifdef CONFIG_DPM
+int proc_pid_dpm(struct task_struct*,char*);
+#endif
 
 static int proc_fd_link(struct inode *inode, struct dentry **dentry, struct vfsmount **mnt)
 {
@@ -233,6 +258,276 @@ static int proc_permission(struct inode *inode, int mask)
 	return proc_check_root(inode);
 }
 
+#ifdef CONFIG_MEMORY_ACCOUNTING
+int proc_pid_mem_map(struct file *file, char *buf, size_t count, loff_t *ppos)
+{
+	struct inode * inode = file->f_dentry->d_inode;
+	struct task_struct *task = inode->u.proc_i.task;
+	ssize_t res;
+
+	res = proc_pid_read_mem_map(task, file, buf, count, ppos);
+	return res;
+}
+
+static struct file_operations proc_mem_map_operations = {
+	read:	proc_pid_mem_map,
+};
+
+int proc_pid_node_map(struct file *file, char *buf, size_t count, loff_t *ppos)
+{
+	struct inode * inode = file->f_dentry->d_inode;
+	struct task_struct *task = inode->u.proc_i.task;
+	ssize_t res;
+
+	res = proc_pid_read_node_map(task, file, buf, count, ppos);
+	return res;
+}
+
+static struct file_operations proc_node_map_operations = {
+	read:	proc_pid_node_map,
+};
+
+static void 
+count_pmd_pages(struct mm_struct * mm, struct vm_area_struct * vma, 
+		pmd_t *dir, unsigned long address, unsigned long end,
+		int *data_buf, int node_map)
+{
+	pte_t * pte;
+	unsigned long pmd_end;
+	struct page *page;
+	int index;
+
+	if (pmd_none(*dir))
+		return;
+	pte = pte_offset(dir, address);
+	pmd_end = (address + PMD_SIZE) & PMD_MASK;
+	if (end > pmd_end)
+		end = pmd_end;
+	index = 0;
+	do {
+		data_buf[index] = node_map ? -1 : 0;
+		if (pte_present(*pte)) {
+			page = pte_page(*pte);
+			if (VALID_PAGE(page)) {
+				data_buf[index] = node_map ?
+					page_to_nid(page) : page_count(page);
+			}
+		}
+		address += PAGE_SIZE;
+		pte++;
+		index++;
+	} while (address && (address < end));
+	return;
+}
+
+static void 
+count_pgd_pages(struct mm_struct * mm, struct vm_area_struct * vma, 
+	pgd_t *dir, unsigned long address, unsigned long end,
+	int *data_buf, int node_map)
+{
+	pmd_t * pmd;
+	unsigned long pgd_end;
+
+	if (pgd_none(*dir))
+		return;
+	pmd = pmd_offset(dir, address);
+	pgd_end = (address + PGDIR_SIZE) & PGDIR_MASK;	
+	if (pgd_end && (end > pgd_end))
+		end = pgd_end;
+	do {
+		count_pmd_pages(mm, vma, pmd, address, end, data_buf,
+				node_map);
+		address = (address + PMD_SIZE) & PMD_MASK;
+		pmd++;
+	} while (address && (address < end));
+	return;
+}
+
+static void 
+count_physical_pages(struct mm_struct * mm, struct vm_area_struct * vma,
+    int *data_buf, int node_map)
+{
+	pgd_t *pgdir;
+	unsigned long end;
+	unsigned long address;
+
+#ifdef CONFIG_XIP_ROM
+	/*
+	 * check the vma to see if we were mmapped as XIP.
+	 * if so just return all zero counts of pages in memory
+	 */
+	if ((vma->vm_flags & VM_WRITE) == 0 && (vma->vm_flags & VM_XIP)) { 
+		return;
+	}
+#endif
+	end = vma->vm_end;
+	address = vma->vm_start;
+	/*
+	 * if the address is greater than the VMALLOC_END address
+	 * we are i/o or flash or SRAM space, not main memory
+	 * so we don't count them.  We are trying to count the pages
+	 * in main memory, not flash
+	 */
+	if (address > VMALLOC_END)
+		return;
+	spin_lock(&mm->page_table_lock);
+	pgdir = pgd_offset(mm, address);
+	do {
+		count_pgd_pages(mm, vma, pgdir, address, end, data_buf,
+				node_map);
+		address = (address + PGDIR_SIZE) & PGDIR_MASK;
+		pgdir++;
+	} while (address && (address < end));
+	spin_unlock(&mm->page_table_lock);
+	return;
+}
+
+static ssize_t 
+proc_pid_read_mem_node_map (struct task_struct *task, struct file *file,
+    char *buf, int count, loff_t *ppos, int node_map)
+{
+	struct mm_struct *mm;
+	struct vm_area_struct * map;
+	char *memmapbuf = NULL;
+	int *tmp;
+	long retval = 0;
+	int index, pages=0, line_amount, array_size;
+	int this_incarnation = 0;
+	static int which_vma = 0;
+
+	/* reject calls with out of range parameters immediately */
+	retval = 0;
+	if (*ppos > LONG_MAX) {
+		return retval;
+	}
+	if (count == 0) {
+		return retval;
+	}
+	if (which_vma == -1) {
+		which_vma = 0;
+		return 0;
+	}
+
+	/*
+	 * Each char will contain a number from zero to the
+	 * share depth.  A zero means the page is not in memory
+	 * for this virtual address.  A non-zero means the
+	 * page is being used by the app, a number larger than 1
+	 * means the page is shared, and represents the share depth.
+	 */
+
+	retval = -ENOMEM;
+	if ((memmapbuf = (char *)kmalloc(num_physpages, GFP_KERNEL)) == NULL) {
+		return retval;
+	}
+	if ((tmp = (int *)kmalloc(PAGE_SIZE, GFP_KERNEL)) == NULL) {
+	    	kfree(memmapbuf);
+		return retval;
+	}
+	array_size = PAGE_SIZE / sizeof(int);
+	for (index = 0; index < array_size; index++) {
+		tmp[index] = 0;
+	}
+	for (index = 0; index < num_physpages; index++) {
+		memmapbuf[index] = '\0';
+	}
+	
+	task_lock(task);
+	mm = task->mm;
+	if (mm)
+		atomic_inc(&mm->mm_users);
+	task_unlock(task);
+	retval = 0;
+	if (!mm) {
+		return 0;
+	}
+
+	down_read(&mm->mmap_sem);
+	map = mm->mmap;
+	retval = 0;
+	/*
+	 * Since we can't usually get all the data back in a single call,
+	 * especially with 1K buffers, we mark the vma we are processing 
+	 * with which_vma.  If we have to reiterate through we'll skip
+	 * the vma's we processed the first time through. This is how we
+	 * keep track of where we are in a non-persistent file without
+	 * being a fixed length and fixed format file.
+	 */
+	if (which_vma > 0) {
+		this_incarnation = which_vma;
+		while ((this_incarnation-- >= 0) && map != NULL) {
+			map = map->vm_next;
+		}
+	} else {
+		which_vma = 0;
+	}
+	this_incarnation = 0;
+	while (map) {
+		for (index = 0; index <= pages; index++) {
+			tmp[index] = 0;
+		}
+		pages = (map->vm_end - map->vm_start) / PAGE_SIZE;
+		line_amount = (pages * 2) + 1;
+		if (retval + line_amount > count) {
+			/* 
+			 * come back later for the rest of the  data
+			 * If we've come back and the first vma we tackle
+			 * has more than a user buffer worth, typically
+			 * 1K, then we give them the 1K.
+			 */
+			if (this_incarnation)
+				break;
+		}
+		count_physical_pages(map->vm_mm, map, tmp, node_map);
+		which_vma++;
+		this_incarnation++;
+		for (index = 0; index < pages - 1; index++) {
+			if (node_map && tmp[index] < 0)
+				retval += sprintf(memmapbuf + retval, " -");
+			else
+			retval += sprintf(memmapbuf + retval,
+			    "%2d", tmp[index]);
+		}
+		if (node_map && tmp[index] < 0)
+			retval += sprintf(memmapbuf + retval, " -\n");
+		else
+		retval += sprintf(memmapbuf + retval,
+ 		    "%2d\n", tmp[index]);
+		map = map->vm_next;
+	}
+	up_read(&mm->mmap_sem);
+	mmput(mm);
+
+	if (retval > count) {
+		retval -= count;
+	}
+	if (copy_to_user(buf, memmapbuf, retval))
+		retval = -EFAULT;
+
+	if (map == NULL) {
+		which_vma = -1;
+	}
+	kfree(memmapbuf);
+	kfree(tmp);
+	return retval;
+}
+
+ssize_t 
+proc_pid_read_mem_map (struct task_struct *task, struct file *file,
+			    char *buf, int count, loff_t *ppos)
+{
+	return proc_pid_read_mem_node_map(task, file, buf, count, ppos, 0);
+}
+
+ssize_t 
+proc_pid_read_node_map (struct task_struct *task, struct file *file,
+			    char *buf, int count, loff_t *ppos)
+{
+	return proc_pid_read_mem_node_map(task, file, buf, count, ppos, 1);
+}
+
+#endif /* CONFIG_MEMORY_ACCOUNTING */
+
 static ssize_t pid_maps_read(struct file * file, char * buf,
 			      size_t count, loff_t *ppos)
 {
@@ -329,7 +624,7 @@ static struct file_operations proc_info_file_operations = {
 };
 
 #define MAY_PTRACE(p) \
-(p==current||(p->p_pptr==current&&(p->ptrace & PT_PTRACED)&&p->state==TASK_STOPPED))
+(p==current||(p->p_pptr==current&&(p->ptrace & PT_PTRACED)&&p->state==TASK_STOPPED&&security_ptrace(current,p)==0))
 
 
 static int mem_open(struct inode* inode, struct file* file)
@@ -537,9 +832,19 @@ enum pid_directory_inos {
 	PROC_PID_CMDLINE,
 	PROC_PID_STAT,
 	PROC_PID_STATM,
+#ifdef CONFIG_MEMORY_ACCOUNTING
+	PROC_PID_MEM_MAP,
+	PROC_PID_NODE_MAP,
+#endif
+#ifdef CONFIG_DPM
+	PROC_PID_DPM,
+#endif
 	PROC_PID_MAPS,
 	PROC_PID_CPU,
 	PROC_PID_MOUNTS,
+#ifdef CONFIG_SECURITY_MOTOAC
+	PROC_PID_DOMAIN,
+#endif
 	PROC_PID_FD_DIR = 0x8000,	/* 0x8000-0xffff */
 };
 
@@ -554,12 +859,22 @@ static struct pid_entry base_stuff[] = {
 #ifdef CONFIG_SMP
   E(PROC_PID_CPU,	"cpu",		S_IFREG|S_IRUGO),
 #endif
+#ifdef CONFIG_MEMORY_ACCOUNTING
+  E(PROC_PID_MEM_MAP,	"memmap",	S_IFREG|S_IRUGO),
+  E(PROC_PID_NODE_MAP,	"nodemap",	S_IFREG|S_IRUGO),
+#endif /* CONFIG_MEMORY_ACCOUNTING */
+#ifdef CONFIG_DPM
+  E(PROC_PID_DPM,	"dpm",		S_IFREG|S_IRUGO),
+#endif /* CONFIG_DPM */
   E(PROC_PID_MAPS,	"maps",		S_IFREG|S_IRUGO),
   E(PROC_PID_MEM,	"mem",		S_IFREG|S_IRUSR|S_IWUSR),
   E(PROC_PID_CWD,	"cwd",		S_IFLNK|S_IRWXUGO),
   E(PROC_PID_ROOT,	"root",		S_IFLNK|S_IRWXUGO),
   E(PROC_PID_EXE,	"exe",		S_IFLNK|S_IRWXUGO),
   E(PROC_PID_MOUNTS,	"mounts",	S_IFREG|S_IRUGO),
+#ifdef CONFIG_SECURITY_MOTOAC
+  E(PROC_PID_DOMAIN,	"domaintype",	S_IFREG|S_IRUGO),
+#endif
   {0,0,NULL,0}
 };
 #undef E
@@ -912,6 +1227,21 @@ static struct dentry *proc_base_lookup(struct inode *dir, struct dentry *dentry)
 			inode->i_fop = &proc_info_file_operations;
 			inode->u.proc_i.op.proc_read = proc_pid_statm;
 			break;
+#ifdef CONFIG_MEMORY_ACCOUNTING
+		case PROC_PID_MEM_MAP:
+			inode->i_fop = &proc_mem_map_operations;
+			break;
+		case PROC_PID_NODE_MAP:
+			inode->i_fop = &proc_node_map_operations;
+			break;
+#endif
+#ifdef CONFIG_DPM
+		case PROC_PID_DPM:
+			inode->i_fop = &proc_info_file_operations;
+			inode->u.proc_i.op.proc_read = proc_pid_dpm;
+			break;
+
+#endif
 		case PROC_PID_MAPS:
 			inode->i_fop = &proc_maps_operations;
 			break;
@@ -928,6 +1258,12 @@ static struct dentry *proc_base_lookup(struct inode *dir, struct dentry *dentry)
 		case PROC_PID_MOUNTS:
 			inode->i_fop = &proc_mounts_operations;
 			break;
+#ifdef CONFIG_SECURITY_MOTOAC
+        case PROC_PID_DOMAIN:
+            inode->i_fop = &proc_info_file_operations;
+			inode->u.proc_i.op.proc_read = proc_pid_domain;
+			break;
+#endif
 		default:
 			printk("procfs: impossible type (%d)",p->type);
 			iput(inode);

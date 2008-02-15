@@ -1,0 +1,236 @@
+/*
+ *  linux/include/asm-arm/arch-mx2ads/pll.h
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ * Copyright (C) 2003 Motorola Semiconductors SuZhou Ltd
+ *
+ */
+#ifndef __ASM_ARCH_PLL_H
+#define __ASM_ARCH_PLL_H
+
+#include <linux/config.h>
+#include <asm/arch/hardware.h>
+
+extern unsigned int mx21_get_mpll_frequency(void);
+extern unsigned int mx21_get_spll_frequency(void);
+
+#define CLK_MPLL	mx21_get_mpll_frequency()
+#define CLK_SPLL	mx21_get_spll_frequency()
+
+/* Clocks unconditionally derived from MPLL_CLK */
+
+#define CLK_FCLK	(CLK_MPLL / (((CRM_CSCR & CSCR_PRESC) >> CSCR_PRESC_SHIFT) + 1))
+#define CLK_HCLK	(CLK_FCLK / (((CRM_CSCR & CSCR_BCLKDIV) >> CSCR_BCLKDIV_SHIFT) + 1))
+#define CLK_PERCLK	(CLK_HCLK / (((CRM_CSCR & CSCR_IPDIV) >> CSCR_IPDIV_SHIFT) + 1))
+
+#if defined(CONFIG_MX2TO1)
+#define CLK_NFCCLK	(CLK_FCLK / (((CRM_PCDR & PCDR_NFCDIV) >> PCDR_NFCDIV_SHIFT) + 1))
+#define CLK_PERCLK1	(CLK_FCLK / (((CRM_PCDR & PCDR_PERDIV1) >> PCDR_PERDIV1_SHIFT) + 1))
+#define CLK_PERCLK2	(CLK_FCLK / (((CRM_PCDR & PCDR_PERDIV2) >> PCDR_PERDIV2_SHIFT) + 1))
+#elif defined(CONFIG_MX2TO2)
+#define CLK_NFCCLK	(CLK_FCLK / (((CRM_PCDR0 & PCDR0_NFCDIV) >> PCDR0_NFCDIV_SHIFT) + 1))
+#define CLK_PERCLK1	(CLK_MPLL / (((CRM_PCDR1 & PCDR1_PERDIV1) >> PCDR1_PERDIV1_SHIFT) + 1))
+#define CLK_PERCLK2	(CLK_MPLL / (((CRM_PCDR1 & PCDR1_PERDIV2) >> PCDR1_PERDIV2_SHIFT) + 1))
+#define CLK_PERCLK3	(CLK_MPLL / (((CRM_PCDR1 & PCDR1_PERDIV3) >> PCDR1_PERDIV3_SHIFT) + 1))
+#define CLK_PERCLK4	(CLK_MPLL / (((CRM_PCDR1 & PCDR1_PERDIV4) >> PCDR1_PERDIV4_SHIFT) + 1))
+#endif
+
+/* Clocks unconditionally derived from SPLL_CLK */
+#define CLK_CLK48M	(CLK_SPLL / (((CRM_CSCR & CSCR_USB_DIV) >> CSCR_USB_DIV_SHIFT) + 1))
+
+/* Clocks that could be derived alternatively from MPLL or SPLL */
+/* Todo: Hint: Use a ? b: c operator */
+#undef CLK_FIRICLK	/* To be defined */
+#undef CLK_SSI1CLK	/* To be defined */
+#undef CLK_SSI2CLK	/* To be defined */
+#undef CLK_CLK48M	/* To be defined */
+
+/* MX21 Peripherals Clock Sources definitions */
+
+/* CLK_FIRICLK clock source */
+#define CLK_MODULE_FIR_BUAD	CLK_FIRICLK
+
+/* CLK_SSI1CLK clock source */
+#define CLK_MODULE_SSI1		CLK_SSI1CLK
+
+/* CLK_SSI2CLK clock source */
+#define CLK_MODULE_SSI2 	CLK_SSI2CLK
+
+/* CLK_NFCCLK clock source */
+#define CLK_MODULE_NFC 		CLK_NFCCLK
+
+/* CLK_PERCLK1 clock source */
+#define CLK_MODULE_UART1	CLK_PERCLK1
+#define CLK_MODULE_UART2	CLK_PERCLK1
+#define CLK_MODULE_UART3	CLK_PERCLK1
+#define CLK_MODULE_UART4	CLK_PERCLK1
+#define CLK_MODULE_PWM		CLK_PERCLK1
+#define CLK_MODULE_GPT1		CLK_PERCLK1
+#define CLK_MODULE_GPT2		CLK_PERCLK1
+#define CLK_MODULE_GPT3		CLK_PERCLK1
+
+/* CLK_PERCLK2 clock source */
+#define CLK_MODULE_SDHC1	CLK_PERCLK2
+#define CLK_MODULE_SDHC2	CLK_PERCLK2
+#define CLK_MODULE_CSPI1	CLK_PERCLK2
+#define CLK_MODULE_CSPI2	CLK_PERCLK2
+#if defined(CONFIG_MX2TO1)
+#define CLK_MODULE_LCDC_PIXCLK	CLK_PERCLK2
+#endif
+
+#if defined(CONFIG_MX2TO2)
+/* CLK_PERCLK3 clock source */
+#define CLK_MODULE_PERCLK3	CLK_PERCLK3
+#define CLK_MODULE_LCDC_PIXCLK	CLK_MODULE_PERCLK3
+
+/* CLK_PERCLK4 clock source */
+#define CLK_MODULE_CSI		CLK_PERCLK4
+#endif
+
+/* CLK_CLK48M clock source */
+#define CLK_MODULE_USBOTG 	CLK_CLK48M
+
+/* CLK_PERCLK clock source */
+#define CLK_IPG_MODULE_SLCDC		CLK_PERCLK
+#define CLK_IPG_MODULE_EMMA		CLK_PERCLK
+#define CLK_IPG_MODULE_DMA 		CLK_PERCLK
+#define CLK_IPG_MODULE_I2C 		CLK_PERCLK
+#define CLK_IPG_MODULE_GPIO		CLK_PERCLK
+#define CLK_IPG_MODULE_FIR		CLK_PERCLK
+#define CLK_IPG_MODULE_OWIRE		CLK_PERCLK
+#define CLK_IPG_MODULE_KPP		CLK_PERCLK
+#define CLK_IPG_MODULE_RTC		CLK_PERCLK
+#define CLK_IPG_MODULE_WDT		CLK_PERCLK
+#ifdef CONFIG_MX2TO2
+#define CLK_IPG_MODULE_CSPI3		CLK_PERCLK
+#define CLK_IPG_MODULE_RTIC		CLK_PERCLK
+#define CLK_IPG_MODULE_RNGA		CLK_PERCLK
+#endif
+
+
+#define GATE_HCLK_MODULE_CSI		PCCR0_HCLK_CSI_EN
+#define GATE_HCLK_MODULE_DMA		PCCR0_HCLK_DMA_EN
+#define GATE_HCLK_MODULE_BROM		PCCR0_HCLK_BROM_EN
+#define GATE_HCLK_MODULE_EMMA		PCCR0_HCLK_EMMA_EN
+#define GATE_HCLK_MODULE_LCDC		PCCR0_HCLK_LCDC_EN
+#define GATE_HCLK_MODULE_SLCDC		PCCR0_HCLK_SLCD_EN
+#define GATE_HCLK_MODULE_USBOTG		PCCR0_HCLK_USBOTG_EN
+#define GATE_HCLK_MODULE_BMI		PCCR0_HCLK_BMI_EN
+#ifdef CONFIG_MX2TO2
+#define GATE_IPG_MODULE_PERCLK4		PCCR0_PERCLK4_EN
+#endif
+#define GATE_IPG_MODULE_SLCDC		PCCR0_SLCD_EN
+#define GATE_IPG_MODULE_FIR_BUAD	PCCR0_FIRI_BAUD_EN
+#define GATE_IPG_MODULE_NFC		PCCR0_NFC_EN
+#define GATE_IPG_MODULE_LCDC_PIXCLK	PCCR0_LCD_PIXCLK_EN
+#ifdef CONFIG_MX2TO2
+#define GATE_IPG_MODULE_PERCLK3		PCCR0_PERCLK3_EN
+#endif
+#define GATE_IPG_MODULE_SSI1_BAUD	PCCR0_SSI1_BAUD_EN
+#define GATE_IPG_MODULE_SSI2_BAUD	PCCR0_SSI2_BAUD_EN
+#define GATE_IPG_MODULE_EMMA		PCCR0_EMMA_EN
+#define GATE_IPG_MODULE_USBOTG		PCCR0_USBOTG_EN
+#define GATE_IPG_MODULE_DMA		PCCR0_DMA_EN
+#define GATE_IPG_MODULE_I2C		PCCR0_I2C_EN
+#define GATE_IPG_MODULE_GPIO		PCCR0_GPIO_EN
+#define GATE_IPG_MODULE_SDHC2		PCCR0_SDHC2_EN
+#define GATE_IPG_MODULE_SDHC1		PCCR0_SDHC1_EN
+#define GATE_IPG_MODULE_FIR		PCCR0_FIRI_EN
+#define GATE_IPG_MODULE_SSI2		PCCR0_SSI2_EN
+#define GATE_IPG_MODULE_SSI1		PCCR0_SSI1_EN
+#define GATE_IPG_MODULE_CSPI2		PCCR0_CSPI2_EN
+#define GATE_IPG_MODULE_CSPI1		PCCR0_CSPI1_EN
+#define GATE_IPG_MODULE_UART4		PCCR0_UART4_EN
+#define GATE_IPG_MODULE_UART3		PCCR0_UART3_EN
+#define GATE_IPG_MODULE_UART2		PCCR0_UART2_EN
+#define GATE_IPG_MODULE_UART1		PCCR0_UART1_EN
+#define GATE_IPG_MODULE_OWIRE		PCCR1_OWIRE_EN
+#define GATE_IPG_MODULE_KPP		PCCR1_KPP_EN
+#define GATE_IPG_MODULE_RTC		PCCR1_RTC_EN
+#define GATE_IPG_MODULE_PWM		PCCR1_PWM_EN
+#define GATE_IPG_MODULE_GPT3		PCCR1_GPT3_EN
+#define GATE_IPG_MODULE_GPT2		PCCR1_GPT2_EN
+#define GATE_IPG_MODULE_GPT1		PCCR1_GPT1_EN
+#define GATE_IPG_MODULE_WDT		PCCR1_WDT_EN
+#ifdef CONFIG_MX2TO2
+#define GATE_IPG_MODULE_CSPI3		PCCR1_CSPI3_EN
+#define GATE_IPG_MODULE_RTIC		PCCR1_RTIC_EN	
+#define GATE_IPG_MODULE_RNGA		PCCR1_RNGA_EN
+#endif
+
+/* Modules clock gate registers */
+
+#define GATE_REG_HCLK_MODULE_CSI		CRM_PCCR0
+#define GATE_REG_HCLK_MODULE_DMA		CRM_PCCR0
+#define GATE_REG_HCLK_MODULE_BROM 		CRM_PCCR0
+#define GATE_REG_HCLK_MODULE_EMMA		CRM_PCCR0
+#define GATE_REG_HCLK_MODULE_LCDC 		CRM_PCCR0
+#define GATE_REG_HCLK_MODULE_SLCDC		CRM_PCCR0
+#define GATE_REG_HCLK_MODULE_USBOTG		CRM_PCCR0
+#define GATE_REG_HCLK_MODULE_BMI 		CRM_PCCR0
+#ifdef CONFIG_MX2TO2
+#define GATE_REG_IPG_MODULE_PERCLK4		CRM_PCCR0
+#endif
+#define GATE_REG_IPG_MODULE_SLCDC 		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_FIR_BUAD		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_NFC 		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_LCDC_PIXCLK		CRM_PCCR0
+#ifdef CONFIG_MX2TO2
+#define GATE_REG_IPG_MODULE_PERCLK3		CRM_PCCR0
+#endif
+#define GATE_REG_IPG_MODULE_SSI1_BAUD		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_SSI2_BAUD		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_EMMA		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_USBOTG 		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_DMA 		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_I2C 		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_GPIO 		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_SDHC2		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_SDHC1		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_FIR			CRM_PCCR0
+#define GATE_REG_IPG_MODULE_SSI2		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_SSI1		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_CSPI2		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_CSPI1		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_UART4		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_UART3		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_UART2		CRM_PCCR0
+#define GATE_REG_IPG_MODULE_UART1		CRM_PCCR0
+
+#define GATE_REG_IPG_MODULE_OWIRE		CRM_PCCR1
+#define GATE_REG_IPG_MODULE_KPP			CRM_PCCR1
+#define GATE_REG_IPG_MODULE_RTC			CRM_PCCR1
+#define GATE_REG_IPG_MODULE_PWM			CRM_PCCR1
+#define GATE_REG_IPG_MODULE_GPT3		CRM_PCCR1
+#define GATE_REG_IPG_MODULE_GPT2		CRM_PCCR1
+#define GATE_REG_IPG_MODULE_GPT1		CRM_PCCR1
+#define GATE_REG_IPG_MODULE_WDT			CRM_PCCR1
+
+#ifdef CONFIG_MX2TO2
+#define GATE_REG_IPG_MODULE_CSPI3		CRM_PCCR1
+#define GATE_REG_IPG_MODULE_RTIC		CRM_PCCR1
+#define GATE_REG_IPG_MODULE_RNGA		CRM_PCCR1
+#endif
+
+#define  mx_module_get_clk(module)	CLK_##module
+#define  mx_module_clk_open(module)	GATE_REG_##module |= GATE_##module
+#define  mx_module_clk_close(module)	GATE_REG_##module &= ~GATE_##module
+#endif
+
+#ifdef CONFIG_MX21_TVOUT
+#define FS453_MPLLIN_FREQ       (19000000ull)
+#endif /* CONFIG_MX21_TVOUT */
+

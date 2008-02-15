@@ -23,6 +23,9 @@
 #define KERNEL_STACK_SIZE	PAGE_SIZE
 
 struct context_save_struct {
+#if defined(CONFIG_CPU_XSCALE) && !defined(CONFIG_XSCALE_WMMX)
+	long long acc0;
+#endif
 	unsigned long cpsr;
 	unsigned long r4;
 	unsigned long r5;
@@ -35,7 +38,11 @@ struct context_save_struct {
 	unsigned long pc;
 };
 
+#if defined(CONFIG_CPU_XSCALE) && !defined(CONFIG_XSCALE_WMMX)
+#define INIT_CSS (struct context_save_struct){ 0, SVC_MODE, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+#else
 #define INIT_CSS (struct context_save_struct){ SVC_MODE, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+#endif
 
 #define EXTRA_THREAD_STRUCT						\
 	unsigned int	domain;
@@ -54,15 +61,17 @@ struct context_save_struct {
 		regs->ARM_cpsr = USR_MODE;				\
 	else								\
 		regs->ARM_cpsr = USR26_MODE;				\
-	regs->ARM_pc = pc;		/* pc */			\
+        if (elf_hwcap & HWCAP_THUMB && pc & 1)                          \
+                regs->ARM_cpsr |= PSR_T_BIT;                            \
+        regs->ARM_pc = pc & ~1;         /* pc */                        \
 	regs->ARM_sp = sp;		/* sp */			\
 	regs->ARM_r2 = stack[2];	/* r2 (envp) */			\
 	regs->ARM_r1 = stack[1];	/* r1 (argv) */			\
 	regs->ARM_r0 = stack[0];	/* r0 (argc) */			\
 })
 
-#define KSTK_EIP(tsk)	(((unsigned long *)(4096+(unsigned long)(tsk)))[1021])
-#define KSTK_ESP(tsk)	(((unsigned long *)(4096+(unsigned long)(tsk)))[1019])
+#define KSTK_EIP(tsk)	(((unsigned long *)(4096+(unsigned long)(tsk)))[1019])
+#define KSTK_ESP(tsk)	(((unsigned long *)(4096+(unsigned long)(tsk)))[1017])
 
 /* Allocation and freeing of basic task resources. */
 /*

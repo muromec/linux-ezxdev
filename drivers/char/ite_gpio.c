@@ -412,7 +412,7 @@ int __init ite_gpio_init(void)
 		ite_gpio_irq_pending[i]=0;	
 		init_waitqueue_head(&ite_gpio_wait[i]);
 	}
-	if (request_irq(ite_gpio_irq, ite_gpio_irq_handler, SA_SHIRQ, "gpio", 0) < 0)
+	if (request_irq(ite_gpio_irq, ite_gpio_irq_handler, SA_SHIRQ, "gpio", (void *)ite_gpio_base) < 0)
 		return 0;
 	printk("GPIO at 0x%x (irq = %d)\n", ite_gpio_base, ite_gpio_irq);
 

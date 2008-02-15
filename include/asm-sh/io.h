@@ -127,6 +127,8 @@
 #  include <asm/io_bigsur.h>
 # elif defined(CONFIG_SH_7751_SOLUTION_ENGINE)
 #  include <asm/io_7751se.h>
+# elif defined(CONFIG_SH_MOBILE_SOLUTION_ENGINE)
+#  include <asm/io_shmse.h>
 # elif defined(CONFIG_SH_ADX)
 #  include <asm/io_adx.h>
 # elif defined(CONFIG_SH_UNKNOWN)

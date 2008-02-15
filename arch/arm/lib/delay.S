@@ -11,7 +11,7 @@
 #include <asm/assembler.h>
 		.text
 
-LC0:		.word	SYMBOL_NAME(loops_per_jiffy)
+LC0:		.word	loops_per_jiffy
 
 /*
  * 0 <= r0 <= 2000
@@ -29,25 +29,29 @@ ENTRY(udelay)
 		RETINSTR(moveq,pc,lr)
 
 /*
- * loops = (r0 * 0x10c6 * 100 * loops_per_jiffie) / 2^32
+ * loops = (r0 * 0x10c6 * 100 * loops_per_jiffy) / 2^32
+ *
+ * Oh, if only we had a cycle counter...
  */
 
 @ Delay routine
 ENTRY(__delay)
 		subs	r0, r0, #1
-		RETINSTR(movcc,pc,lr)
+#if 0
+		RETINSTR(movls,pc,lr)
 		subs	r0, r0, #1
-		RETINSTR(movcc,pc,lr)
+		RETINSTR(movls,pc,lr)
 		subs	r0, r0, #1
-		RETINSTR(movcc,pc,lr)
+		RETINSTR(movls,pc,lr)
 		subs	r0, r0, #1
-		RETINSTR(movcc,pc,lr)
+		RETINSTR(movls,pc,lr)
 		subs	r0, r0, #1
-		RETINSTR(movcc,pc,lr)
+		RETINSTR(movls,pc,lr)
 		subs	r0, r0, #1
-		RETINSTR(movcc,pc,lr)
+		RETINSTR(movls,pc,lr)
 		subs	r0, r0, #1
-		RETINSTR(movcc,pc,lr)
+		RETINSTR(movls,pc,lr)
 		subs	r0, r0, #1
-		bcs	SYMBOL_NAME(__delay)
+#endif
+		bhi	__delay
 		RETINSTR(mov,pc,lr)

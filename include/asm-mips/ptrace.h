@@ -46,6 +46,11 @@ struct pt_regs {
 	unsigned long cp0_badvaddr;
 	unsigned long cp0_status;
 	unsigned long cp0_cause;
+
+#ifdef CONFIG_CPU_LX45XXX
+	unsigned long cp0_estatus;
+	unsigned long cp0_ecause;	
+#endif
 };
 
 #define __str2(x) #x
@@ -84,10 +89,7 @@ __asm__ (                                                               \
 /* #define PTRACE_GETFPXREGS		18 */
 /* #define PTRACE_SETFPXREGS		19 */
 
-#define PTRACE_SETOPTIONS	21
-
-/* options set using PTRACE_SETOPTIONS */
-#define PTRACE_O_TRACESYSGOOD	0x00000001
+#define PTRACE_OLDSETOPTIONS	21
 
 #ifdef __ASSEMBLY__
 #include <asm/offset.h>

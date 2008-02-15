@@ -6,7 +6,7 @@
  *
  * (C) 2000 Red Hat. GPLd.
  *
- * $Id: flashchip.h,v 1.7 2001/01/18 03:52:36 nico Exp $
+ * $Id: flashchip.h,v 1.14 2004/06/15 16:44:59 nico Exp $
  *
  */
 
@@ -29,6 +29,7 @@ typedef enum {
 	FL_ERASE_SUSPENDED,
 	FL_WRITING,
 	FL_WRITING_TO_BUFFER,
+	FL_OTP_WRITE,
 	FL_WRITE_SUSPENDING,
 	FL_WRITE_SUSPENDED,
 	FL_PM_SUSPENDED,
@@ -36,13 +37,17 @@ typedef enum {
 	FL_UNLOADING,
 	FL_LOCKING,
 	FL_UNLOCKING,
+	FL_POINT,
+	FL_XIP_WHILE_ERASING,
+	FL_XIP_WHILE_WRITING,
 	FL_UNKNOWN
 } flstate_t;
 
 
 
 /* NOTE: confusingly, this can be used to refer to more than one chip at a time, 
-   if they're interleaved. */
+   if they're interleaved.  This can even refer to individual partitions on
+   the same physical chip when present. */
 
 struct flchip {
 	unsigned long start; /* Offset within the map */
@@ -54,8 +59,14 @@ struct flchip {
 	   a given offset, and we'll want to add the per-chip length field
 	   back in.
 	*/
+	int ref_point_counter;
 	flstate_t state;
 	flstate_t oldstate;
+
+	int write_suspended:1;
+	int erase_suspended:1;
+	unsigned long in_progress_block_addr;
+
 	spinlock_t *mutex;
 	spinlock_t _spinlock; /* We do it like this because sometimes they'll be shared. */
 	wait_queue_head_t wq; /* Wait on here when we're waiting for the chip
@@ -63,8 +74,17 @@ struct flchip {
 	int word_write_time;
 	int buffer_write_time;
 	int erase_time;
+
+	void *priv;
 };
 
+/* This is used to handle contention on write/erase operations
+   between partitions of the same physical chip. */
+struct flchip_shared {
+	spinlock_t lock;
+	struct flchip *writing;
+	struct flchip *erasing;
+};
 
 
 #endif /* __MTD_FLASHCHIP_H__ */

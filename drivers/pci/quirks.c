@@ -350,6 +350,7 @@ static void __init quirk_via_acpi(struct pci_dev *d)
 		d->irq = irq;
 }
 
+#ifdef CONFIG_X86
 static void __init quirk_via_irqpic(struct pci_dev *dev)
 {
 	u8 irq, new_irq = dev->irq & 0xf;
@@ -364,7 +365,7 @@ static void __init quirk_via_irqpic(struct pci_dev *dev)
 		pci_write_config_byte(dev, PCI_INTERRUPT_LINE, new_irq);
 	}
 }
-
+#endif /* CONFIG_X86 */
 
 /*
  * PIIX3 USB: We have to disable USB interrupts that are
@@ -542,10 +543,11 @@ static struct pci_fixup pci_fixups[] __initdata = {
 #endif
 	{ PCI_FIXUP_HEADER,	PCI_VENDOR_ID_VIA,	PCI_DEVICE_ID_VIA_82C586_3,	quirk_via_acpi },
 	{ PCI_FIXUP_HEADER,	PCI_VENDOR_ID_VIA,	PCI_DEVICE_ID_VIA_82C686_4,	quirk_via_acpi },
+#ifdef CONFIG_X86
 	{ PCI_FIXUP_FINAL,	PCI_VENDOR_ID_VIA,	PCI_DEVICE_ID_VIA_82C586_2,	quirk_via_irqpic },
 	{ PCI_FIXUP_FINAL,	PCI_VENDOR_ID_VIA,	PCI_DEVICE_ID_VIA_82C686_5,	quirk_via_irqpic },
 	{ PCI_FIXUP_FINAL,	PCI_VENDOR_ID_VIA,	PCI_DEVICE_ID_VIA_82C686_6,	quirk_via_irqpic },
-
+#endif /* CONFIG_X86 */
 	{ PCI_FIXUP_FINAL, 	PCI_VENDOR_ID_AMD,	PCI_DEVICE_ID_AMD_VIPER_7410,	quirk_amd_ioapic },
 	{ PCI_FIXUP_FINAL,	PCI_VENDOR_ID_AMD,	PCI_DEVICE_ID_AMD_FE_GATE_700C, quirk_amd_ordering },
 	/*

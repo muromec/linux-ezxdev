@@ -56,15 +56,22 @@
  * Enforced range limit on SEM_UNDO
  * (c) 2001 Red Hat Inc <alan@redhat.com>
  */
+/*
+ *
+ * 2005-Apr-04 Motorola  Add security patch
+ */
+
 
 #include <linux/config.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/init.h>
 #include <linux/proc_fs.h>
+#include <linux/security.h>
 #include <asm/uaccess.h>
 #include "util.h"
 
+#include <linux/trace.h>
 
 #define sem_lock(id)	((struct sem_array*)ipc_lock(&sem_ids,id))
 #define sem_unlock(id)	ipc_unlock(&sem_ids,id)
@@ -114,6 +121,7 @@ void __init sem_init (void)
 static int newary (key_t key, int nsems, int semflg)
 {
 	int id;
+	int retval;
 	struct sem_array *sma;
 	int size;
 
@@ -128,15 +136,24 @@ static int newary (key_t key, int nsems, int semflg)
 		return -ENOMEM;
 	}
 	memset (sma, 0, size);
+
+	sma->sem_perm.mode = (semflg & S_IRWXUGO);
+	sma->sem_perm.key = key;
+
+	sma->sem_perm.security = NULL;
+	retval = security_sem_alloc(sma);
+	if (retval) {
+		ipc_free(sma, size);
+		return retval;
+	}
+
 	id = ipc_addid(&sem_ids, &sma->sem_perm, sc_semmni);
 	if(id == -1) {
+		security_sem_free(sma);
 		ipc_free(sma, size);
 		return -ENOSPC;
 	}
 	used_sems += nsems;
-
-	sma->sem_perm.mode = (semflg & S_IRWXUGO);
-	sma->sem_perm.key = key;
 
 	sma->sem_base = (struct sem *) &sma[1];
 	/* sma->sem_pending = NULL; */
@@ -175,12 +192,17 @@ asmlinkage long sys_semget (key_t key, int nsems, int semflg)
 			err = -EINVAL;
 		else if (ipcperms(&sma->sem_perm, semflg))
 			err = -EACCES;
-		else
-			err = sem_buildid(id, sma->sem_perm.seq);
+		else {
+			int semid = sem_buildid(id, sma->sem_perm.seq);
+			err = security_sem_associate(sma, semflg);
+			if (!err)
+				err = semid;
+		}
 		sem_unlock(id);
 	}
 
 	up(&sem_ids.sem);
+	TRACE_IPC(TRACE_EV_IPC_SEM_CREATE, err, semflg);
 	return err;
 }
 
@@ -415,6 +437,7 @@ static void freeary (int id)
 
 	used_sems -= sma->sem_nsems;
 	size = sizeof (*sma) + sma->sem_nsems * sizeof (struct sem);
+	security_sem_free(sma);
 	ipc_free(sma, size);
 }
 
@@ -451,6 +474,10 @@ static int semctl_nolock(int semid, int semnum, int cmd, int version, union semu
 		struct seminfo seminfo;
 		int max_id;
 
+		err = security_sem_semctl(NULL, cmd);
+		if (err)
+			return err;
+		
 		memset(&seminfo,0,sizeof(seminfo));
 		seminfo.semmni = sc_semmni;
 		seminfo.semmns = sc_semmns;
@@ -492,6 +519,11 @@ static int semctl_nolock(int semid, int semnum, int cmd, int version, union semu
 		err = -EACCES;
 		if (ipcperms (&sma->sem_perm, S_IRUGO))
 			goto out_unlock;
+
+		err = security_sem_semctl(sma, cmd);
+		if (err)
+			goto out_unlock;
+
 		id = sem_buildid(semid, sma->sem_perm.seq);
 
 		kernel_to_ipc64_perm(&sma->sem_perm, &tbuf.sem_perm);
@@ -535,6 +567,11 @@ static int semctl_main(int semid, int semnum, int cmd, int version, union semun 
 	if (ipcperms (&sma->sem_perm, (cmd==SETVAL||cmd==SETALL)?S_IWUGO:S_IRUGO))
 		goto out_unlock;
 
+	err = security_sem_semctl(sma, cmd);
+	if (err)
+		goto out_unlock;
+
+	err = -EACCES;
 	switch (cmd) {
 	case GETALL:
 	{
@@ -726,6 +763,10 @@ static int semctl_down(int semid, int semnum, int cmd, int version, union semun 
 		goto out_unlock;
 	}
 
+	err = security_sem_semctl(sma, cmd);
+	if (err)
+		goto out_unlock;
+
 	switch(cmd){
 	case IPC_RMID:
 		freeary(semid);
@@ -883,6 +924,12 @@ asmlinkage long sys_semop (int semid, struct sembuf *tsops, unsigned nsops)
 	error = -EACCES;
 	if (ipcperms(&sma->sem_perm, alter ? S_IWUGO : S_IRUGO))
 		goto out_unlock_free;
+
+	error = security_sem_semop(sma, sops, nsops, alter);
+	if (error)
+		goto out_unlock_free;
+	error = -EACCES;		
+
 	if (undos) {
 		/* Make sure we have an undo structure
 		 * for this process and this semaphore set.

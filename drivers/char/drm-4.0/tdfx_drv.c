@@ -554,7 +554,6 @@ int tdfx_lock(struct inode *inode, struct file *filp, unsigned int cmd,
 					lock.context, current->pid, j,
 					dev->lock.lock_time, jiffies);
                                 current->state = TASK_INTERRUPTIBLE;
-				current->policy |= SCHED_YIELD;
                                 schedule_timeout(DRM_LOCK_SLICE-j);
 				DRM_DEBUG("jiffies=%d\n", jiffies);
                         }

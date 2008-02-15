@@ -1,202 +1,245 @@
-
 /*
- * mtd/include/compatmac.h
- *
- * $Id: compatmac.h,v 1.4 2000/07/03 10:01:38 dwmw2 Exp $
+ * $Id: compatmac.h,v 1.65 2004/08/11 15:29:25 dmarlin Exp $
  *
  * Extensions and omissions from the normal 'linux/compatmac.h'
  * files. hopefully this will end up empty as the 'real' one 
  * becomes fully-featured.
+ *
+ * Copyright (C) 2005 Motorola Inc.
+ * Port to EzX platform.
  */
 
-
-/* First, include the parts which the kernel is good enough to provide 
- * to us 
- */
-   
 #ifndef __LINUX_MTD_COMPATMAC_H__
 #define __LINUX_MTD_COMPATMAC_H__
 
-#include <linux/compatmac.h>
-#include <linux/types.h> /* used later in this header */
-#include <linux/module.h>
-#ifndef LINUX_VERSION_CODE
 #include <linux/version.h>
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,4,10)
+#error "This kernel is too old: not supported by this file"
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,1,0)
-#include <linux/vmalloc.h>
-#endif
+	/* O(1) scheduler stuff. */
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,0,0)
-#  error "This kernel is too old: not supported by this file"
-#endif
-
-/* Modularization issues */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,1,18)
-#  define __USE_OLD_SYMTAB__
-#  define EXPORT_NO_SYMBOLS register_symtab(NULL);
-#  define REGISTER_SYMTAB(tab) register_symtab(tab)
-#else
-#  define REGISTER_SYMTAB(tab) /* nothing */
-#endif
-
-#ifdef __USE_OLD_SYMTAB__
-#  define __MODULE_STRING(s)         /* nothing */
-#  define MODULE_PARM(v,t)           /* nothing */
-#  define MODULE_PARM_DESC(v,t)      /* nothing */
-#  define MODULE_AUTHOR(n)           /* nothing */
-#  define MODULE_DESCRIPTION(d)      /* nothing */
-#  define MODULE_SUPPORTED_DEVICE(n) /* nothing */
-#endif
-
-/*
- * "select" changed in 2.1.23. The implementation is twin, but this
- * header is new
- */
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,1,22)
-#  include <linux/poll.h>
-#else
-#  define __USE_OLD_SELECT__
-#endif
-
-/* Other change in the fops are solved using pseudo-types */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,1,0)
-#  define lseek_t      long long
-#  define lseek_off_t  long long
-#else
-#  define lseek_t      int
-#  define lseek_off_t  off_t
-#endif
-
-/* changed the prototype of read/write */
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,1,0) || defined(__alpha__)
-# define count_t unsigned long
-# define read_write_t long
-#else
-# define count_t int
-# define read_write_t int
-#endif
-
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,1,31)
-# define release_t void
-#  define release_return(x) return
-#else
-#  define release_t int
-#  define release_return(x) return (x)
-#endif
-
-#if LINUX_VERSION_CODE < 0x20300
-#define __exit
-#endif
-#if LINUX_VERSION_CODE < 0x20200
-#define __init
-#else
-#include <linux/init.h>
-#endif
-
-#if LINUX_VERSION_CODE < 0x20300
-#define init_MUTEX(x) do {*(x) = MUTEX;} while (0)
-#define RQFUNC_ARG void
-#define blkdev_dequeue_request(req) do {CURRENT = req->next;} while (0)
-#else
-#define RQFUNC_ARG request_queue_t *q
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,2,0)
-#define __MOD_INC_USE_COUNT(mod)                                        \
-        (atomic_inc(&(mod)->uc.usecount), (mod)->flags |= MOD_VISITED|MOD_USED_ONCE)
-#define __MOD_DEC_USE_COUNT(mod)                                        \
-        (atomic_dec(&(mod)->uc.usecount), (mod)->flags |= MOD_VISITED)
-#endif
-
-
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,3,0)
-
-#define DECLARE_WAIT_QUEUE_HEAD(x) struct wait_queue *x = NULL
-#define init_waitqueue_head init_waitqueue
-
-static inline int try_inc_mod_count(struct module *mod)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,5,5) && !defined(__rh_config_h__)
+#include <linux/sched.h>
+static inline void __recalc_sigpending(void)
 {
-	if (mod)
-		__MOD_INC_USE_COUNT(mod);
-	return 1;
+	recalc_sigpending(current);
+}
+#undef recalc_sigpending
+#define recalc_sigpending() __recalc_sigpending ()
+
+#endif
+
+
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,4,20)
+
+#ifndef yield
+#define yield() do { set_current_state(TASK_RUNNING); schedule(); } while(0)
+#endif
+
+#ifndef minor
+#define major(d) (MAJOR(to_kdev_t(d)))
+#define minor(d) (MINOR(to_kdev_t(d)))
+#endif
+
+#ifndef mk_kdev
+#define mk_kdev(ma,mi) MKDEV(ma,mi)
+#define kdev_t_to_nr(x)	(x)
+#endif
+
+#define need_resched() (current->need_resched)
+#define cond_resched() do { if need_resched() { yield(); } } while(0)
+
+#endif /* < 2.4.20 */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,5,73)
+#define iminor(i) minor((i)->i_rdev)
+#define imajor(i) major((i)->i_rdev)
+#define old_encode_dev(d) ( (major(d)<<8) | minor(d) )
+#define old_decode_dev(rdev)  (kdev_t_to_nr(mk_kdev((rdev)>>8, (rdev)&0xff)))
+#define old_valid_dev(d) (1)
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,5,61)
+
+#include <linux/sched.h>
+
+#ifdef __rh_config_h__
+#define sigmask_lock sighand->siglock
+#define sig sighand
+#endif
+
+static inline void __daemonize_modvers(void)
+{
+	daemonize();
+
+	spin_lock_irq(&current->sigmask_lock);
+	sigfillset(&current->blocked);
+	recalc_sigpending();
+	spin_unlock_irq(&current->sigmask_lock);
+}
+#undef daemonize
+#define daemonize(fmt, ...) do {						\
+	snprintf(current->comm, sizeof(current->comm), fmt ,##__VA_ARGS__);	\
+	__daemonize_modvers();							\
+	} while(0)
+
+static inline int dequeue_signal_lock(struct task_struct *tsk, sigset_t *mask, siginfo_t *info)
+{
+	unsigned long flags;
+	unsigned long ret;
+
+	spin_lock_irqsave(&current->sigmask_lock, flags);
+	ret = dequeue_signal(mask, info);
+	spin_unlock_irqrestore(&current->sigmask_lock, flags);
+
+	return ret;
+}
+
+static inline int allow_signal(int sig)
+{
+	if (sig < 1 || sig > _NSIG)
+		return -EINVAL;
+
+        spin_lock_irq(&current->sigmask_lock);
+	sigdelset(&current->blocked, sig);
+	recalc_sigpending();
+	/* Make sure the kernel neither eats it now converts to SIGKILL */
+	current->sig->action[sig-1].sa.sa_handler = (void *)2;
+	spin_unlock_irq(&current->sigmask_lock);
+	return 0;
+}
+static inline int disallow_signal(int sig)
+{
+	if (sig < 1 || sig > _NSIG)
+		return -EINVAL;
+
+	spin_lock_irq(&current->sigmask_lock);
+	sigaddset(&current->blocked, sig);
+	recalc_sigpending();
+
+	current->sig->action[sig-1].sa.sa_handler = SIG_DFL;
+	spin_unlock_irq(&current->sigmask_lock);
+	return 0;
+}
+
+#define PF_FREEZE 0
+#define refrigerator(x) do { ; } while(0)
+#endif
+
+	/* Module bits */
+
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,5,60)
+#define try_module_get(m) try_inc_mod_count(m)
+#define __module_get(m) do { if (!try_inc_mod_count(m)) BUG(); } while(0)
+#define module_put(m) do { if (m) __MOD_DEC_USE_COUNT((struct module *)(m)); } while(0)
+#define set_module_owner(x) do { x->owner = THIS_MODULE; } while(0)
+#endif
+
+
+	/* Random filesystem stuff, only for JFFS2 really */
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,5,5)
+#define parent_ino(d) ((d)->d_parent->d_inode->i_ino)
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,5,12)
+#define PageUptodate(x) Page_Uptodate(x)
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,5,48)
+#define get_seconds() CURRENT_TIME
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,5,53)
+#define generic_file_readonly_mmap generic_file_mmap
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,5,70)
+
+#include <linux/kmod.h>
+#include <linux/string.h>
+
+static inline char *strlcpy(char *dest, const char *src, int len)
+{
+	dest[len-1] = 0;
+	return strncpy(dest, src, len-1);
+}
+
+static inline int do_old_request_module(const char *mod)
+{
+	return request_module(mod);
+}
+#undef request_module
+#define request_module(fmt, ...) \
+ ({ char modname[32]; snprintf(modname, 31, fmt ,##__VA_ARGS__); do_old_request_module(modname); })
+
+#endif /* 2.5.70 */
+
+#ifndef container_of
+#define container_of(ptr, type, member) ({		     \
+	const typeof( ((type *)0)->member ) *__mptr = (ptr); \
+	(type *)( (char *)__mptr - offsetof(type,member) );})
+#endif
+ 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,5,0)
+#define kvec iovec
+#define __user 
+#endif
+
+#ifndef ndelay
+#define ndelay(x)	udelay(((x)+999)/1000)
+#endif
+
+//new version add by kevin
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,4,28)
+#define msleep(x) \
+	set_current_state(TASK_UNINTERRUPTIBLE); \
+	schedule_timeout((x)*(HZ/1000));
+#endif
+
+#ifndef __iomem
+#define __iomem
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)
+#define CURRENT_TIME_SEC ((struct timespec) { xtime.tv_sec, 0 })
+#include <linux/sched.h>
+#include <linux/suspend.h>
+static inline int try_to_freeze(unsigned long refrigerator_flags)
+{
+	if (unlikely(current->flags & PF_FREEZE)) {
+	        refrigerator(refrigerator_flags);
+	        return 1;
+	} else
+	        return 0;
 }
 #endif
 
-
-/* Yes, I'm aware that it's a fairly ugly hack.
-   Until the __constant_* macros appear in Linus' own kernels, this is
-   the way it has to be done.
- DW 19/1/00
+#ifndef list_for_each_entry_safe
+/**
+ * list_for_each_entry_safe - iterate over list of given type safe against removal of list entry
+ * @pos:	the type * to use as a loop counter.
+ * @n:		another type * to use as temporary storage
+ * @head:	the head for your list.
+ * @member:	the name of the list_struct within the struct.
  */
+#define list_for_each_entry_safe(pos, n, head, member)			\
+	for (pos = list_entry((head)->next, typeof(*pos), member),	\
+		n = list_entry(pos->member.next, typeof(*pos), member);	\
+	     &pos->member != (head); 					\
+	     pos = n, n = list_entry(n->member.next, typeof(*n), member))
 
-#include <asm/byteorder.h>
-
-#ifndef __constant_cpu_to_le16
-
-#ifdef __BIG_ENDIAN
-#define __constant_cpu_to_le64(x) ___swab64((x))
-#define __constant_le64_to_cpu(x) ___swab64((x))
-#define __constant_cpu_to_le32(x) ___swab32((x))
-#define __constant_le32_to_cpu(x) ___swab32((x))
-#define __constant_cpu_to_le16(x) ___swab16((x))
-#define __constant_le16_to_cpu(x) ___swab16((x))
-#define __constant_cpu_to_be64(x) ((__u64)(x))
-#define __constant_be64_to_cpu(x) ((__u64)(x))
-#define __constant_cpu_to_be32(x) ((__u32)(x))
-#define __constant_be32_to_cpu(x) ((__u32)(x))
-#define __constant_cpu_to_be16(x) ((__u16)(x))
-#define __constant_be16_to_cpu(x) ((__u16)(x))
-#else
-#ifdef __LITTLE_ENDIAN
-#define __constant_cpu_to_le64(x) ((__u64)(x))
-#define __constant_le64_to_cpu(x) ((__u64)(x))
-#define __constant_cpu_to_le32(x) ((__u32)(x))
-#define __constant_le32_to_cpu(x) ((__u32)(x))
-#define __constant_cpu_to_le16(x) ((__u16)(x))
-#define __constant_le16_to_cpu(x) ((__u16)(x))
-#define __constant_cpu_to_be64(x) ___swab64((x))
-#define __constant_be64_to_cpu(x) ___swab64((x))
-#define __constant_cpu_to_be32(x) ___swab32((x))
-#define __constant_be32_to_cpu(x) ___swab32((x))
-#define __constant_cpu_to_be16(x) ___swab16((x))
-#define __constant_be16_to_cpu(x) ___swab16((x))
-#else
-#error No (recognised) endianness defined (unless it,s PDP)
-#endif /* __LITTLE_ENDIAN */
-#endif /* __BIG_ENDIAN */
-
-#endif /* ifndef __constant_cpu_to_le16 */
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,3,0)
-  #define mod_init_t int  __init
-  #define mod_exit_t void  
-#else
-  #define mod_init_t static int __init
-  #define mod_exit_t static void __exit
 #endif
 
-#ifndef THIS_MODULE
-#ifdef MODULE
-#define THIS_MODULE (&__this_module)
-#else
-#define THIS_MODULE (NULL)
+#ifndef DEFINE_SPINLOCK
+#define DEFINE_SPINLOCK(x) spinlock_t x = SPIN_LOCK_UNLOCKED
 #endif
+#ifndef DEFINE_RWLOCK
+#define DEFINE_RWLOCK(x) rwlock_t x = RW_LOCK_UNLOCKED
 #endif
-
-#if LINUX_VERSION_CODE < 0x20300
-#include <linux/interrupt.h>
-#define spin_lock_bh(lock) do {start_bh_atomic();spin_lock(lock);} while(0)
-#define spin_unlock_bh(lock) do {spin_unlock(lock);end_bh_atomic();} while(0)
-#else
-#include <asm/softirq.h>
-#include <linux/spinlock.h>
-#endif
+//end of new version
 
 #endif /* __LINUX_MTD_COMPATMAC_H__ */
-
-

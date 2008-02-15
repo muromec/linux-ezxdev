@@ -39,4 +39,8 @@ MX_OBJS		:= $(sort $(filter     $(export-objs), $(obj-m)))
 include $(TOPDIR)/Rules.make
 
 lk201-map.c: lk201-map.map
+ifneq ($(shell uname), Linux)
+	touch lk201-map.c
+else
 	loadkeys --mktable lk201-map.map > lk201-map.c
+endif

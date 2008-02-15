@@ -1,9 +1,12 @@
 /*
  *  linux/fs/fat/misc.c
  *
+ *  Copyright (C) 2005 Motorola Inc.
+ *
  *  Written 1992,1993 by Werner Almesberger
  *  22/11/2000 - Fixed fat_date_unix2dos for dates earlier than 01/01/1980
  *		 and date_dos2unix for date==0 by Igor Zhbanov(bsg@uniyar.ac.ru)
+ *  modify for EzX by ZhiFu Zhu 200504
  */
 
 #include <linux/fs.h>
@@ -20,6 +23,11 @@
 #  define PRINTK(x)
 #endif
 #define Printk(x)	printk x
+
+/* add by w20598 for fat panic */
+extern unsigned short  panicdev;
+extern struct completion fatpanic_completion;
+/* add end */
 
 /* Well-known binary file extensions - of course there are many more */
 
@@ -47,6 +55,8 @@ void fat_fs_panic(struct super_block *s,const char *msg)
 	printk("Filesystem panic (dev %s).\n  %s\n", kdevname(s->s_dev), msg);
 	if (not_ro)
 		printk("  File system has been set read-only\n");
+	panicdev = (kdev_t)s->s_dev;
+	complete(&fatpanic_completion);
 }
 
 

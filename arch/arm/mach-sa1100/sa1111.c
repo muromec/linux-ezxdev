@@ -35,7 +35,7 @@
 #include "sa1111.h"
 
 struct resource sa1111_resource = {
-	name:	"SA1111",
+	.name	= "SA1111",
 };
 
 EXPORT_SYMBOL(sa1111_resource);
@@ -241,9 +241,15 @@ void sa1111_wake(void)
 	 * First, set up the 3.6864MHz clock on GPIO 27 for the SA-1111:
 	 * (SA-1110 Developer's Manual, section 9.1.2.1)
 	 */
+#if CONFIG_ARCH_SA1100
 	GAFR |= GPIO_32_768kHz;
 	GPDR |= GPIO_32_768kHz;
 	TUCR = TUCR_3_6864MHz;
+#elif CONFIG_ARCH_PXA
+	set_GPIO_mode(GPIO11_3_6MHz_MD);
+#else
+#error missing clock setup
+#endif
 
 	/*
 	 * Turn VCO on, and disable PLL Bypass.
@@ -298,6 +304,8 @@ void sa1111_configure_smc(int sdram, unsigned int drac, unsigned int cas_latency
 	SBI_SMCR = smcr;
 }
 
+#ifdef CONFIG_ARCH_SA1100
+
 /*
  * Disable the memory bus request/grant signals on the SA1110 to
  * ensure that we don't receive spurious memory requests.  We set
@@ -338,6 +346,8 @@ void __init sa1110_mb_enable(void)
 
 	local_irq_restore(flags);
 }
+
+#endif
 
 EXPORT_SYMBOL(sa1111_wake);
 EXPORT_SYMBOL(sa1111_doze);

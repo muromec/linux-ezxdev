@@ -1,5 +1,5 @@
 /*
- * BK Id: %F% %I% %G% %U% %#%
+ * BK Id: SCCS/s.prom.h 1.31 05/08/02 15:05:16 benh
  */
 /*
  * Definitions for talking to the Open Firmware PROM on

@@ -75,14 +75,14 @@ nwfpe_enter:
 
         ldr r5, [sp, #60]	 	@ get contents of PC;
 	sub r8, r5, #4
-.Lx2:	ldrt r0, [r8]			@ get actual instruction into r0
+.Lx1:	ldrt r0, [r8]			@ get actual instruction into r0
 emulate:
 	bl EmulateAll			@ emulate the instruction
    	cmp r0, #0			@ was emulation successful
         moveq pc, r4			@ no, return failure
 
 next:
-.Lx1:	ldrt r6, [r5], #4		@ get the next instruction and
+.Lx2:	ldrt r6, [r5], #4		@ get the next instruction and
 					@ increment PC
 
 	and   r2, r6, #0x0F000000	@ test for FP insns

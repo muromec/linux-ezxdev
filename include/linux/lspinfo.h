@@ -1,0 +1,5 @@
+#define LSP_BUILD_ID   "0500252"
+#define LSP_REVISION   "18"
+#define LSP_NAME       "intel-mainstone_pxa27x"
+#define LSP_BOARD_NAME "Intel Mainstone PXA270 Reference Design Platform (little endian)"
+#define LSP_MVL_ARCH   "arm_iwmmxt_le"

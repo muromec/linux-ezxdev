@@ -1,5 +1,5 @@
 /*
- * $Id: redboot.c,v 1.6 2001/10/25 09:16:06 dwmw2 Exp $
+ * $Id: redboot.c,v 1.15 2004/08/10 07:55:16 dwmw2 Exp $
  *
  * Parse RedBoot-style Flash Image System (FIS) tables and
  * produce a Linux partition array to match.
@@ -7,6 +7,8 @@
 
 #include <linux/kernel.h>
 #include <linux/slab.h>
+#include <linux/init.h>
+#include <linux/vmalloc.h>
 
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/partitions.h>
@@ -34,7 +36,9 @@ static inline int redboot_checksum(struct fis_image_desc *img)
 	return 1;
 }
 
-int parse_redboot_partitions(struct mtd_info *master, struct mtd_partition **pparts)
+int parse_redboot_partitions(struct mtd_info *master, 
+                             struct mtd_partition **pparts,
+                             unsigned long fis_origin)
 {
 	int nrparts = 0;
 	struct fis_image_desc *buf;
@@ -43,21 +47,26 @@ int parse_redboot_partitions(struct mtd_info *master, struct mtd_partition **ppa
 	int ret, i;
 	size_t retlen;
 	char *names;
+	char *nullname;
 	int namelen = 0;
+	int nulllen = 0;
+#ifdef CONFIG_MTD_REDBOOT_PARTS_UNALLOCATED
+	static char nullstring[] = "unallocated";
+#endif
 
-	buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	buf = vmalloc(master->erasesize);
 
 	if (!buf)
 		return -ENOMEM;
 
 	/* Read the start of the last erase block */
 	ret = master->read(master, master->size - master->erasesize,
-			   PAGE_SIZE, &retlen, (void *)buf);
+			   master->erasesize, &retlen, (void *)buf);
 
 	if (ret)
 		goto out;
 
-	if (retlen != PAGE_SIZE) {
+	if (retlen != master->erasesize) {
 		ret = -EIO;
 		goto out;
 	}
@@ -75,7 +84,7 @@ int parse_redboot_partitions(struct mtd_info *master, struct mtd_partition **ppa
 		goto out;
 	}
 
-	for (i = 0; i < PAGE_SIZE / sizeof(struct fis_image_desc); i++) {
+	for (i = 0; i < master->erasesize / sizeof(struct fis_image_desc); i++) {
 		struct fis_list *new_fl, **prev;
 
 		if (buf[i].name[0] == 0xff)
@@ -90,7 +99,11 @@ int parse_redboot_partitions(struct mtd_info *master, struct mtd_partition **ppa
 			goto out;
 		}
 		new_fl->img = &buf[i];
-		buf[i].flash_base &= master->size-1;
+                if (fis_origin) {
+                        buf[i].flash_base -= fis_origin;
+                } else {
+                        buf[i].flash_base &= master->size-1;
+                }
 
 		/* I'm sure the JFFS2 code has done me permanent damage.
 		 * I now think the following is _normal_
@@ -103,42 +116,69 @@ int parse_redboot_partitions(struct mtd_info *master, struct mtd_partition **ppa
 
 		nrparts++;
 	}
-	if (fl->img->flash_base)
+#ifdef CONFIG_MTD_REDBOOT_PARTS_UNALLOCATED
+	if (fl->img->flash_base) {
 		nrparts++;
+		nulllen = sizeof(nullstring);
+	}
 
 	for (tmp_fl = fl; tmp_fl->next; tmp_fl = tmp_fl->next) {
-		if (tmp_fl->img->flash_base + tmp_fl->img->size + master->erasesize < tmp_fl->next->img->flash_base)
+		if (tmp_fl->img->flash_base + tmp_fl->img->size + master->erasesize <= tmp_fl->next->img->flash_base) {
 			nrparts++;
+			nulllen = sizeof(nullstring);
+		}
 	}
-	parts = kmalloc(sizeof(*parts)*nrparts + namelen, GFP_KERNEL);
+#endif
+	parts = kmalloc(sizeof(*parts)*nrparts + nulllen + namelen, GFP_KERNEL);
 
 	if (!parts) {
 		ret = -ENOMEM;
 		goto out;
 	}
-	names = (char *)&parts[nrparts];
-	memset(parts, 0, sizeof(*parts)*nrparts + namelen);
+
+	memset(parts, 0, sizeof(*parts)*nrparts + nulllen + namelen);
+
+	nullname = (char *)&parts[nrparts];
+#ifdef CONFIG_MTD_REDBOOT_PARTS_UNALLOCATED
+	if (nulllen > 0) {
+		strcpy(nullname, nullstring);
+	}
+#endif
+	names = nullname + nulllen;
+
 	i=0;
 
+#ifdef CONFIG_MTD_REDBOOT_PARTS_UNALLOCATED
 	if (fl->img->flash_base) {
-	       parts[0].name = "unallocated space";
+	       parts[0].name = nullname;
 	       parts[0].size = fl->img->flash_base;
 	       parts[0].offset = 0;
+		i++;
 	}
+#endif
 	for ( ; i<nrparts; i++) {
 		parts[i].size = fl->img->size;
 		parts[i].offset = fl->img->flash_base;
 		parts[i].name = names;
 
 		strcpy(names, fl->img->name);
+#ifdef CONFIG_MTD_REDBOOT_PARTS_READONLY
+		if (!memcmp(names, "RedBoot", 8) ||
+				!memcmp(names, "RedBoot config", 15) ||
+				!memcmp(names, "FIS directory", 14)) {
+			parts[i].mask_flags = MTD_WRITEABLE;
+		}
+#endif
 		names += strlen(names)+1;
 
-		if(fl->next && fl->img->flash_base + fl->img->size + master->erasesize < fl->next->img->flash_base) {
+#ifdef CONFIG_MTD_REDBOOT_PARTS_UNALLOCATED
+		if(fl->next && fl->img->flash_base + fl->img->size + master->erasesize <= fl->next->img->flash_base) {
 			i++;
 			parts[i].offset = parts[i-1].size + parts[i-1].offset;
 			parts[i].size = fl->next->img->flash_base - parts[i].offset;
-			parts[i].name = "unallocated space";
+			parts[i].name = nullname;
 		}
+#endif
 		tmp_fl = fl;
 		fl = fl->next;
 		kfree(tmp_fl);
@@ -151,11 +191,28 @@ int parse_redboot_partitions(struct mtd_info *master, struct mtd_partition **ppa
 		fl = fl->next;
 		kfree(old);
 	}
-	kfree(buf);
+	vfree(buf);
 	return ret;
 }
 
-EXPORT_SYMBOL(parse_redboot_partitions);
+static struct mtd_part_parser redboot_parser = {
+	.owner = THIS_MODULE,
+	.parse_fn = parse_redboot_partitions,
+	.name = "RedBoot",
+};
+
+static int __init redboot_parser_init(void)
+{
+	return register_mtd_parser(&redboot_parser);
+}
+
+static void __exit redboot_parser_exit(void)
+{
+	deregister_mtd_parser(&redboot_parser);
+}
+
+module_init(redboot_parser_init);
+module_exit(redboot_parser_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Red Hat, Inc. - David Woodhouse <dwmw2@cambridge.redhat.com>");

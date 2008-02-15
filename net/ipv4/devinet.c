@@ -25,6 +25,14 @@
  *					fall back to comparing just the label
  *					if no match found.
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * Motorola EzX changes:
+ *    remove admin priority requirement for set local address, broadcast address, 
+ *    destination address/mask
+ *    remove admin priority requirement for set interface flag
+ */
 
 #include <linux/config.h>
  
@@ -503,15 +511,21 @@ int devinet_ioctl(unsigned int cmd, void *arg)
 		break;
 
 	case SIOCSIFFLAGS:
+        /* porting from A760 datacall feature linweiqiang    2003-12-17 */
+#if 0
 		if (!capable(CAP_NET_ADMIN))
 			return -EACCES;
+#endif
 		break;
 	case SIOCSIFADDR:	/* Set interface address (and family) */
 	case SIOCSIFBRDADDR:	/* Set the broadcast address */
 	case SIOCSIFDSTADDR:	/* Set the destination address */
 	case SIOCSIFNETMASK: 	/* Set the netmask for the interface */
+        /* porting from A760 datacall feature linweiqiang     2003-12-17 */
+#if 0
 		if (!capable(CAP_NET_ADMIN))
 			return -EACCES;
+#endif
 		if (sin->sin_family != AF_INET)
 			return -EINVAL;
 		break;

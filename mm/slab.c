@@ -49,7 +49,8 @@
  *  constructors and destructors are called without any locking.
  *  Several members in kmem_cache_t and slab_t never change, they
  *	are accessed without any locking.
- *  The per-cpu arrays are never accessed from the wrong cpu, no locking.
+ *  The per-cpu arrays are never accessed from the wrong cpu, no locking,
+ *  	and local interrupts are disabled so slab code is preempt-safe.
  *  The non-constant members are protected with a per-cache irq spinlock.
  *
  * Further notes from the original documentation:
@@ -67,6 +68,12 @@
  *	At present, each engine can be growing a cache.  This should be blocked.
  *
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by w15879, for EZX platform
+ */
+
 
 #include	<linux/config.h>
 #include	<linux/slab.h>
@@ -858,12 +865,14 @@ static int is_chained_kmem_cache(kmem_cache_t * cachep)
  */
 static void smp_call_function_all_cpus(void (*func) (void *arg), void *arg)
 {
+	preempt_disable();
 	local_irq_disable();
 	func(arg);
 	local_irq_enable();
 
 	if (smp_call_function(func, arg, 1, 1))
 		BUG();
+	preempt_enable();
 }
 typedef struct ccupdate_struct_s
 {
@@ -988,6 +997,8 @@ int kmem_cache_shrink(kmem_cache_t *cachep)
  * unloaded.  This will remove the cache completely, and avoid a duplicate
  * cache being allocated each time a module is loaded and unloaded, if the
  * module doesn't have persistent in-kernel storage across loads and unloads.
+ *
+ * The cache must be empty before calling this function.
  *
  * The caller must guarantee that noone will allocate memory from the cache
  * during the kmem_cache_destroy().
@@ -1585,6 +1596,23 @@ void kmem_cache_free (kmem_cache_t *cachep, void *objp)
 	local_irq_restore(flags);
 }
 
+void *
+kmem_cache_zalloc(kmem_cache_t *cachep, int flags)
+{
+	void    *ptr;
+	ptr = __kmem_cache_alloc(cachep, flags);
+	if (ptr)
+#if DEBUG
+		memset(ptr, 0, cachep->objsize -
+			(cachep->flags & SLAB_RED_ZONE ? 2*BYTES_PER_WORD : 0));
+#else
+		memset(ptr, 0, cachep->objsize);
+#endif
+
+	return ptr;
+}
+
+
 /**
  * kfree - free previously allocated memory
  * @objp: pointer returned by kmalloc.
@@ -1726,6 +1754,72 @@ static void enable_all_cpucaches (void)
 	up(&cache_chain_sem);
 }
 #endif
+
+//Susan just for reporting potential free pages
+int slab_cache_freeable_info(void)
+{
+	slab_t *slabp;
+	kmem_cache_t *searchp;
+	unsigned long pages = 0;
+	unsigned long sum_pages = 0;
+
+	if (down_trylock(&cache_chain_sem))
+		return -EAGAIN;
+
+	sum_pages = 0;
+
+	searchp = &cache_cache;
+	do 
+	{
+		struct list_head* p;
+		unsigned int full_free;
+
+		/* It's safe to test this without holding the cache-lock. */
+		if (searchp->flags & SLAB_NO_REAP)
+			goto info_next;
+
+		spin_lock_irq(&searchp->spinlock);
+
+		if (searchp->growing)
+			goto info_next_unlock;
+
+		if (searchp->dflags & DFLGS_GROWN)
+			goto info_next_unlock;
+
+		full_free = 0;
+		pages = 0;
+
+		p = searchp->slabs_free.next;
+		while (p != &searchp->slabs_free) 
+		{
+			slabp = list_entry(p, slab_t, list);
+#if DEBUG
+			if (slabp->inuse)
+				BUG();
+#endif
+			full_free++;
+			p = p->next;
+		}
+
+		pages = full_free * (1<<searchp->gfporder);
+		if (searchp->ctor)
+			pages = (pages*4+1)/5;
+		if (searchp->gfporder)
+			pages = (pages*4+1)/5;
+
+		sum_pages += pages;
+
+info_next_unlock:
+		spin_unlock_irq(&searchp->spinlock);
+info_next:
+		searchp = list_entry(searchp->next.next,kmem_cache_t,next);
+	} while (searchp != &cache_cache);
+
+	up(&cache_chain_sem);
+
+	return sum_pages;
+}
+
 
 /**
  * kmem_cache_reap - Reclaim memory from caches.
@@ -1947,8 +2041,12 @@ static int s_show(struct seq_file *m, void *p)
 	name = cachep->name; 
 	{
 	char tmp; 
+	mm_segment_t	old_fs;
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
 	if (__get_user(tmp, name)) 
 		name = "broken"; 
+	set_fs(old_fs);
 	}       
 
 	seq_printf(m, "%-17s %6lu %6lu %6u %4lu %4lu %4u",

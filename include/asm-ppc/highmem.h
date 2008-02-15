@@ -1,5 +1,5 @@
 /*
- * BK Id: SCCS/s.highmem.h 1.10 06/28/01 15:50:17 paulus
+ * BK Id: SCCS/s.highmem.h 1.14 05/29/02 13:02:56 mporter
  */
 /*
  * highmem.h: virtual kernel memory mappings for high memory
@@ -44,13 +44,21 @@ extern void kmap_init(void) __init;
  * easily, subsequent pte tables have to be allocated in one physical
  * chunk of RAM.
  */
+#ifdef CONFIG_HIGHMEM_START_BOOL
+#define PKMAP_BASE CONFIG_HIGHMEM_START
+#else
 #define PKMAP_BASE (0xfe000000UL)
+#endif /* CONFIG_HIGHMEM_START_BOOL */
+#ifdef CONFIG_440
+#define LAST_PKMAP 512
+#else
 #define LAST_PKMAP 1024
+#endif /* CONFIG_440 */
 #define LAST_PKMAP_MASK (LAST_PKMAP-1)
 #define PKMAP_NR(virt)  ((virt-PKMAP_BASE) >> PAGE_SHIFT)
 #define PKMAP_ADDR(nr)  (PKMAP_BASE + ((nr) << PAGE_SHIFT))
 
-#define KMAP_FIX_BEGIN	(0xfe400000UL)
+#define KMAP_FIX_BEGIN	(PKMAP_BASE + 0x00400000UL)
 
 extern void *kmap_high(struct page *page);
 extern void kunmap_high(struct page *page);
@@ -84,6 +92,7 @@ static inline void *kmap_atomic(struct page *page, enum km_type type)
 	unsigned int idx;
 	unsigned long vaddr;
 
+	preempt_disable();
 	if (page < highmem_start_page)
 		return page_address(page);
 
@@ -105,8 +114,10 @@ static inline void kunmap_atomic(void *kvaddr, enum km_type type)
 	unsigned long vaddr = (unsigned long) kvaddr;
 	unsigned int idx = type + KM_TYPE_NR*smp_processor_id();
 
-	if (vaddr < KMAP_FIX_BEGIN) // FIXME
+	if (vaddr < KMAP_FIX_BEGIN) { // FIXME
+		preempt_enable();
 		return;
+	}
 
 	if (vaddr != KMAP_FIX_BEGIN + idx * PAGE_SIZE)
 		BUG();
@@ -118,6 +129,7 @@ static inline void kunmap_atomic(void *kvaddr, enum km_type type)
 	pte_clear(kmap_pte+idx);
 	flush_tlb_page(0, vaddr);
 #endif
+	preempt_enable();
 }
 
 #endif /* __KERNEL__ */

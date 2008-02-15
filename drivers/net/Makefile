@@ -8,7 +8,7 @@ obj-m           :=
 obj-n           :=
 obj-            :=
 
-mod-subdirs     := appletalk arcnet fc irda tokenring pcmcia wireless wan
+mod-subdirs     := appletalk arcnet fc irda tokenring pcmcia wireless wan ibm_ocp
 
 O_TARGET := net.o
 
@@ -17,7 +17,7 @@ O_TARGET := net.o
 
 export-objs     :=	8390.o arlan.o aironet4500_core.o aironet4500_card.o \
 			ppp_async.o ppp_generic.o slhc.o pppox.o auto_irq.o \
-			net_init.o mii.o
+			net_init.o mii.o hhnet_eth.o hhnet.o hhnet_dma.o smc91111.o
 list-multi	:=	rcpci.o
 rcpci-objs	:=	rcpci45.o rclanmtl.o
 
@@ -27,6 +27,10 @@ endif
 
 ifeq ($(CONFIG_E1000),y)
   obj-y += e1000/e1000.o
+endif
+
+ifeq ($(CONFIG_OCP_NET),y)
+  obj-y += ibm_ocp/ocp.o
 endif
 
 ifeq ($(CONFIG_ISDN_PPP),y)
@@ -46,6 +50,7 @@ subdir-$(CONFIG_SK98LIN) += sk98lin
 subdir-$(CONFIG_SKFP) += skfp
 subdir-$(CONFIG_E100) += e100
 subdir-$(CONFIG_E1000) += e1000
+subdir-$(CONFIG_OCP_NET) += ibm_ocp
 
 #
 # link order important here
@@ -64,6 +69,7 @@ obj-$(CONFIG_SUNGEM) += sungem.o
 obj-$(CONFIG_MACE) += mace.o
 obj-$(CONFIG_BMAC) += bmac.o
 obj-$(CONFIG_GMAC) += gmac.o
+obj-$(CONFIG_NCR885E) += ncr885e.o
 
 obj-$(CONFIG_OAKNET) += oaknet.o 8390.o
 
@@ -126,8 +132,11 @@ obj-$(CONFIG_SHAPER) += shaper.o
 obj-$(CONFIG_SK_G16) += sk_g16.o
 obj-$(CONFIG_HP100) += hp100.o
 obj-$(CONFIG_SMC9194) += smc9194.o
+obj-$(CONFIG_SMC91111) += smc91111.o
+obj-$(CONFIG_SMC91X) += smc91x.o
 obj-$(CONFIG_ARM_AM79C961A) += am79c961a.o
 obj-$(CONFIG_ARM_ETHERH) += 8390.o
+obj-$(CONFIG_CERF_CS8900A) += cerf89x0.o
 obj-$(CONFIG_WD80x3) += wd.o 8390.o
 obj-$(CONFIG_EL2) += 3c503.o 8390.o
 obj-$(CONFIG_NE2000) += ne.o 8390.o
@@ -141,7 +150,12 @@ obj-$(CONFIG_E2100) += e2100.o 8390.o
 obj-$(CONFIG_ES3210) += es3210.o 8390.o
 obj-$(CONFIG_LNE390) += lne390.o 8390.o
 obj-$(CONFIG_NE3210) += ne3210.o 8390.o
+obj-$(CONFIG_GT64260_ETH) += gt64260_eth.o mii.o
 obj-$(CONFIG_NET_SB1250_MAC) += sb1250-mac.o
+obj-$(CONFIG_HHNET_DMA) += hhnet_dma.o
+obj-$(CONFIG_HHNET) += hhnet_eth.o hhnet.o hhnet_drawb.o
+obj-$(CONFIG_NPNET) += npnet.o
+obj-$(CONFIG_ARCTIC_ENET) += arctic_enet.o 8390.o
 
 obj-$(CONFIG_PPP) += ppp_generic.o slhc.o
 obj-$(CONFIG_PPP_ASYNC) += ppp_async.o
@@ -210,6 +224,7 @@ obj-$(CONFIG_EQUALIZER) += eql.o
 obj-$(CONFIG_MIPS_JAZZ_SONIC) += jazzsonic.o
 obj-$(CONFIG_MIPS_GT96100ETH) += gt96100eth.o
 obj-$(CONFIG_MIPS_AU1000_ENET) += au1000_eth.o
+obj-$(CONFIG_MIPS_RC32355_ETH) += banyan.o
 obj-$(CONFIG_SGI_IOC3_ETH) += ioc3-eth.o
 obj-$(CONFIG_BAGETLANCE) += bagetlance.o
 obj-$(CONFIG_DECLANCE) += declance.o
@@ -224,7 +239,10 @@ obj-$(CONFIG_MACSONIC) += macsonic.o
 obj-$(CONFIG_MACMACE) += macmace.o
 obj-$(CONFIG_MAC89x0) += mac89x0.o
 obj-$(CONFIG_TUN) += tun.o
+obj-$(CONFIG_ETHER00) +=ether00.o
+obj-$(CONFIG_NEC_CANDY) += nec_candy.o
 obj-$(CONFIG_DL2K) += dl2k.o
+obj-$(CONFIG_XTENSA_PLATFORM_XT2000_SONIC) += xtsonic.o
 
 ifeq ($(CONFIG_ARCH_ACORN),y)
 mod-subdirs	+= ../acorn/net

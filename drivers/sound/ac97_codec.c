@@ -42,6 +42,7 @@
  * v0.1 Jan 14 2000 Ollie Lho <ollie@sis.com.tw> 
  *	Isolated from trident.c to support multiple ac97 codec
  */
+#include <linux/config.h>
 #include <linux/module.h>
 #include <linux/version.h>
 #include <linux/kernel.h>
@@ -131,9 +132,11 @@ static const struct {
 	{0x43525931, "Cirrus Logic CS4299 rev A", &crystal_digital_ops},
 	{0x43525933, "Cirrus Logic CS4299 rev C", &crystal_digital_ops},
 	{0x43525934, "Cirrus Logic CS4299 rev D", &crystal_digital_ops},
+	{0x4352594d, "Cirrus Logic CS4201"	, &null_ops},
 	{0x45838308, "ESS Allegro ES1988",	&null_ops},
 	{0x49434511, "ICE1232",			&null_ops}, /* I hope --jk */
 	{0x4e534331, "National Semiconductor LM4549", &null_ops},
+	{0x50534304, "Philips UCB1400",		&default_ops},
 	{0x53494c22, "Silicon Laboratory Si3036", &null_ops},
 	{0x53494c23, "Silicon Laboratory Si3038", &null_ops},
 	{0x545200FF, "TriTech TR?????",		&tritech_m_ops},
@@ -903,6 +906,7 @@ static int wolfson_init03(struct ac97_codec * codec)
 
 static int wolfson_init04(struct ac97_codec * codec)
 {
+#ifndef CONFIG_DDB5477 
 	codec->codec_write(codec, 0x72, 0x0808);
 	codec->codec_write(codec, 0x74, 0x0808);
 
@@ -914,6 +918,7 @@ static int wolfson_init04(struct ac97_codec * codec)
 		codec->codec_read(codec, AC97_PCMOUT_VOL));
 
 	codec->codec_write(codec, AC97_SURROUND_MASTER, 0x0000);
+#endif
 	return 0;
 }
 

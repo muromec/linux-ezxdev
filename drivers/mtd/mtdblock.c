@@ -1,52 +1,25 @@
 /* 
  * Direct MTD block device access
  *
- * $Id: mtdblock.c,v 1.51 2001/11/20 11:42:33 dwmw2 Exp $
+ * $Id: mtdblock.c,v 1.64 2003/10/04 17:14:14 dwmw2 Exp $
  *
- * 02-nov-2000	Nicolas Pitre		Added read-modify-write with cache
+ * (C) 2000-2003 Nicolas Pitre <nico@cam.org>
+ * (C) 1999-2003 David Woodhouse <dwmw2@infradead.org>
  */
 
 #include <linux/config.h>
 #include <linux/types.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/fs.h>
+#include <linux/init.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include <linux/mtd/mtd.h>
-#include <linux/mtd/compatmac.h>
-
-#define MAJOR_NR MTD_BLOCK_MAJOR
-#define DEVICE_NAME "mtdblock"
-#define DEVICE_REQUEST mtdblock_request
-#define DEVICE_NR(device) (device)
-#define DEVICE_ON(device)
-#define DEVICE_OFF(device)
-#define DEVICE_NO_RANDOM
-#include <linux/blk.h>
-/* for old kernels... */
-#ifndef QUEUE_EMPTY
-#define QUEUE_EMPTY  (!CURRENT)
-#endif
-#if LINUX_VERSION_CODE < 0x20300
-#define QUEUE_PLUGGED (blk_dev[MAJOR_NR].plug_tq.sync)
-#else
-#define QUEUE_PLUGGED (blk_dev[MAJOR_NR].request_queue.plugged)
-#endif
-
-#ifdef CONFIG_DEVFS_FS
-#include <linux/devfs_fs_kernel.h>
-static void mtd_notify_add(struct mtd_info* mtd);
-static void mtd_notify_remove(struct mtd_info* mtd);
-static struct mtd_notifier notifier = {
-        mtd_notify_add,
-        mtd_notify_remove,
-        NULL
-};
-static devfs_handle_t devfs_dir_handle = NULL;
-static devfs_handle_t devfs_rw_handle[MAX_MTD_DEVICES];
-#endif
+#include <linux/mtd/blktrans.h>
 
 static struct mtdblk_dev {
-	struct mtd_info *mtd; /* Locked */
+	struct mtd_info *mtd;
 	int count;
 	struct semaphore cache_sem;
 	unsigned char *cache_data;
@@ -54,19 +27,6 @@ static struct mtdblk_dev {
 	unsigned int cache_size;
 	enum { STATE_EMPTY, STATE_CLEAN, STATE_DIRTY } cache_state;
 } *mtdblks[MAX_MTD_DEVICES];
-
-static spinlock_t mtdblks_lock;
-
-static int mtd_sizes[MAX_MTD_DEVICES];
-static int mtd_blksizes[MAX_MTD_DEVICES];
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,4,14)
-#define BLK_INC_USE_COUNT MOD_INC_USE_COUNT
-#define BLK_DEC_USE_COUNT MOD_DEC_USE_COUNT
-#else
-#define BLK_INC_USE_COUNT do {} while(0)
-#define BLK_DEC_USE_COUNT do {} while(0)
-#endif
 
 /*
  * Cache stuff...
@@ -151,7 +111,7 @@ static int write_cached_data (struct mtdblk_dev *mtdblk)
 		return ret;
 
 	/*
-	 * Here we could argably set the cache state to STATE_CLEAN.
+	 * Here we could argubly set the cache state to STATE_CLEAN.
 	 * However this could lead to inconsistency since we will not 
 	 * be notified if this content is altered on the flash by other 
 	 * means.  Let's declare it empty and leave buffering tasks to
@@ -277,56 +237,47 @@ static int do_cached_read (struct mtdblk_dev *mtdblk, unsigned long pos,
 	return 0;
 }
 
+static int mtdblock_readsect(struct mtd_blktrans_dev *dev,
+			      unsigned long block, char *buf)
+{
+	struct mtdblk_dev *mtdblk = mtdblks[dev->devnum];
+	return do_cached_read(mtdblk, block<<9, 512, buf);
+}
 
+static int mtdblock_writesect(struct mtd_blktrans_dev *dev,
+			      unsigned long block, char *buf)
+{
+	struct mtdblk_dev *mtdblk = mtdblks[dev->devnum];
+	if (unlikely(!mtdblk->cache_data)) {
+		mtdblk->cache_data = vmalloc(mtdblk->mtd->erasesize);
+		if (!mtdblk->cache_data)
+			return -EINTR;
+		/* -EINTR is not really correct, but it is the best match
+		 * documented in man 2 write for all cases.  We could also
+		 * return -EAGAIN sometimes, but why bother?
+		 */
+	}
+	return do_cached_write(mtdblk, block<<9, 512, buf);
+}
 
-static int mtdblock_open(struct inode *inode, struct file *file)
+static int mtdblock_open(struct mtd_blktrans_dev *mbd)
 {
 	struct mtdblk_dev *mtdblk;
-	struct mtd_info *mtd;
-	int dev;
+	struct mtd_info *mtd = mbd->mtd;
+	int dev = mbd->devnum;
 
 	DEBUG(MTD_DEBUG_LEVEL1,"mtdblock_open\n");
 	
-	if (!inode)
-		return -EINVAL;
-	
-	dev = MINOR(inode->i_rdev);
-	if (dev >= MAX_MTD_DEVICES)
-		return -EINVAL;
-
-	BLK_INC_USE_COUNT;
-
-	mtd = get_mtd_device(NULL, dev);
-	if (!mtd)
-		return -ENODEV;
-	if (MTD_ABSENT == mtd->type) {
-		put_mtd_device(mtd);
-		BLK_DEC_USE_COUNT;
-		return -ENODEV;
-	}
-	
-	spin_lock(&mtdblks_lock);
-
-	/* If it's already open, no need to piss about. */
 	if (mtdblks[dev]) {
 		mtdblks[dev]->count++;
-		spin_unlock(&mtdblks_lock);
 		return 0;
 	}
 	
-	/* OK, it's not open. Try to find it */
-
-	/* First we have to drop the lock, because we have to
-	   to things which might sleep.
-	*/
-	spin_unlock(&mtdblks_lock);
-
+	/* OK, it's not open. Create cache info for it */
 	mtdblk = kmalloc(sizeof(struct mtdblk_dev), GFP_KERNEL);
-	if (!mtdblk) {
-		put_mtd_device(mtd);
-		BLK_DEC_USE_COUNT;
+	if (!mtdblk)
 		return -ENOMEM;
-	}
+
 	memset(mtdblk, 0, sizeof(*mtdblk));
 	mtdblk->count = 1;
 	mtdblk->mtd = mtd;
@@ -336,342 +287,102 @@ static int mtdblock_open(struct inode *inode, struct file *file)
 	if ((mtdblk->mtd->flags & MTD_CAP_RAM) != MTD_CAP_RAM &&
 	    mtdblk->mtd->erasesize) {
 		mtdblk->cache_size = mtdblk->mtd->erasesize;
-		mtdblk->cache_data = vmalloc(mtdblk->mtd->erasesize);
-		if (!mtdblk->cache_data) {
-			put_mtd_device(mtdblk->mtd);
-			kfree(mtdblk);
-			BLK_DEC_USE_COUNT;
-			return -ENOMEM;
-		}
-	}
-
-	/* OK, we've created a new one. Add it to the list. */
-
-	spin_lock(&mtdblks_lock);
-
-	if (mtdblks[dev]) {
-		/* Another CPU made one at the same time as us. */
-		mtdblks[dev]->count++;
-		spin_unlock(&mtdblks_lock);
-		put_mtd_device(mtdblk->mtd);
-		vfree(mtdblk->cache_data);
-		kfree(mtdblk);
-		return 0;
+		mtdblk->cache_data = NULL;
 	}
 
 	mtdblks[dev] = mtdblk;
-	mtd_sizes[dev] = mtdblk->mtd->size/1024;
-	if (mtdblk->mtd->erasesize)
-		mtd_blksizes[dev] = mtdblk->mtd->erasesize;
-	if (mtd_blksizes[dev] > PAGE_SIZE)
-		mtd_blksizes[dev] = PAGE_SIZE;
-	set_device_ro (inode->i_rdev, !(mtdblk->mtd->flags & MTD_WRITEABLE));
-	
-	spin_unlock(&mtdblks_lock);
 	
 	DEBUG(MTD_DEBUG_LEVEL1, "ok\n");
 
 	return 0;
 }
 
-static release_t mtdblock_release(struct inode *inode, struct file *file)
+static int mtdblock_release(struct mtd_blktrans_dev *mbd)
 {
-	int dev;
-	struct mtdblk_dev *mtdblk;
+	int dev = mbd->devnum;
+	struct mtdblk_dev *mtdblk = mtdblks[dev];
+
    	DEBUG(MTD_DEBUG_LEVEL1, "mtdblock_release\n");
-
-	if (inode == NULL)
-		release_return(-ENODEV);
-
-	dev = MINOR(inode->i_rdev);
-	mtdblk = mtdblks[dev];
 
 	down(&mtdblk->cache_sem);
 	write_cached_data(mtdblk);
 	up(&mtdblk->cache_sem);
 
-	spin_lock(&mtdblks_lock);
 	if (!--mtdblk->count) {
 		/* It was the last usage. Free the device */
 		mtdblks[dev] = NULL;
-		spin_unlock(&mtdblks_lock);
 		if (mtdblk->mtd->sync)
 			mtdblk->mtd->sync(mtdblk->mtd);
-		put_mtd_device(mtdblk->mtd);
 		vfree(mtdblk->cache_data);
 		kfree(mtdblk);
-	} else {
-		spin_unlock(&mtdblks_lock);
 	}
-
 	DEBUG(MTD_DEBUG_LEVEL1, "ok\n");
 
-	BLK_DEC_USE_COUNT;
-	release_return(0);
+	return 0;
 }  
 
-
-/* 
- * This is a special request_fn because it is executed in a process context 
- * to be able to sleep independently of the caller.  The io_request_lock 
- * is held upon entry and exit.
- * The head of our request queue is considered active so there is no need 
- * to dequeue requests before we are done.
- */
-static void handle_mtdblock_request(void)
+static int mtdblock_flush(struct mtd_blktrans_dev *dev)
 {
-	struct request *req;
-	struct mtdblk_dev *mtdblk;
-	unsigned int res;
+	struct mtdblk_dev *mtdblk = mtdblks[dev->devnum];
 
-	for (;;) {
-		INIT_REQUEST;
-		req = CURRENT;
-		spin_unlock_irq(&io_request_lock);
-		mtdblk = mtdblks[MINOR(req->rq_dev)];
-		res = 0;
+	down(&mtdblk->cache_sem);
+	write_cached_data(mtdblk);
+	up(&mtdblk->cache_sem);
 
-		if (MINOR(req->rq_dev) >= MAX_MTD_DEVICES)
-			panic(__FUNCTION__": minor out of bound");
-
-		if ((req->sector + req->current_nr_sectors) > (mtdblk->mtd->size >> 9))
-			goto end_req;
-
-		// Handle the request
-		switch (req->cmd)
-		{
-			int err;
-
-			case READ:
-			down(&mtdblk->cache_sem);
-			err = do_cached_read (mtdblk, req->sector << 9, 
-					req->current_nr_sectors << 9,
-					req->buffer);
-			up(&mtdblk->cache_sem);
-			if (!err)
-				res = 1;
-			break;
-
-			case WRITE:
-			// Read only device
-			if ( !(mtdblk->mtd->flags & MTD_WRITEABLE) ) 
-				break;
-
-			// Do the write
-			down(&mtdblk->cache_sem);
-			err = do_cached_write (mtdblk, req->sector << 9,
-					req->current_nr_sectors << 9, 
-					req->buffer);
-			up(&mtdblk->cache_sem);
-			if (!err)
-				res = 1;
-			break;
-		}
-
-end_req:
-		spin_lock_irq(&io_request_lock);
-		end_request(res);
-	}
-}
-
-static volatile int leaving = 0;
-static DECLARE_MUTEX_LOCKED(thread_sem);
-static DECLARE_WAIT_QUEUE_HEAD(thr_wq);
-
-int mtdblock_thread(void *dummy)
-{
-	struct task_struct *tsk = current;
-	DECLARE_WAITQUEUE(wait, tsk);
-
-	tsk->session = 1;
-	tsk->pgrp = 1;
-	/* we might get involved when memory gets low, so use PF_MEMALLOC */
-	tsk->flags |= PF_MEMALLOC;
-	strcpy(tsk->comm, "mtdblockd");
-	tsk->tty = NULL;
-	spin_lock_irq(&tsk->sigmask_lock);
-	sigfillset(&tsk->blocked);
-	recalc_sigpending(tsk);
-	spin_unlock_irq(&tsk->sigmask_lock);
-	exit_mm(tsk);
-	exit_files(tsk);
-	exit_sighand(tsk);
-	exit_fs(tsk);
-
-	while (!leaving) {
-		add_wait_queue(&thr_wq, &wait);
-		set_current_state(TASK_INTERRUPTIBLE);
-		spin_lock_irq(&io_request_lock);
-		if (QUEUE_EMPTY || QUEUE_PLUGGED) {
-			spin_unlock_irq(&io_request_lock);
-			schedule();
-			remove_wait_queue(&thr_wq, &wait); 
-		} else {
-			remove_wait_queue(&thr_wq, &wait); 
-			set_current_state(TASK_RUNNING);
-			handle_mtdblock_request();
-			spin_unlock_irq(&io_request_lock);
-		}
-	}
-
-	up(&thread_sem);
+	if (mtdblk->mtd->sync)
+		mtdblk->mtd->sync(mtdblk->mtd);
 	return 0;
 }
 
-#if LINUX_VERSION_CODE < 0x20300
-#define RQFUNC_ARG void
-#else
-#define RQFUNC_ARG request_queue_t *q
-#endif
-
-static void mtdblock_request(RQFUNC_ARG)
+static void mtdblock_add_mtd(struct mtd_blktrans_ops *tr, struct mtd_info *mtd)
 {
-	/* Don't do anything, except wake the thread if necessary */
-	wake_up(&thr_wq);
+	struct mtd_blktrans_dev *dev = kmalloc(sizeof(*dev), GFP_KERNEL);
+
+	if (!dev)
+		return;
+
+	memset(dev, 0, sizeof(*dev));
+
+	dev->mtd = mtd;
+	dev->devnum = mtd->index;
+	dev->blksize = 512;
+	dev->size = mtd->size >> 9;
+	dev->tr = tr;
+
+	if (!(mtd->flags & MTD_WRITEABLE))
+		dev->readonly = 1;
+
+	add_mtd_blktrans_dev(dev);
 }
 
-
-static int mtdblock_ioctl(struct inode * inode, struct file * file,
-		      unsigned int cmd, unsigned long arg)
+static void mtdblock_remove_dev(struct mtd_blktrans_dev *dev)
 {
-	struct mtdblk_dev *mtdblk;
-
-	mtdblk = mtdblks[MINOR(inode->i_rdev)];
-
-#ifdef PARANOIA
-	if (!mtdblk)
-		BUG();
-#endif
-
-	switch (cmd) {
-	case BLKGETSIZE:   /* Return device size */
-		return put_user((mtdblk->mtd->size >> 9), (unsigned long *) arg);
-
-#ifdef BLKGETSIZE64
-	case BLKGETSIZE64:
-		return put_user((u64)mtdblk->mtd->size, (u64 *)arg);
-#endif
-		
-	case BLKFLSBUF:
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,2,0)
-		if(!capable(CAP_SYS_ADMIN))
-			return -EACCES;
-#endif
-		fsync_dev(inode->i_rdev);
-		invalidate_buffers(inode->i_rdev);
-		down(&mtdblk->cache_sem);
-		write_cached_data(mtdblk);
-		up(&mtdblk->cache_sem);
-		if (mtdblk->mtd->sync)
-			mtdblk->mtd->sync(mtdblk->mtd);
-		return 0;
-
-	default:
-		return -EINVAL;
-	}
+	del_mtd_blktrans_dev(dev);
+	kfree(dev);
 }
 
-#if LINUX_VERSION_CODE < 0x20326
-static struct file_operations mtd_fops =
-{
-	open: mtdblock_open,
-	ioctl: mtdblock_ioctl,
-	release: mtdblock_release,
-	read: block_read,
-	write: block_write
+struct mtd_blktrans_ops mtdblock_tr = {
+	.name		= "mtdblock",
+	.major		= 31,
+	.part_bits	= 0,
+	.open		= mtdblock_open,
+	.flush		= mtdblock_flush,
+	.release	= mtdblock_release,
+	.readsect	= mtdblock_readsect,
+	.writesect	= mtdblock_writesect,
+	.add_mtd	= mtdblock_add_mtd,
+	.remove_dev	= mtdblock_remove_dev,
+	.owner		= THIS_MODULE,
 };
-#else
-static struct block_device_operations mtd_fops = 
-{
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,14)
-	owner: THIS_MODULE,
-#endif
-	open: mtdblock_open,
-	release: mtdblock_release,
-	ioctl: mtdblock_ioctl
-};
-#endif
-
-#ifdef CONFIG_DEVFS_FS
-/* Notification that a new device has been added. Create the devfs entry for
- * it. */
-
-static void mtd_notify_add(struct mtd_info* mtd)
-{
-        char name[8];
-
-        if (!mtd || mtd->type == MTD_ABSENT)
-                return;
-
-        sprintf(name, "%d", mtd->index);
-        devfs_rw_handle[mtd->index] = devfs_register(devfs_dir_handle, name,
-                        DEVFS_FL_DEFAULT, MTD_BLOCK_MAJOR, mtd->index,
-                        S_IFBLK | S_IRUGO | S_IWUGO,
-                        &mtd_fops, NULL);
-}
-
-static void mtd_notify_remove(struct mtd_info* mtd)
-{
-        if (!mtd || mtd->type == MTD_ABSENT)
-                return;
-
-        devfs_unregister(devfs_rw_handle[mtd->index]);
-}
-#endif
 
 int __init init_mtdblock(void)
 {
-	int i;
-
-	spin_lock_init(&mtdblks_lock);
-#ifdef CONFIG_DEVFS_FS
-	if (devfs_register_blkdev(MTD_BLOCK_MAJOR, DEVICE_NAME, &mtd_fops))
-	{
-		printk(KERN_NOTICE "Can't allocate major number %d for Memory Technology Devices.\n",
-			MTD_BLOCK_MAJOR);
-		return -EAGAIN;
-	}
-
-	devfs_dir_handle = devfs_mk_dir(NULL, DEVICE_NAME, NULL);
-	register_mtd_user(&notifier);
-#else
-	if (register_blkdev(MAJOR_NR,DEVICE_NAME,&mtd_fops)) {
-		printk(KERN_NOTICE "Can't allocate major number %d for Memory Technology Devices.\n",
-		       MTD_BLOCK_MAJOR);
-		return -EAGAIN;
-	}
-#endif
-	
-	/* We fill it in at open() time. */
-	for (i=0; i< MAX_MTD_DEVICES; i++) {
-		mtd_sizes[i] = 0;
-		mtd_blksizes[i] = BLOCK_SIZE;
-	}
-	init_waitqueue_head(&thr_wq);
-	/* Allow the block size to default to BLOCK_SIZE. */
-	blksize_size[MAJOR_NR] = mtd_blksizes;
-	blk_size[MAJOR_NR] = mtd_sizes;
-	
-	blk_init_queue(BLK_DEFAULT_QUEUE(MAJOR_NR), &mtdblock_request);
-	kernel_thread (mtdblock_thread, NULL, CLONE_FS|CLONE_FILES|CLONE_SIGHAND);
-	return 0;
+	return register_mtd_blktrans(&mtdblock_tr);
 }
 
 static void __exit cleanup_mtdblock(void)
 {
-	leaving = 1;
-	wake_up(&thr_wq);
-	down(&thread_sem);
-#ifdef CONFIG_DEVFS_FS
-	unregister_mtd_user(&notifier);
-	devfs_unregister(devfs_dir_handle);
-	devfs_unregister_blkdev(MTD_BLOCK_MAJOR, DEVICE_NAME);
-#else
-	unregister_blkdev(MAJOR_NR,DEVICE_NAME);
-#endif
-	blk_cleanup_queue(BLK_DEFAULT_QUEUE(MAJOR_NR));
-	blksize_size[MAJOR_NR] = NULL;
-	blk_size[MAJOR_NR] = NULL;
+	deregister_mtd_blktrans(&mtdblock_tr);
 }
 
 module_init(init_mtdblock);

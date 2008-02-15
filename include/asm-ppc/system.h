@@ -1,5 +1,5 @@
 /*
- * BK Id: SCCS/s.system.h 1.20 03/19/02 15:04:39 benh
+ * BK Id: SCCS/s.system.h 1.23 04/16/02 21:42:10 paulus
  */
 /*
  * Copyright (C) 1999 Cort Dougan <cort@cs.nmt.edu>
@@ -130,8 +130,9 @@ xchg_u32(volatile void *p, unsigned long val)
 	unsigned long prev;
 
 	__asm__ __volatile__ ("\n\
-1:	lwarx	%0,0,%2 \n\
-	stwcx.	%3,0,%2 \n\
+1:	lwarx	%0,0,%2 \n"
+	PPC405_ERR77(0,%2)
+"	stwcx.	%3,0,%2 \n\
 	bne-	1b"
 	: "=&r" (prev), "=m" (*(volatile unsigned long *)p)
 	: "r" (p), "r" (val), "m" (*(volatile unsigned long *)p)
@@ -181,8 +182,9 @@ __cmpxchg_u32(volatile int *p, int old, int new)
 	__asm__ __volatile__ ("\n\
 1:	lwarx	%0,0,%2 \n\
 	cmpw	0,%0,%3 \n\
-	bne	2f \n\
-	stwcx.	%4,0,%2 \n\
+	bne	2f \n"
+	PPC405_ERR77(0,%2)
+"	stwcx.	%4,0,%2 \n\
 	bne-	1b\n"
 #ifdef CONFIG_SMP
 "	sync\n"

@@ -6,6 +6,7 @@ if [ "$CONFIG_PARTITION_ADVANCED" = "y" ]; then
    bool '  Acorn partition support' CONFIG_ACORN_PARTITION
    if [ "$CONFIG_ACORN_PARTITION" != "n" ]; then
 #      bool '    Cumana partition support' CONFIG_ACORN_PARTITION_CUMANA
+      bool '    EESOX partition support' CONFIG_ACORN_PARTITION_EESOX
       bool '    ICS partition support' CONFIG_ACORN_PARTITION_ICS
       bool '    Native filecore partition support' CONFIG_ACORN_PARTITION_ADFS
       bool '    PowerTec partition support' CONFIG_ACORN_PARTITION_POWERTEC
@@ -52,6 +53,7 @@ else
       define_bool CONFIG_ACORN_PARTITION y
       define_bool CONFIG_ACORN_PARTITION_ADFS y
 #      define_bool CONFIG_ACORN_PARTITION_CUMANA y
+      define_bool CONFIG_ACORN_PARTITION_EESOX y
       define_bool CONFIG_ACORN_PARTITION_ICS y
       define_bool CONFIG_ACORN_PARTITION_POWERTEC y
       define_bool CONFIG_ACORN_PARTITION_RISCIX y

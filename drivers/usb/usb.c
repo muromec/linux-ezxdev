@@ -19,6 +19,12 @@
  * It should be considered a slave, with no callbacks. Callbacks
  * are evil.
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by w20535, for EZX platform
+ */
+
 
 #include <linux/config.h>
 #include <linux/module.h>
@@ -759,6 +765,7 @@ out_err:
 	return -1;
 }
 
+#undef CONFIG_HOTPLUG //added by Levis for PM issue
 
 #ifdef	CONFIG_HOTPLUG
 
@@ -968,6 +975,11 @@ struct usb_device *usb_alloc_dev(struct usb_device *parent, struct usb_bus *bus)
 void usb_free_dev(struct usb_device *dev)
 {
 	if (atomic_dec_and_test(&dev->refcnt)) {
+		if(in_interrupt())
+		{
+			printk("%s: Call from Interrupt! Return now\n", __FUNCTION__);
+			return;
+		}
 		dev->bus->op->deallocate(dev);
 		usb_destroy_configuration(dev);
 
@@ -1742,7 +1754,7 @@ void usb_disconnect(struct usb_device **pdev)
 
 	/* Free the device number and remove the /proc/bus/usb entry */
 	if (dev->devnum > 0) {
-		clear_bit(dev->devnum, &dev->bus->devmap.devicemap);
+		clear_bit(dev->devnum, (volatile unsigned long *)&dev->bus->devmap.devicemap);
 		usbdevfs_remove_device(dev);
 	}
 
@@ -2212,7 +2224,7 @@ int usb_new_device(struct usb_device *dev)
 	if (err < 0) {
 		err("USB device not accepting new address=%d (error=%d)",
 			dev->devnum, err);
-		clear_bit(dev->devnum, &dev->bus->devmap.devicemap);
+		clear_bit(dev->devnum, (volatile unsigned long *)&dev->bus->devmap.devicemap);
 		dev->devnum = -1;
 		return 1;
 	}
@@ -2225,7 +2237,7 @@ int usb_new_device(struct usb_device *dev)
 			err("USB device not responding, giving up (error=%d)", err);
 		else
 			err("USB device descriptor short read (expected %i, got %i)", 8, err);
-		clear_bit(dev->devnum, &dev->bus->devmap.devicemap);
+		clear_bit(dev->devnum, (volatile unsigned long *)&dev->bus->devmap.devicemap);
 		dev->devnum = -1;
 		return 1;
 	}
@@ -2240,7 +2252,7 @@ int usb_new_device(struct usb_device *dev)
 			err("USB device descriptor short read (expected %Zi, got %i)",
 				sizeof(dev->descriptor), err);
 	
-		clear_bit(dev->devnum, &dev->bus->devmap.devicemap);
+		clear_bit(dev->devnum, (volatile unsigned long *)&dev->bus->devmap.devicemap);
 		dev->devnum = -1;
 		return 1;
 	}
@@ -2249,7 +2261,7 @@ int usb_new_device(struct usb_device *dev)
 	if (err < 0) {
 		err("unable to get device %d configuration (error=%d)",
 			dev->devnum, err);
-		clear_bit(dev->devnum, &dev->bus->devmap.devicemap);
+		clear_bit(dev->devnum, (volatile unsigned long *)&dev->bus->devmap.devicemap);
 		dev->devnum = -1;
 		return 1;
 	}
@@ -2259,7 +2271,7 @@ int usb_new_device(struct usb_device *dev)
 	if (err) {
 		err("failed to set device %d default configuration (error=%d)",
 			dev->devnum, err);
-		clear_bit(dev->devnum, &dev->bus->devmap.devicemap);
+		clear_bit(dev->devnum, (volatile unsigned long *)&dev->bus->devmap.devicemap);
 		dev->devnum = -1;
 		return 1;
 	}

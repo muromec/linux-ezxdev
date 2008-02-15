@@ -1,0 +1,47 @@
+#
+# USB device configuration from the device viewpoint (e.g. Linux running inside a USB device, not as host)
+#
+# Copyright (C) 2001 Lineo, Inc.
+# Copyright (C) 2001 Hewlett-Packard Co.
+mainmenu_option next_comment
+
+comment 'USB Device Support'
+
+dep_tristate 'Support for USB Devices (as device, not host) (EXPERIMENTAL)' CONFIG_USBD $CONFIG_EXPERIMENTAL
+
+if [ "$CONFIG_USBD" = "y" -o "$CONFIG_USBD" = "m" ]; then
+   hex    'VendorID (hex value)' CONFIG_USBD_VENDORID "0000"
+   hex    'ProductID (hex value)' CONFIG_USBD_PRODUCTID "0000"
+   string '  Product Name' CONFIG_USBD_PRODUCT_NAME "" 
+   string '  Manufacturer' CONFIG_USBD_MANUFACTURER ""
+
+   bool   '   Use Serial Number in Device Descriptor' CONFIG_USBD_USE_SERIAL_NUMBER
+   if [ "$CONFIG_USBD_USE_SERIAL_NUMBER" = "y" ]; then
+      string '  Default Serial number (string)' CONFIG_USBD_SERIAL_NUMBER_STR ""
+   fi
+
+   bool   '   Self Powered' CONFIG_USBD_SELFPOWERED
+   if [ ! "$CONFIG_USBD_SELFPOWERED" = "y" ]; then
+      int '   Max Power (mA)' CONFIG_USBD_MAXPOWER "0"
+   fi
+
+   bool   '   EP0 support' CONFIG_USBD_EP0_SUPPORT
+
+   tristate '   USB Device Monitor' CONFIG_USBD_MONITOR
+
+   comment ''
+
+   bool   '  USBD Proc FS' CONFIG_USBD_PROCFS
+
+   comment 'USB Device functions'
+   source drivers/usb/device/net_fd/Config.in
+   source drivers/usb/device/serial_fd/Config.in
+   source drivers/usb/device/mouse_fd/Config.in
+   source drivers/usb/device/storage_fd/Config.in
+   source drivers/usb/device/test_fd/Config.in
+	
+   comment 'USB Device bus interfaces'
+   source drivers/usb/device/bi/Config.in
+fi
+
+endmenu

@@ -2,12 +2,15 @@
  *  linux/arch/arm/kernel/head-armv.S
  *
  *  Copyright (C) 1994-1999 Russell King
+ *  Copyright (C) 2003-2005 Motorola
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
  *  32-bit kernel startup code for all architectures
+ *
+ *  2003-Dec-8 Add machine type for Motorola EzX platform, Zhuang Xiaofan
  */
 #include <linux/config.h>
 #include <linux/linkage.h>
@@ -30,6 +33,7 @@
  *
  * swapper_pg_dir, pgtbl and krnladr are all closely related.
  */
+#ifndef CONFIG_XIP_ROM
 #if (TEXTADDR & 0xffff) != 0x8000
 #error TEXTADDR must start at 0xXXXX8000
 #endif
@@ -41,6 +45,28 @@
 		adr	\reg, stext
 		sub	\reg, \reg, #0x4000
 		.endm
+#else
+#if (DATAADDR & 0xffff) != 0x8000
+#error DATAADDR must start at 0xXXXX8000
+#endif
+
+#define	PAGE_OFFSET	0xc0000000
+#if defined (CONFIG_ARCH_MAINSTONE) || defined (CONFIG_ARCH_LUBBOCK) || defined (CONFIG_ARCH_EZX)
+#define	PHYS_OFFSET	0xA0000000
+#elif (CONFIG_ARCH_OMAP)
+#define	PHYS_OFFSET	0x10000000
+#elif (CONFIG_ARCH_MX2ADS)
+#define	PHYS_OFFSET	0xc0000000
+#endif
+
+		.globl	SYMBOL_NAME(swapper_pg_dir)
+		.equ	SYMBOL_NAME(swapper_pg_dir), DATAADDR - 0x4000
+
+		.macro	pgtbl, reg, rambase
+		ldr	\reg, PGTBL
+		add	\reg, \reg, #PHYS_OFFSET - PAGE_OFFSET
+		.endm
+#endif
 
 /*
  * Since the page table is closely related to the kernel start address, we
@@ -52,17 +78,22 @@
 		.endm
 
 /*
- *  Kernel startup entry point.
+ * Kernel startup entry point.
+ * ---------------------------
  *
- * The rules are:
- *  r0      - should be 0
- *  r1      - unique architecture number
- *  MMU     - off
- *  I-cache - on or off
- *  D-cache - off
+ * This is normally called from the decompressor code.  The requirements
+ * are: MMU = off, D-cache = off, I-cache = dont care, r0 = 0,
+ * r1 = machine nr.
  *
- * See linux/arch/arm/tools/mach-types for the complete list of numbers
- * for r1.
+ * This code is mostly position independent, so if you link the kernel at
+ * 0xc0008000, you call this at __pa(0xc0008000).
+ *
+ * See linux/arch/arm/tools/mach-types for the complete list of machine
+ * numbers for r1.
+ *
+ * We're trying to keep crap to a minimum; DO NOT add any machine specific
+ * crap here - that's what the boot loader (or in extreme, well justified
+ * circumstances, zImage) is for.
  */
 		.section ".text.init",#alloc,#execinstr
 		.type	stext, #function
@@ -119,11 +150,76 @@ ENTRY(stext)
 		orr	r12, r12, #5 << 12
 __entry:
 #endif
+
+#if defined(CONFIG_ARCH_S3C2440)
+		mov r0, #0
+		mov r1, #MACH_TYPE_S3C2440
+#endif
+
 #if defined(CONFIG_ARCH_L7200)
 /*
  * FIXME - No bootloader, so manually set 'r1' with our architecture number.
  */
 		mov	r1, #MACH_TYPE_L7200
+#endif
+#if defined(CONFIG_ARCH_OMAP1610) && defined(CONFIG_XIP_ROM)
+/*
+ * FIXME - No bootloader, so manually set 'r1' with our architecture number.
+ */
+		mov	r1, #MACH_TYPE_INNOVATOR
+#endif
+#if defined(CONFIG_ARCH_S3C24A0)
+		mov r1, #MACH_TYPE_S3C24A0
+#endif
+
+#if defined(CONFIG_ARCH_OMAP1610) && defined(CONFIG_XIP_ROM)
+/*
+ * FIXME - No bootloader, so manually set 'r1' with our architecture number.
+ */
+		mov	r1, #MACH_TYPE_INNOVATOR
+#endif
+#if defined(CONFIG_ARCH_MX2ADS)
+                mov     r1, #MACH_TYPE_MX2ADS
+#endif
+
+#if defined(CONFIG_ARCH_OMAP730) && defined(CONFIG_XIP_ROM) 
+/*
+ * FIXME - No bootloader, so manually set 'r1' with our architecture number.
+ */
+		mov     r1, #MACH_TYPE_OMAP_PERSEUS2 & 0xff
+		orr	r1, r1, #MACH_TYPE_OMAP_PERSEUS2 & 0xff00
+#endif
+
+#ifdef CONFIG_XIP_ROM
+
+#if defined(CONFIG_ARCH_LUBBOCK)
+		mov	r1, #MACH_TYPE_LUBBOCK
+#endif
+#if defined(CONFIG_ARCH_MAINSTONE)
+		mov	r1, #MACH_TYPE_MAINSTONE
+#endif
+#if defined(CONFIG_ARCH_EZX)
+		mov	r1, #MACH_TYPE_EZX
+#endif
+
+		@ Data cache might be active.
+		@ Be sure to flush kernel binary out of the cache,
+		@ whatever state it is, before it is turned off.
+		@ This is done by fetching through currently executed
+		@ memory to be sure we hit the same cache.
+		bic	r2, pc, #0x1f
+		add	r3, r2, #0x10000	@ 64 kb is quite enough...
+1:		ldr	r0, [r2], #32
+		teq	r2, r3
+		bne	1b
+		mcr	p15, 0, r0, c7, c10, 4	@ drain WB
+		mcr	p15, 0, r0, c7, c7, 0	@ flush I & D caches
+
+		@ disabling MMU and caches
+		mrc	p15, 0, r0, c1, c0, 0	@ read control reg
+		bic	r0, r0, #0x05		@ clear DC, MMU
+		bic	r0, r0, #0x1000		@ clear Icache
+		mcr	p15, 0, r0, c1, c0, 0
 #endif
 
 		mov	r0, #F_BIT | I_BIT | MODE_SVC	@ make sure svc mode
@@ -137,13 +233,14 @@ __entry:
 		moveq	r0, #'a'			@ yes, error 'a'
 		beq	__error
 		bl	__create_page_tables
+
+
 		adr	lr, __ret			@ return address
 		add	pc, r10, #12			@ initialise processor
 							@ (return control reg)
 
 		.type	__switch_data, %object
 __switch_data:	.long	__mmap_switched
-		.long	SYMBOL_NAME(compat)
 		.long	SYMBOL_NAME(__bss_start)
 		.long	SYMBOL_NAME(_end)
 		.long	SYMBOL_NAME(processor_id)
@@ -151,28 +248,44 @@ __switch_data:	.long	__mmap_switched
 		.long	SYMBOL_NAME(cr_alignment)
 		.long	SYMBOL_NAME(init_task_union)+8192
 
+/*
+ * Enable the MMU.  This completely changes the structure of the visible
+ * memory space.  You will not be able to trace execution through this.
+ * If you have an enquiry about this, *please* check the linux-arm-kernel
+ * mailing list archives BEFORE sending another post to the list.
+ */
 		.type	__ret, %function
 __ret:		ldr	lr, __switch_data
 		mcr	p15, 0, r0, c1, c0
-		mov	r0, r0
+		mrc	p15, 0, r0, c1, c0, 0		@ read it back.
 		mov	r0, r0
 		mov	r0, r0
 		mov	pc, lr
 
-		/*
-		 * This code follows on after the page
-		 * table switch and jump above.
-		 *
-		 * r0  = processor control register
-		 * r1  = machine ID
-		 * r9  = processor ID
-		 */
+/*
+ * The following fragment of code is executed with the MMU on, and uses
+ * absolute addresses; this is not position independent.
+ *
+ *  r0  = processor control register
+ *  r1  = machine ID
+ *  r9  = processor ID
+ */
 		.align	5
 __mmap_switched:
+#ifdef CONFIG_XIP_ROM
+		ldr	r2, ETEXT			@ data section copy
+		ldr	r3, SDATA
+		ldr	r4, EDATA
+1:
+		ldr	r5, [r2], #4
+		str	r5, [r3], #4
+		cmp	r3, r4
+		blt	1b
+#endif
+
 		adr	r3, __switch_data + 4
-		ldmia	r3, {r2, r4, r5, r6, r7, r8, sp}@ r2 = compat
+		ldmia	r3, {r4, r5, r6, r7, r8, sp}@ r2 = compat
 							@ sp = stack pointer
-		str	r12, [r2]
 
 		mov	fp, #0				@ Clear BSS (and zero fp)
 1:		cmp	r4, r5
@@ -219,6 +332,8 @@ __create_page_tables:
 		teq	r0, r2
 		bne	1b
 
+#ifndef CONFIG_XIP_ROM
+
 		/*
 		 * Create identity mapping for first MB of kernel to
 		 * cater for the MMU enable.  This identity mapping
@@ -245,21 +360,63 @@ __create_page_tables:
 		add	r3, r3, #1 << 20
 		str	r3, [r0], #4			@ KERNEL + 3MB
 
+#ifndef	CONFIG_ARCH_IXP1200
 		/*
 		 * Ensure that the first section of RAM is present.
 		 * we assume that:
 		 *  1. the RAM is aligned to a 32MB boundary
 		 *  2. the kernel is executing in the same 32MB chunk
 		 *     as the start of RAM.
+ 		 *
+		 * This doesn't work on IXP platforms as the lower 8MB or
+ 		 * more of the physical memory map may be reserved for  use 
+		 * by the microengines and cannot be touched by Linux. This
+		 * means that the RAM will not be aligned to 32MB chunks.
 		 */
 		bic	r0, r0, #0x01f00000 >> 18	@ round down
 		and	r2, r5, #0xfe000000		@ round down
 		add	r3, r8, r2			@ flags + rambase
 		str	r3, [r0]
+#endif
+
+#else	/* CONFIG_XIP_ROM */
+
+		bic	r3, pc, #0x000000ff
+		bic	r3, r3, #0x0000ff00
+		bic	r3, r3, #0x000f0000		@ phys kernel start
+		add	r0, r4, r3, lsr #18
+		orr	r3, r3, r8
+		str	r3, [r0]
+
+		mov	r0, #TEXTADDR & 0xff000000
+		add	r0, r0, #TEXTADDR & 0x00f00000	@ virt kernel start
+		add	r0, r4, r0, lsr #18
+		add	r2, r3, #4 << 20		@ kernel + 4MB
+1:
+		str	r3, [r0], #4
+		add	r3, r3, #1 << 20
+		cmp	r3, r2
+		bne	1b
+
+		bic	r3, r4, #0x000ff000		@ ram start
+		add	r0, r4, r3, lsr #18
+		orr	r3, r3, r8
+		str	r3, [r0], #4
+
+		add	r0, r3, #PAGE_OFFSET - PHYS_OFFSET
+		add	r0, r4, r0, lsr #18
+		add	r2, r3, #4 << 20		@ ram + 4MB
+1:
+		str	r3, [r0], #4
+		add	r3, r3, #1 << 20
+		cmp	r3, r2
+		bne	1b
+
+#endif	/* CONFIG_XIP_ROM */
 
 		bic	r8, r8, #0x0c			@ turn off cacheable
 							@ and bufferable bits
-#ifdef CONFIG_DEBUG_LL
+#if	defined(CONFIG_DEBUG_LL) || defined(CONFIG_KGDB)
 		/*
 		 * Map in IO space for serial debugging.
 		 * This allows debug messages to be output
@@ -419,3 +576,13 @@ __lookup_architecture_type:
 		mov	pc, lr
 2:		ldmib	r4, {r5, r6, r7}		@ found, get results
 		mov	pc, lr
+
+#ifdef CONFIG_XIP_ROM
+
+PGTBL:		.long	SYMBOL_NAME(swapper_pg_dir)
+
+ETEXT:		.long	SYMBOL_NAME(_endtext)
+SDATA:		.long	SYMBOL_NAME(_sdata)
+EDATA:		.long	SYMBOL_NAME(__bss_start)
+
+#endif

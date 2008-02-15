@@ -1,0 +1,14 @@
+#
+# Multimedia Video device configuration
+#
+mainmenu_option next_comment
+comment 'Cameras and acceleration devices for MX2ADS platform'
+    bool ' Motorola DBMX2 ADS OV9640 Image Sensor' CONFIG_VIDEO_MX2ADS_OV9640
+    bool ' Micron MI-SOC-0343 Image Sensor' CONFIG_VIDEO_MX2ADS_MISOC0343
+
+    if [ "$CONFIG_VIDEO_MX2ADS" != "y" ]; then
+        dep_tristate ' MX2ADS Video Postprocessor block enable' CONFIG_VIDEO_MX2ADS_PP $CONFIG_VIDEO_MX2ADS
+    else
+        bool ' MX2ADS Video Postprocessor block enable' CONFIG_VIDEO_MX2ADS_PP
+    fi
+endmenu

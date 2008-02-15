@@ -1,16 +1,30 @@
 #
 # linux/drivers/nand/Makefile
 #
-# $Id: Makefile,v 1.5 2001/09/19 22:39:59 dwmw2 Exp $
 
 O_TARGET	:= nandlink.o
+export-objs	:= nand_base.o nand_bbt.o nand_ecc.o nand_ids.o
+list-multi	:= nand.o
 
-export-objs	:= nand.o nand_ecc.o
+obj-$(CONFIG_MTD_NAND)			+= nand.o nand_ecc.o
+obj-$(CONFIG_MTD_NAND_IDS)		+= nand_ids.o
 
-nandobjs-y			:= nand.o
-nandobjs-$(CONFIG_MTD_NAND_ECC) += nand_ecc.o
+obj-$(CONFIG_MTD_NAND_SPIA)		+= spia.o
+obj-$(CONFIG_MTD_NAND_TOTO)		+= toto.o
+obj-$(CONFIG_MTD_NAND_AUTCPU12)		+= autcpu12.o
+obj-$(CONFIG_MTD_NAND_EDB7312)		+= edb7312.o
+obj-$(CONFIG_MTD_NAND_TX4925NDFMC)	+= tx4925ndfmc.o
+obj-$(CONFIG_MTD_NAND_TX4938NDFMC)	+= tx4938ndfmc.o
+obj-$(CONFIG_MTD_NAND_AU1550)		+= au1550nd.o
+obj-$(CONFIG_MTD_NAND_PPCHAMELEONEVB)	+= ppchameleonevb.o
+obj-$(CONFIG_MTD_NAND_DISKONCHIP)	+= diskonchip.o
+obj-$(CONFIG_MTD_NAND_H1900)		+= h1910.o
+obj-$(CONFIG_MTD_NAND_P2)		+= omap730p2nand.o
+obj-$(CONFIG_MTD_NAND_MX2)		+= mx2_nand.o
 
-obj-$(CONFIG_MTD_NAND)		+= $(nandobjs-y)
-obj-$(CONFIG_MTD_NAND_SPIA)	+= spia.o
+nand-objs = nand_base.o nand_bbt.o
 
 include $(TOPDIR)/Rules.make
+
+nand.o: $(nand-objs)
+	$(LD) -r -o $@ $(nand-objs)

@@ -1985,6 +1985,8 @@ usbnet_probe (struct usb_device *udev, unsigned ifnum,
 	struct usb_interface_descriptor	*interface;
 	struct driver_info		*info;
 	int				altnum = 0;
+	struct usb_endpoint_descriptor  *endpoint;
+	int                             i;
 
 	info = (struct driver_info *) prod->driver_info;
 
@@ -2005,6 +2007,26 @@ usbnet_probe (struct usb_device *udev, unsigned ifnum,
 			return 0;
 		}
 	}
+
+	/* check out the endpoints */
+	for (i = 0; i < interface->bNumEndpoints; ++i) {
+		endpoint = &interface->endpoint[i];
+		if ((endpoint->bEndpointAddress & 0x80) &&
+		    ((endpoint->bmAttributes & 3) == 0x02)) {
+			/* we found a bulk in endpoint */
+			dbg("found bulk in");
+			info->in=endpoint->bEndpointAddress & 0x7f;
+		}
+
+		if (((endpoint->bEndpointAddress & 0x80) == 0x00) &&
+		    ((endpoint->bmAttributes & 3) == 0x02)) {
+			/* we found a bulk out endpoint */
+			dbg("found bulk out");
+			info->out=endpoint->bEndpointAddress & 0x7f;
+		}
+		
+	}
+
 
 	// set up our own records
 	if (!(dev = kmalloc (sizeof *dev, GFP_KERNEL))) {

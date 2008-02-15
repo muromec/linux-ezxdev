@@ -1,7 +1,7 @@
 /*
  *  linux/arch/arm/kernel/traps.c
  *
- *  Copyright (C) 1995, 1996 Russell King
+ *  Copyright (C) 1995-2002 Russell King
  *  Fragments that appear the same as linux/arch/i386/kernel/traps.c (C) Linus Torvalds
  *
  * This program is free software; you can redistribute it and/or modify
@@ -25,10 +25,15 @@
 #include <linux/interrupt.h>
 #include <linux/init.h>
 
+#include <linux/trace.h>
+
+#include <asm/pgalloc.h>
 #include <asm/pgtable.h>
 #include <asm/system.h>
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
+#include <asm/traps.h>
+#include <asm/kgdb.h>
 
 #include "ptrace.h"
 
@@ -63,7 +68,16 @@ static int verify_stack(unsigned long sp)
 static void dump_mem(const char *str, unsigned long bottom, unsigned long top)
 {
 	unsigned long p = bottom & ~31;
+	mm_segment_t fs;
 	int i;
+
+	/*
+	 * We need to switch to kernel mode so that we can use __get_user
+	 * to safely read from kernel space.  Note that we now dump the
+	 * code first, just in case the backtrace kills us.
+	 */
+	fs = get_fs();
+	set_fs(KERNEL_DS);
 
 	printk("%s(0x%08lx to 0x%08lx)\n", str, bottom, top);
 
@@ -82,6 +96,8 @@ static void dump_mem(const char *str, unsigned long bottom, unsigned long top)
 		}
 		printk ("\n");
 	}
+
+	set_fs(fs);
 }
 
 static void dump_instr(struct pt_regs *regs)
@@ -89,7 +105,16 @@ static void dump_instr(struct pt_regs *regs)
 	unsigned long addr = instruction_pointer(regs);
 	const int thumb = thumb_mode(regs);
 	const int width = thumb ? 4 : 8;
+	mm_segment_t fs;
 	int i;
+
+	/*
+	 * We need to switch to kernel mode so that we can use __get_user
+	 * to safely read from kernel space.  Note that we now dump the
+	 * code first, just in case the backtrace kills us.
+	 */
+	fs = get_fs();
+	set_fs(KERNEL_DS);
 
 	printk("Code: ");
 	for (i = -4; i < 1; i++) {
@@ -108,29 +133,36 @@ static void dump_instr(struct pt_regs *regs)
 		}
 	}
 	printk("\n");
+
+	set_fs(fs);
 }
 
-static void dump_stack(struct task_struct *tsk, unsigned long sp)
+static void __dump_stack(struct task_struct *tsk, unsigned long sp)
 {
-	dump_mem("Stack: ", sp - 16, 8192+(unsigned long)tsk);
+	dump_mem("Stack: ", sp, 8192+(unsigned long)tsk);
 }
 
 static void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 {
-	unsigned int fp;
+	unsigned int fp = regs->ARM_fp;
+	char *msg = "";
 	int ok = 1;
 
-	printk("Backtrace: ");
-	fp = regs->ARM_fp;
+#ifdef CONFIG_FRAME_POINTER
 	if (!fp) {
-		printk("no frame pointer");
+		msg = "no frame pointer";
 		ok = 0;
 	} else if (verify_stack(fp)) {
-		printk("invalid frame pointer 0x%08x", fp);
+		msg = "invalid frame pointer";
 		ok = 0;
 	} else if (fp < 4096+(unsigned long)tsk)
-		printk("frame pointer underflow");
-	printk("\n");
+		msg = "frame pointer underflow";
+#else
+	msg = "not available";
+	ok = 0;
+#endif
+
+	printk("Backtrace: %s\n", msg);
 
 	if (ok)
 		c_backtrace(fp, processor_mode(regs));
@@ -143,10 +175,82 @@ static void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 void show_trace_task(struct task_struct *tsk)
 {
 	if (tsk != current) {
-		unsigned int fp = tsk->thread.save->fp;
+		unsigned int fp = thread_saved_fp(&tsk->thread);
 		c_backtrace(fp, 0x10);
 	}
 }
+
+#if (CONFIG_TRACE || CONFIG_TRACE_MODULE)
+asmlinkage void trace_real_syscall_entry(int scno,struct pt_regs * regs)
+{
+	int			depth = 0;
+	unsigned long           end_code;
+	unsigned long		*fp;			/* frame pointer */
+	unsigned long		lower_bound;
+	unsigned long		lr;			/* link register */
+	unsigned long		*prev_fp;
+	int			seek_depth;
+	unsigned long           start_code;
+	unsigned long           *start_stack;
+	trace_syscall_entry	trace_syscall_event;
+	unsigned long		upper_bound;
+	int			use_bounds;
+	int			use_depth;
+
+	trace_syscall_event.syscall_id = (uint8_t)scno;
+	trace_syscall_event.address    = instruction_pointer(regs);
+	
+	if (! (user_mode(regs) ))
+		goto trace_syscall_end;
+
+	if (trace_get_config(&use_depth,
+			     &use_bounds,
+			     &seek_depth,
+			     (void*)&lower_bound,
+			     (void*)&upper_bound) < 0)
+		goto trace_syscall_end;
+
+	if ((use_depth == 1) || (use_bounds == 1)) {
+
+		fp          = (unsigned long *)regs->ARM_fp;
+		end_code    = current->mm->end_code;
+		start_code  = current->mm->start_code;
+		start_stack = (unsigned long *)current->mm->start_stack;
+
+		/* fp may be bogus */
+		if ((fp > start_stack) || (fp < (unsigned long *)regs->ARM_sp))
+			goto trace_syscall_end;
+
+		/* (fp & 3) check is to avoid unaligned access exception */
+		while ((((int)fp & 3) == 0) && (!__get_user(lr, (unsigned long *)(fp - 1)))) {
+			if ((lr > start_code) && (lr < end_code)) {
+				if (((use_depth == 1) && (depth >= seek_depth)) ||
+				    ((use_bounds == 1) && (lr > lower_bound) && (lr < upper_bound))) {
+					trace_syscall_event.address = lr;
+					goto trace_syscall_end;
+				} else {
+					depth++;
+				}
+			}
+
+			if ((__get_user((unsigned long)prev_fp, (fp - 3))) ||
+			    (prev_fp > start_stack) ||
+			    (prev_fp <= fp)) {
+				goto trace_syscall_end;
+			}
+			fp = prev_fp;
+		}
+	}
+
+trace_syscall_end:
+	trace_event(TRACE_EV_SYSCALL_ENTRY, &trace_syscall_event);
+}
+
+asmlinkage void trace_real_syscall_exit(void)
+{
+        trace_event(TRACE_EV_SYSCALL_EXIT, NULL);
+}
+#endif /* (CONFIG_TRACE || CONFIG_TRACE_MODULE) */
 
 spinlock_t die_lock = SPIN_LOCK_UNLOCKED;
 
@@ -163,27 +267,21 @@ NORET_TYPE void die(const char *str, struct pt_regs *regs, int err)
 	printk("Internal error: %s: %x\n", str, err);
 	printk("CPU: %d\n", smp_processor_id());
 	show_regs(regs);
-	printk("Process %s (pid: %d, stackpage=%08lx)\n",
-		current->comm, current->pid, 4096+(unsigned long)tsk);
+	printk("Process %s (pid: %d, stack limit = 0x%p)\n",
+		current->comm, current->pid, tsk + 1);
 
 	if (!user_mode(regs) || in_interrupt()) {
-		mm_segment_t fs;
-
-		/*
-		 * We need to switch to kernel mode so that we can
-		 * use __get_user to safely read from kernel space.
-		 * Note that we now dump the code first, just in case
-		 * the backtrace kills us.
-		 */
-		fs = get_fs();
-		set_fs(KERNEL_DS);
-
-		dump_stack(tsk, (unsigned long)(regs + 1));
+		__dump_stack(tsk, (unsigned long)(regs + 1));
 		dump_backtrace(regs, tsk);
 		dump_instr(regs);
-
-		set_fs(fs);
 	}
+
+#ifdef	CONFIG_KGDB
+	/* REVISIT: I'm not sure where to place this call to do_kgdb. So it's here for now... */
+	if (kgdb_active()) {
+		do_kgdb(regs, SIGKILL); /* SIGKILL sure seems appropriate here. : ) */
+	}
+#endif
 
 	spin_unlock_irq(&die_lock);
 	do_exit(SIGSEGV);
@@ -197,21 +295,73 @@ void die_if_kernel(const char *str, struct pt_regs *regs, int err)
     	die(str, regs, err);
 }
 
+static LIST_HEAD(undef_hook);
+static spinlock_t undef_lock = SPIN_LOCK_UNLOCKED;
+
+void register_undef_hook(struct undef_hook *hook)
+{
+	spin_lock_irq(&undef_lock);
+	list_add(&hook->node, &undef_hook);
+	spin_unlock_irq(&undef_lock);
+}
+
+void unregister_undef_hook(struct undef_hook *hook)
+{
+	spin_lock_irq(&undef_lock);
+	list_del(&hook->node);
+	spin_unlock_irq(&undef_lock);
+}
+
 asmlinkage void do_undefinstr(int address, struct pt_regs *regs, int mode)
 {
-	unsigned long *pc;
+	unsigned int correction = thumb_mode(regs) ? 2 : 4;
+	unsigned int instr;
+	struct undef_hook *hook;
 	siginfo_t info;
+	void *pc;
 
 	/*
-	 * According to the ARM ARM, PC is 2 or 4 bytes ahead, depending
-	 * whether we're in Thumb mode or not.
+	 * According to the ARM ARM, PC is 2 or 4 bytes ahead,
+	 * depending whether we're in Thumb mode or not.
+	 * Correct this offset.
 	 */
-	regs->ARM_pc -= thumb_mode(regs) ? 2 : 4;
-	pc = (unsigned long *)instruction_pointer(regs);
+	regs->ARM_pc -= correction;
+
+	pc = (void *)instruction_pointer(regs);
+	if (thumb_mode(regs)) {
+		get_user(instr, (u16 *)pc);
+	} else {
+		get_user(instr, (u32 *)pc);
+	}
+
+#ifdef CONFIG_KGDB
+	/* 
+	 * If we're not in user mode, we must have hit a breakpoint 
+	 * (or something else has gone terribly wrong). 
+	 * So check in with do_kgdb...
+	 */
+	if (!user_mode(regs) && kgdb_active()) {
+		do_kgdb(regs, SIGTRAP);
+		return;
+	}
+#endif
+
+	spin_lock_irq(&undef_lock);
+	list_for_each_entry(hook, &undef_hook, node) {
+		if ((instr & hook->instr_mask) == hook->instr_val &&
+		    (regs->ARM_cpsr & hook->cpsr_mask) == hook->cpsr_val) {
+			if (hook->fn(regs, instr) == 0) {
+				spin_unlock_irq(&undef_lock);
+				return;
+			}
+		}
+	}
+	spin_unlock_irq(&undef_lock);
 
 #ifdef CONFIG_DEBUG_USER
-	printk(KERN_INFO "%s (%d): undefined instruction: pc=%p\n",
-		current->comm, current->pid, pc);
+	printk(KERN_INFO "%s (%d): undefined instruction: pc=%p%s\n",
+		current->comm, current->pid, pc,
+		thumb_mode(regs) ? " (T)" : "");
 	dump_instr(regs);
 #endif
 
@@ -223,7 +373,11 @@ asmlinkage void do_undefinstr(int address, struct pt_regs *regs, int mode)
 	info.si_code  = ILL_ILLOPC;
 	info.si_addr  = pc;
 
+	TRACE_TRAP_ENTRY(current->thread.trap_no, (uint32_t)pc);
+
 	force_sig_info(SIGILL, &info, current);
+
+	TRACE_TRAP_EXIT();
 
 	die_if_kernel("Oops - undefined instruction", regs, mode);
 }
@@ -238,6 +392,12 @@ asmlinkage void do_excpt(int address, struct pt_regs *regs, int mode)
 		current->comm, current->pid, instruction_pointer(regs));
 	dump_instr(regs);
 #endif
+#ifdef CONFIG_KGDB
+	/* REVISIT: We don't need this since we only support CONFIG_CPU_32 case. */
+	if (!user_mode(regs) && kgdb_active()) {
+		do_kgdb(regs, SIGBUS);
+	}
+#endif
 
 	current->thread.error_code = 0;
 	current->thread.trap_no = 11;
@@ -247,7 +407,11 @@ asmlinkage void do_excpt(int address, struct pt_regs *regs, int mode)
 	info.si_code  = BUS_ADRERR;
 	info.si_addr  = (void *)address;
 
+	TRACE_TRAP_ENTRY(current->thread.trap_no, instruction_pointer(regs));
+
 	force_sig_info(SIGBUS, &info, current);
+
+	TRACE_TRAP_EXIT();
 
 	die_if_kernel("Oops - address exception", regs, mode);
 }
@@ -270,20 +434,11 @@ asmlinkage void do_unexp_fiq (struct pt_regs *regs)
 asmlinkage void bad_mode(struct pt_regs *regs, int reason, int proc_mode)
 {
 	unsigned int vectors = vectors_base();
-	mm_segment_t fs;
 
 	console_verbose();
 
 	printk(KERN_CRIT "Bad mode in %s handler detected: mode %s\n",
 		handler[reason], processor_modes[proc_mode]);
-
-	/*
-	 * We need to switch to kernel mode so that we can use __get_user
-	 * to safely read from kernel space.  Note that we now dump the
-	 * code first, just in case the backtrace kills us.
-	 */
-	fs = get_fs();
-	set_fs(KERNEL_DS);
 
 	/*
 	 * Dump out the vectors and stub routines.  Maybe a better solution
@@ -292,10 +447,14 @@ asmlinkage void bad_mode(struct pt_regs *regs, int reason, int proc_mode)
 	dump_mem(KERN_CRIT "Vectors: ", vectors, vectors + 0x40);
 	dump_mem(KERN_CRIT "Stubs: ", vectors + 0x200, vectors + 0x4b8);
 
-	set_fs(fs);
-
+#ifdef CONFIG_KGDB
+	if (!user_mode(regs) && kgdb_active()) {
+		do_kgdb(regs, -1);
+	}
+#endif
+  
 	die("Oops", regs, 0);
-	cli();
+	local_irq_disable();
 	panic("bad mode");
 }
 
@@ -345,6 +504,11 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 
 	switch (no & 0xffff) {
 	case 0: /* branch through 0 */
+#ifdef CONFIG_KGDB
+		if (!user_mode(regs) && kgdb_active()) {
+			do_kgdb(regs, -1);
+		}
+#endif
 		info.si_signo = SIGSEGV;
 		info.si_errno = 0;
 		info.si_code  = SEGV_MAPERR;
@@ -356,20 +520,8 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 		return 0;
 
 	case NR(breakpoint): /* SWI BREAK_POINT */
-		/*
-		 * The PC is always left pointing at the next
-		 * instruction.  Fix this.
-		 */
-		regs->ARM_pc -= 4;
-		__ptrace_cancel_bpt(current);
-
-		info.si_signo = SIGTRAP;
-		info.si_errno = 0;
-		info.si_code  = TRAP_BRKPT;
-		info.si_addr  = (void *)instruction_pointer(regs) -
-				 (thumb_mode(regs) ? 2 : 4);
-
-		force_sig_info(SIGTRAP, &info, current);
+		regs->ARM_pc -= thumb_mode(regs) ? 2 : 4;
+		ptrace_break(current, regs);
 		return regs->ARM_r0;
 
 #ifdef CONFIG_CPU_32
@@ -432,6 +584,11 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 		c_backtrace(regs->ARM_fp, processor_mode(regs));
 	}
 #endif
+#ifdef CONFIG_KGDB
+	if (!user_mode(regs) && kgdb_active()) {
+		do_kgdb(regs, SIGILL);
+	}
+#endif
 	info.si_signo = SIGILL;
 	info.si_errno = 0;
 	info.si_code  = ILL_ILLTRP;
@@ -460,11 +617,17 @@ baddataabort(int code, unsigned long instr, struct pt_regs *regs)
 	unsigned long addr = instruction_pointer(regs);
 	siginfo_t info;
 
+	preempt_disable();
 #ifdef CONFIG_DEBUG_USER
 	printk(KERN_ERR "[%d] %s: bad data abort: code %d instr 0x%08lx\n",
 		current->pid, current->comm, code, instr);
 	dump_instr(regs);
 	show_pte(current->mm, addr);
+#endif
+#ifdef CONFIG_KGDB
+	if (!user_mode(regs) && kgdb_active()) {
+		do_kgdb(regs, SIGILL);
+	}
 #endif
 
 	info.si_signo = SIGILL;
@@ -472,7 +635,13 @@ baddataabort(int code, unsigned long instr, struct pt_regs *regs)
 	info.si_code  = ILL_ILLOPC;
 	info.si_addr  = (void *)addr;
 
+	TRACE_TRAP_ENTRY(18, addr);	/* machine check */
+
 	force_sig_info(SIGILL, &info, current);
+
+	preempt_enable();
+	TRACE_TRAP_EXIT();
+
 	die_if_kernel("unknown data abort code", regs, instr);
 }
 
@@ -522,13 +691,23 @@ void abort(void)
 
 void __init trap_init(void)
 {
-	extern void __trap_init(void *);
+	extern void __trap_init(unsigned long);
+	unsigned long base = vectors_base();
 
-	__trap_init((void *)vectors_base());
-	if (vectors_base() != 0)
-		printk(KERN_DEBUG "Relocating machine vectors to 0x%08x\n",
-			vectors_base());
+	__trap_init(base);
+	if (base != 0)
+		printk(KERN_DEBUG "Relocating machine vectors to 0x%08lx\n",
+			base);
 #ifdef CONFIG_CPU_32
 	modify_domain(DOMAIN_USER, DOMAIN_CLIENT);
+#endif
+
+	/*
+	 * This is the earliest we can bkpt for now as we rely on
+	 * undefined instruction trap to hook into KGDB.
+	 */
+#ifdef CONFIG_KGDB
+	if(kgdb_enter)
+		breakpoint();
 #endif
 }

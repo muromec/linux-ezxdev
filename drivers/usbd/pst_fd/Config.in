@@ -1,0 +1,18 @@
+#  Motorola PST USB device configuration
+#
+#  Copyright (C) 2004 Motorola Inc. 
+# 2004-May-06 - Modified for EZXBASE By Zhao Liang 
+# 
+
+mainmenu_option next_comment
+comment "PST Function"
+
+dep_tristate '  PST Function' CONFIG_USBD_PST $CONFIG_USBD
+
+if [ "$CONFIG_USBD_PST" = "y" -o "$CONFIG_USBD_PST" = "m" ]; then
+   hex     'VendorID (hex value)' CONFIG_USBD_PST_VENDORID "22b8"
+   hex     'ProductID (hex value)' CONFIG_USBD_PST_PRODUCTID "6009"
+   hex     'bcdDevice (binary-coded decimal)' CONFIG_USBD_PST_BCDDEVICE "0001"
+fi
+
+endmenu

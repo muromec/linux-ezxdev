@@ -21,7 +21,7 @@
    This is access code for flashes using ARM's flash partitioning 
    standards.
 
-   $Id: afs.c,v 1.7 2001/11/01 20:04:54 rmk Exp $
+   $Id: afs.c,v 1.13 2004/02/27 22:09:59 rmk Exp $
 
 ======================================================================*/
 
@@ -57,6 +57,17 @@ struct image_info_struct {
 	u32 checksum;		/* Image checksum (inc. this struct)     */
 };
 
+static u32 word_sum(void *words, int num)
+{
+	u32 *p = words;
+	u32 sum = 0;
+
+	while (num--)
+		sum += *p++;
+
+	return sum;
+}
+
 static int
 afs_read_footer(struct mtd_info *mtd, u_int *img_start, u_int *iis_start,
 		u_int off, u_int mask)
@@ -76,17 +87,25 @@ afs_read_footer(struct mtd_info *mtd, u_int *img_start, u_int *iis_start,
 		return ret;
 	}
 
+	ret = 1;
+
 	/*
 	 * Does it contain the magic number?
 	 */
 	if (fs.signature != 0xa0ffff9f)
-		ret = 1;
+		ret = 0;
+
+	/*
+	 * Check the checksum.
+	 */
+	if (word_sum(&fs, sizeof(fs) / sizeof(u32)) != 0xffffffff)
+		ret = 0;
 
 	/*
 	 * Don't touch the SIB.
 	 */
 	if (fs.type == 2)
-		ret = 1;
+		ret = 0;
 
 	*iis_start = fs.image_info_base & mask;
 	*img_start = fs.image_start & mask;
@@ -96,14 +115,14 @@ afs_read_footer(struct mtd_info *mtd, u_int *img_start, u_int *iis_start,
 	 * be located after the footer structure.
 	 */
 	if (*iis_start >= ptr)
-		ret = 1;
+		ret = 0;
 
 	/*
 	 * Check the start of this image.  The image
 	 * data can not be located after this block.
 	 */
 	if (*img_start > off)
-		ret = 1;
+		ret = 0;
 
 	return ret;
 }
@@ -112,20 +131,41 @@ static int
 afs_read_iis(struct mtd_info *mtd, struct image_info_struct *iis, u_int ptr)
 {
 	size_t sz;
-	int ret;
+	int ret, i;
 
 	memset(iis, 0, sizeof(*iis));
 	ret = mtd->read(mtd, ptr, sizeof(*iis), &sz, (u_char *) iis);
-	if (ret >= 0 && sz != sizeof(*iis))
-		ret = -EINVAL;
 	if (ret < 0)
-		printk(KERN_ERR "AFS: mtd read failed at 0x%x: %d\n",
-			ptr, ret);
+		goto failed;
 
+	if (sz != sizeof(*iis)) {
+		ret = -EINVAL;
+		goto failed;
+	}
+
+	ret = 0;
+
+	/*
+	 * Validate the name - it must be NUL terminated.
+	 */
+	for (i = 0; i < sizeof(iis->name); i++)
+		if (iis->name[i] == '\0')
+			break;
+
+	if (i < sizeof(iis->name))
+		ret = 1;
+
+	return ret;
+
+ failed:
+	printk(KERN_ERR "AFS: mtd read failed at 0x%x: %d\n",
+		ptr, ret);
 	return ret;
 }
 
-int parse_afs_partitions(struct mtd_info *mtd, struct mtd_partition **pparts)
+static int parse_afs_partitions(struct mtd_info *mtd, 
+                         struct mtd_partition **pparts,
+                         unsigned long origin)
 {
 	struct mtd_partition *parts;
 	u_int mask, off, idx, sz;
@@ -150,12 +190,14 @@ int parse_afs_partitions(struct mtd_info *mtd, struct mtd_partition **pparts)
 		ret = afs_read_footer(mtd, &img_ptr, &iis_ptr, off, mask);
 		if (ret < 0)
 			break;
-		if (ret == 1)
+		if (ret == 0)
 			continue;
 
 		ret = afs_read_iis(mtd, &iis, iis_ptr);
 		if (ret < 0)
 			break;
+		if (ret == 0)
+			continue;
 
 		sz += sizeof(struct mtd_partition);
 		sz += strlen(iis.name) + 1;
@@ -169,6 +211,7 @@ int parse_afs_partitions(struct mtd_info *mtd, struct mtd_partition **pparts)
 	if (!parts)
 		return -ENOMEM;
 
+	memset(parts, 0, sz);
 	str = (char *)(parts + idx);
 
 	/*
@@ -182,13 +225,15 @@ int parse_afs_partitions(struct mtd_info *mtd, struct mtd_partition **pparts)
 		ret = afs_read_footer(mtd, &img_ptr, &iis_ptr, off, mask);
 		if (ret < 0)
 			break;
-		if (ret == 1)
+		if (ret == 0)
 			continue;
 
 		/* Read the image info block */
 		ret = afs_read_iis(mtd, &iis, iis_ptr);
 		if (ret < 0)
 			break;
+		if (ret == 0)
+			continue;
 
 		strcpy(str, iis.name);
 		size = mtd->erasesize + off - img_ptr;
@@ -226,7 +271,25 @@ int parse_afs_partitions(struct mtd_info *mtd, struct mtd_partition **pparts)
 	return idx ? idx : ret;
 }
 
-EXPORT_SYMBOL(parse_afs_partitions);
+static struct mtd_part_parser afs_parser = {
+	.owner = THIS_MODULE,
+	.parse_fn = parse_afs_partitions,
+	.name = "afs",
+};
+
+static int __init afs_parser_init(void)
+{
+	return register_mtd_parser(&afs_parser);
+}
+
+static void __exit afs_parser_exit(void)
+{
+	deregister_mtd_parser(&afs_parser);
+}
+
+module_init(afs_parser_init);
+module_exit(afs_parser_exit);
+
 
 MODULE_AUTHOR("ARM Ltd");
 MODULE_DESCRIPTION("ARM Firmware Suite partition parser");

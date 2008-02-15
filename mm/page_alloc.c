@@ -11,6 +11,12 @@
  *  Discontiguous memory support, Kanoj Sarcar, SGI, Nov 1999
  *  Zone balancing, Kanoj Sarcar, SGI, Jan 2000
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by w15879, for EZX platform
+ */
+
 
 #include <linux/config.h>
 #include <linux/mm.h>
@@ -21,6 +27,8 @@
 #include <linux/bootmem.h>
 #include <linux/slab.h>
 #include <linux/module.h>
+
+#include <linux/trace.h>
 
 int nr_swap_pages;
 int nr_active_pages;
@@ -106,6 +114,9 @@ static void __free_pages_ok (struct page *page, unsigned int order)
 		BUG();
 	if (PageActive(page))
 		BUG();
+
+	TRACE_MEMORY(TRACE_EV_MEMORY_PAGE_FREE, order);
+
 	page->flags &= ~((1<<PG_referenced) | (1<<PG_dirty));
 
 	if (current->flags & PF_FREE_PAGES)
@@ -349,6 +360,8 @@ struct page * __alloc_pages(unsigned int gfp_mask, unsigned int order, zonelist_
 		}
 	}
 
+	//Susan
+	//printk(KERN_NOTICE "need_balance:zone_size(0x%x),freepages(%d)\n", (zonelist->zones[0])->size, (zonelist->zones[0])->free_pages);
 	classzone->need_balance = 1;
 	mb();
 	if (waitqueue_active(&kswapd_wait))
@@ -398,6 +411,10 @@ rebalance:
 	if (page)
 		return page;
 
+#ifdef CONFIG_DISCONTIGMEM
+	if (freed == 0)
+		return 0;
+#endif
 	zone = zonelist->zones;
 	min = 1UL << order;
 	for (;;) {
@@ -432,6 +449,7 @@ unsigned long __get_free_pages(unsigned int gfp_mask, unsigned int order)
 	page = alloc_pages(gfp_mask, order);
 	if (!page)
 		return 0;
+	TRACE_MEMORY(TRACE_EV_MEMORY_PAGE_ALLOC, order);
 	return (unsigned long) page_address(page);
 }
 
@@ -512,6 +530,37 @@ unsigned int nr_free_highpages (void)
 #endif
 
 #define K(x) ((x) << (PAGE_SHIFT-10))
+
+/*
+ * If it returns non zero it means there's lots of ram "free"
+ * (note: not in cache!) so any caller will know that
+ * he can allocate some memory to do some more aggressive
+ * (possibly wasteful) readahead. The state of the memory
+ * should be rechecked after every few pages allocated for
+ * doing this aggressive readahead.
+ *
+ * NOTE: caller passes in gfp_mask of zones to check
+ */
+int start_aggressive_readahead(int gfp_mask)
+{
+	pg_data_t *pgdat = pgdat_list;
+	zonelist_t *zonelist;
+	zone_t **zonep, *zone;
+	int ret = 0;
+
+	do {
+		zonelist = pgdat->node_zonelists + (gfp_mask & GFP_ZONEMASK);
+		zonep = zonelist->zones;
+
+		for (zone = *zonep++; zone; zone = *zonep++)
+			if (zone->free_pages > zone->pages_high * 2)
+				ret = 1;
+
+		pgdat = pgdat->node_next;
+	} while (pgdat);
+
+	return ret;
+}
 
 /*
  * Show free area list (used inside shift_scroll-lock stuff)
@@ -771,6 +820,8 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 		zone->pages_high = mask*3;
 
 		zone->zone_mem_map = mem_map + offset;
+		printk(KERN_NOTICE "zone(%d)->zone_mem_map(0x%x)\n",(unsigned int)(nid * MAX_NR_ZONES + j), (unsigned int)((unsigned int)mem_map+offset));
+		
 		zone->zone_start_mapnr = offset;
 		zone->zone_start_paddr = zone_start_paddr;
 

@@ -1,0 +1,44 @@
+#
+#  Generic Network Function Driver
+#
+# Copyright (C) 2001 Lineo, Inc.
+# Copyright (C) 2001 Hewlett-Packard Co.
+mainmenu_option next_comment
+comment "Network Function"
+
+dep_tristate '  Network Function Driver' CONFIG_USBD_NET $CONFIG_USBD
+if [ "$CONFIG_USBD_NET" = "y" -o "$CONFIG_USBD_NET" = "m" ]; then
+   hex     ' Overide VendorID (hex value)' CONFIG_USBD_NET_VENDORID "0000"
+   hex     ' Overide ProductID (hex value)' CONFIG_USBD_NET_PRODUCTID "0000"
+   string  '   Default Network interface name' CONFIG_USBD_NET_IFNAME "usbd"
+
+   # allow setting of endpoint configurations for some architectures
+   int     '    OUT Endpoint (0-15)' CONFIG_USBD_NET_OUT_ENDPOINT "1"
+   int     '   OUT PacketSize (16, 32, 64)' CONFIG_USBD_NET_OUT_PKTSIZE "64"
+   int     '    IN  Endpoint (0-15)' CONFIG_USBD_NET_IN_ENDPOINT "2"
+   int     '   IN  PacketSize (16, 32, 64)' CONFIG_USBD_NET_IN_PKTSIZE "64"
+
+   if [ ! "$CONFIG_ARCH_SA1100" = "y" -a ! "$CONFIG_ARCH_L7200" = "y" ]; then
+      int  '    INT Endpoint (0-15)' CONFIG_USBD_NET_INT_ENDPOINT "3"
+      int  '   INT PacketSize (8, 16)' CONFIG_USBD_NET_INT_PKTSIZE "16"
+   fi
+
+   bool    '    Interface Always Up' CONFIG_USBD_NET_ALWAYSUP
+   bool    '    Safe Mode' CONFIG_USBD_NET_SAFE
+   bool    '    MDLM Mode' CONFIG_USBD_NET_MDLM
+   bool    '    CDC Mode' CONFIG_USBD_NET_CDC
+
+   if [ "$CONFIG_USBD_NET_CDC" = "y" -o "$CONFIG_USBD_NET_MDLM" = "y" ]; then
+      if [ "$CONFIG_ARCH_SA1110" = "n" ]; then
+         bool    '     RNDIS Mode (not working yet)' CONFIG_USBD_NET_RNDIS
+      fi
+      string  '   Default Remote MAC Address (e.g. 400002000001)' CONFIG_USBD_NET_REMOTE_MACADDR "" 
+      hex     '    RemoteNetwork OUI (e.g. 400002)' CONFIG_USBD_NET_REMOTE_OUI "400002"
+      bool    '    Use MAC Address as device Serial Number' CONFIG_USBD_MAC_AS_SERIAL_NUMBER
+   fi
+
+   string  '   Default Local MAC Address (e.g. 400001000001)' CONFIG_USBD_NET_LOCAL_MACADDR "400001000001" 
+   hex     '   Local Network OUI (e.g. 400001)' CONFIG_USBD_NET_LOCAL_OUI "400001"
+fi
+
+endmenu

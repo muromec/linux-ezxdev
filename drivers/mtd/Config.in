@@ -1,5 +1,5 @@
 
-# $Id: Config.in,v 1.73 2002/03/08 16:34:35 rkaiser Exp $
+# $Id: Config.in,v 1.78 2004/08/09 18:46:03 dmarlin Exp $
 
 mainmenu_option next_comment
 comment 'Memory Technology Devices (MTD)'
@@ -11,11 +11,17 @@ if [ "$CONFIG_MTD" = "y" -o "$CONFIG_MTD" = "m" ]; then
    if [ "$CONFIG_MTD_DEBUG" = "y" ]; then
       int '  Debugging verbosity (0 = quiet, 3 = noisy)' CONFIG_MTD_DEBUG_VERBOSE 0
    fi
-   dep_tristate '  MTD partitioning support' CONFIG_MTD_PARTITIONS $CONFIG_MTD
+   bool '  MTD partitioning support' CONFIG_MTD_PARTITIONS $CONFIG_MTD
    dep_tristate '  MTD concatenating support' CONFIG_MTD_CONCAT $CONFIG_MTD
    dep_tristate '  RedBoot partition table parsing' CONFIG_MTD_REDBOOT_PARTS $CONFIG_MTD_PARTITIONS
+   if [ "$CONFIG_MTD_REDBOOT_PARTS" = "y" -o "$CONFIG_MTD_REDBOOT_PARTS" = "m" ]; then
+      bool '  Include unallocated flash space' CONFIG_MTD_REDBOOT_PARTS_UNALLOCATED
+      bool '  Force read-only for RedBoot system images' CONFIG_MTD_REDBOOT_PARTS_READONLY
+   fi
+   if [ "$CONFIG_MTD_PARTITIONS" = "y" ]; then
+      bool '  Command line partition table parsing' CONFIG_MTD_CMDLINE_PARTS 
+   fi
    if [ "$CONFIG_ARM" = "y" ]; then
-      dep_tristate '  Compaq bootldr partition table parsing' CONFIG_MTD_BOOTLDR_PARTS $CONFIG_MTD_PARTITIONS
       dep_tristate '  ARM Firmware Suite partition parsing' CONFIG_MTD_AFS_PARTS $CONFIG_MTD_PARTITIONS
    fi
 
@@ -30,6 +36,7 @@ comment 'User Modules And Translation Layers'
    if [ "$CONFIG_NFTL" = "y" -o "$CONFIG_NFTL" = "m" ]; then
       bool '    Write support for NFTL (BETA)' CONFIG_NFTL_RW
    fi
+   dep_tristate '  INFTL (Inverse NAND Flash Translation Layer) support' CONFIG_INFTL $CONFIG_MTD
 
    source drivers/mtd/chips/Config.in
 
@@ -38,6 +45,9 @@ comment 'User Modules And Translation Layers'
    source drivers/mtd/devices/Config.in
 
    source drivers/mtd/nand/Config.in
+if [ "$CONFIG_ARCH_MX2ADS" != "y" ]; then
+   dep_tristate '  XIP aware MTD support' CONFIG_MTD_XIP $CONFIG_MTD $CONFIG_EXPERIMENTAL
+fi
 
 fi
 

@@ -619,6 +619,7 @@ static int __devinit eepro100_init_one (struct pci_dev *pdev,
 #else
 	ioaddr = (unsigned long)ioremap(pci_resource_start(pdev, 0),
 									pci_resource_len(pdev, 0));
+	
 	if (!ioaddr) {
 		printk (KERN_ERR "eepro100: cannot remap MMIO region %lx @ %lx\n",
 				pci_resource_len(pdev, 0), pci_resource_start(pdev, 0));

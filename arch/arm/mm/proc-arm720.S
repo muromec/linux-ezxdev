@@ -37,6 +37,11 @@
 #include <asm/hardware.h>
 
 /*
+ * and the page size
+ */
+#define PAGESIZE	4096
+
+/*
  * Function: arm720_cache_clean_invalidate_all (void)
  *	   : arm720_cache_clean_invalidate_page (unsigned long address, int size,
  *                                    int flags)
@@ -86,8 +91,11 @@ ENTRY(cpu_arm720_tlb_invalidate_all)
  * Purpose : flush a TLB entry
  */
 ENTRY(cpu_arm720_tlb_invalidate_range)
+		sub	r3, r1, r0
+		cmp	r3, #256 * PAGESIZE		@ arbitary, should be tuned
+		bhi	cpu_arm720_tlb_invalidate_all
 1:		mcr	p15, 0, r0, c8, c7, 1		@ flush TLB (v4)
-		add	r0, r0, #4096
+		add	r0, r0, #PAGESIZE
 		cmp	r0, r1
 		blt	1b
 		mov	pc, lr
@@ -527,7 +535,7 @@ __arm720_proc_info:
 		b	__arm720_setup				@ cpu_flush
 		.long	cpu_arch_name				@ arch_name
 		.long	cpu_elf_name				@ elf_name
-		.long	HWCAP_SWP | HWCAP_HALF | HWCAP_THUMB | HWCAP_26BIT	@ elf_hwcap
+		.long	HWCAP_SWP | HWCAP_HALF | HWCAP_THUMB	@ elf_hwcap
 		.long	cpu_arm720_info				@ info
 		.long	arm720_processor_functions
 		.size	__arm720_proc_info, . - __arm720_proc_info

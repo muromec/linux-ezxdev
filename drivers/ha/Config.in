@@ -1,0 +1,8 @@
+#
+# Compact PCI chassis support code and drivers
+#
+bool 'Event Broker Driver Support' CONFIG_EVENT_BROKER
+
+if [ "$CONFIG_EVENT_BROKER" = "y" ]; then
+   define_bool CONFIG_HA y
+fi

@@ -1,8 +1,12 @@
 /*
- * $Id: mtdcore.c,v 1.32 2002/03/07 18:38:10 joern Exp $
+ * $Id: mtdcore.c,v 1.43 2004/07/23 15:20:46 dwmw2 Exp $
+ *
+ * Copyright (c) 2005 Motorola Inc.
  *
  * Core registration and callback routines for MTD
  * drivers and users.
+ *
+ * 15-Jan-2005  Susan Gu                Modified for EzX
  *
  */
 
@@ -17,7 +21,7 @@
 #include <linux/major.h>
 #include <linux/fs.h>
 #include <linux/ioctl.h>
-#include <stdarg.h>
+#include <linux/init.h>
 #include <linux/mtd/compatmac.h>
 #ifdef CONFIG_PROC_FS
 #include <linux/proc_fs.h>
@@ -25,9 +29,15 @@
 
 #include <linux/mtd/mtd.h>
 
-static DECLARE_MUTEX(mtd_table_mutex);
-static struct mtd_info *mtd_table[MAX_MTD_DEVICES];
-static struct mtd_notifier *mtd_notifiers = NULL;
+/* These are exported solely for the purpose of mtd_blkdevs.c. You 
+   should not use them for _anything_ else */
+DECLARE_MUTEX(mtd_table_mutex);
+struct mtd_info *mtd_table[MAX_MTD_DEVICES];
+
+EXPORT_SYMBOL_GPL(mtd_table_mutex);
+EXPORT_SYMBOL_GPL(mtd_table);
+
+static LIST_HEAD(mtd_notifiers);
 
 /**
  *	add_mtd_device - register an MTD device
@@ -45,21 +55,28 @@ int add_mtd_device(struct mtd_info *mtd)
 
 	down(&mtd_table_mutex);
 
-	for (i=0; i< MAX_MTD_DEVICES; i++)
-		if (!mtd_table[i])
-		{
-			struct mtd_notifier *not=mtd_notifiers;
+	for (i=0; i < MAX_MTD_DEVICES; i++)
+		if (!mtd_table[i]) {
+			struct list_head *this;
 
 			mtd_table[i] = mtd;
 			mtd->index = i;
+			mtd->usecount = 0;
+
 			DEBUG(0, "mtd: Giving out device %d to %s\n",i, mtd->name);
-			while (not)
-			{
-				(*(not->add))(mtd);
-				not = not->next;
+			/* No need to get a refcount on the module containing
+			   the notifier, since we hold the mtd_table_mutex */
+			list_for_each(this, &mtd_notifiers) {
+				struct mtd_notifier *not = list_entry(this, struct mtd_notifier, list);
+				not->add(mtd);
 			}
+			
 			up(&mtd_table_mutex);
-			MOD_INC_USE_COUNT;
+			/* We _know_ we aren't being removed, because
+			   our caller is still holding us here. So none
+			   of this try_ nonsense, and no bitching about it
+			   either. :) */
+			__module_get(THIS_MODULE);
 			return 0;
 		}
 	
@@ -79,29 +96,34 @@ int add_mtd_device(struct mtd_info *mtd)
 
 int del_mtd_device (struct mtd_info *mtd)
 {
-	struct mtd_notifier *not=mtd_notifiers;
-	int i;
+	int ret;
 	
 	down(&mtd_table_mutex);
 
-	for (i=0; i < MAX_MTD_DEVICES; i++)
-	{
-		if (mtd_table[i] == mtd)
-		{
-			while (not)
-			{
-				(*(not->remove))(mtd);
-				not = not->next;
-			}
-			mtd_table[i] = NULL;
-			up (&mtd_table_mutex);
-			MOD_DEC_USE_COUNT;
-			return 0;
+	if (mtd_table[mtd->index] != mtd) {
+		ret = -ENODEV;
+	} else if (mtd->usecount) {
+		printk(KERN_NOTICE "Removing MTD device #%d (%s) with use count %d\n", 
+		       mtd->index, mtd->name, mtd->usecount);
+		ret = -EBUSY;
+	} else {
+		struct list_head *this;
+
+		/* No need to get a refcount on the module containing
+		   the notifier, since we hold the mtd_table_mutex */
+		list_for_each(this, &mtd_notifiers) {
+			struct mtd_notifier *not = list_entry(this, struct mtd_notifier, list);
+			not->remove(mtd);
 		}
+
+		mtd_table[mtd->index] = NULL;
+
+		module_put(THIS_MODULE);
+		ret = 0;
 	}
 
 	up(&mtd_table_mutex);
-	return 1;
+	return ret;
 }
 
 /**
@@ -119,10 +141,9 @@ void register_mtd_user (struct mtd_notifier *new)
 
 	down(&mtd_table_mutex);
 
-	new->next = mtd_notifiers;
-	mtd_notifiers = new;
+	list_add(&new->list, &mtd_notifiers);
 
- 	MOD_INC_USE_COUNT;
+ 	__module_get(THIS_MODULE);
 	
 	for (i=0; i< MAX_MTD_DEVICES; i++)
 		if (mtd_table[i])
@@ -143,34 +164,24 @@ void register_mtd_user (struct mtd_notifier *new)
 
 int unregister_mtd_user (struct mtd_notifier *old)
 {
-	struct mtd_notifier **prev = &mtd_notifiers;
-	struct mtd_notifier *cur;
 	int i;
 
 	down(&mtd_table_mutex);
 
-	while ((cur = *prev)) {
-		if (cur == old) {
-			*prev = cur->next;
+	module_put(THIS_MODULE);
 
-			MOD_DEC_USE_COUNT;
-
-			for (i=0; i< MAX_MTD_DEVICES; i++)
-				if (mtd_table[i])
-					old->remove(mtd_table[i]);
+	for (i=0; i< MAX_MTD_DEVICES; i++)
+		if (mtd_table[i])
+			old->remove(mtd_table[i]);
 			
-			up(&mtd_table_mutex);
-			return 0;
-		}
-		prev = &cur->next;
-	}
+	list_del(&old->list);
 	up(&mtd_table_mutex);
-	return 1;
+	return 0;
 }
 
 
 /**
- *	__get_mtd_device - obtain a validated handle for an MTD device
+ *	get_mtd_device - obtain a validated handle for an MTD device
  *	@mtd: last known address of the required MTD device
  *	@num: internal device number of the required MTD device
  *
@@ -178,11 +189,10 @@ int unregister_mtd_user (struct mtd_notifier *old)
  *	table, if any.	Given an address and num == -1, search the device table
  *	for a device with that address and return if it's still present. Given
  *	both, return the num'th driver only if its address matches. Return NULL
- *	if not. get_mtd_device() increases the use count, but
- *	__get_mtd_device() doesn't - you should generally use get_mtd_device().
+ *	if not.
  */
 	
-struct mtd_info *__get_mtd_device(struct mtd_info *mtd, int num)
+struct mtd_info *get_mtd_device(struct mtd_info *mtd, int num)
 {
 	struct mtd_info *ret = NULL;
 	int i;
@@ -198,21 +208,102 @@ struct mtd_info *__get_mtd_device(struct mtd_info *mtd, int num)
 		if (mtd && mtd != ret)
 			ret = NULL;
 	}
-	
+
+	if (ret && !try_module_get(ret->owner))
+		ret = NULL;
+
+	if (ret)
+		ret->usecount++;
+
 	up(&mtd_table_mutex);
 	return ret;
 }
 
+void put_mtd_device(struct mtd_info *mtd)
+{
+	int c;
+
+	down(&mtd_table_mutex);
+	c = --mtd->usecount;
+	up(&mtd_table_mutex);
+	BUG_ON(c < 0);
+
+	module_put(mtd->owner);
+}
+
+/* default_mtd_writev - default mtd writev method for MTD devices that
+ *			dont implement their own
+ */
+
+int default_mtd_writev(struct mtd_info *mtd, const struct kvec *vecs,
+		       unsigned long count, loff_t to, size_t *retlen)
+{
+	unsigned long i;
+	size_t totlen = 0, thislen;
+	int ret = 0;
+
+	if(!mtd->write) {
+		ret = -EROFS;
+	} else {
+		for (i=0; i<count; i++) {
+			if (!vecs[i].iov_len)
+				continue;
+			ret = mtd->write(mtd, to, vecs[i].iov_len, &thislen, vecs[i].iov_base);
+			totlen += thislen;
+			if (ret || thislen != vecs[i].iov_len)
+				break;
+			to += vecs[i].iov_len;
+		}
+	}
+	if (retlen)
+		*retlen = totlen;
+	return ret;
+}
+
+
+/* default_mtd_readv - default mtd readv method for MTD devices that dont
+ *		       implement their own
+ */
+
+int default_mtd_readv(struct mtd_info *mtd, struct kvec *vecs,
+		      unsigned long count, loff_t from, size_t *retlen)
+{
+	unsigned long i;
+	size_t totlen = 0, thislen;
+	int ret = 0;
+
+	if(!mtd->read) {
+		ret = -EIO;
+	} else {
+		for (i=0; i<count; i++) {
+			if (!vecs[i].iov_len)
+				continue;
+			ret = mtd->read(mtd, from, vecs[i].iov_len, &thislen, vecs[i].iov_base);
+			totlen += thislen;
+			if (ret || thislen != vecs[i].iov_len)
+				break;
+			from += vecs[i].iov_len;
+		}
+	}
+	if (retlen)
+		*retlen = totlen;
+	return ret;
+}
+
+
 EXPORT_SYMBOL(add_mtd_device);
 EXPORT_SYMBOL(del_mtd_device);
-EXPORT_SYMBOL(__get_mtd_device);
+EXPORT_SYMBOL(get_mtd_device);
+EXPORT_SYMBOL(put_mtd_device);
 EXPORT_SYMBOL(register_mtd_user);
 EXPORT_SYMBOL(unregister_mtd_user);
+EXPORT_SYMBOL(default_mtd_writev);
+EXPORT_SYMBOL(default_mtd_readv);
 
 /*====================================================================*/
 /* Power management code */
 
-#ifdef CONFIG_PM
+// linux-pm #ifdef CONFIG_PM
 
 #include <linux/pm.h>
 
@@ -240,16 +331,107 @@ static int mtd_pm_callback(struct pm_dev *dev, pm_request_t rqst, void *data)
 	up(&mtd_table_mutex);
 	return ret;
 }
+// linux-pm #endif
+
+#if defined(CONFIG_405LP) || defined(CONFIG_ARCH_MAINSTONE) || defined(CONFIG_ARCH_MX2ADS) || defined(CONFIG_ARCH_EZX)/* linux-pm */
+#include <linux/device.h>
+
+static int mtd_suspend(struct device * dev, u32 state, u32 level);
+static int mtd_resume(struct device * dev, u32 level);
+
+static struct device_driver mtd_driver_ldm = {
+       name:      "mtd",
+       probe:     NULL,
+       suspend:   mtd_suspend,
+       resume:    mtd_resume,
+       remove:    NULL,
+};
+
+static struct device mtd_device_ldm = {
+       name: "flash",
+       bus_id: "flash",
+       driver: &mtd_driver_ldm,
+       power_state: DPM_POWER_ON,
+};
+
+static void mtd_ldm_register(void)
+{
+#ifdef CONFIG_405LP
+   extern void ebc_driver_register(struct device_driver *driver);
+   extern void ebc_device_register(struct device *device);
+
+   ebc_driver_register(&mtd_driver_ldm);
+   ebc_device_register(&mtd_device_ldm);
 #endif
+#ifdef CONFIG_ARCH_MAINSTONE
+   extern void pxasys_driver_register(struct device_driver *driver);
+   extern void pxasys_device_register(struct device *device);
+
+   pxasys_driver_register(&mtd_driver_ldm);
+   pxasys_device_register(&mtd_device_ldm);
+#endif
+#ifdef CONFIG_ARCH_MX2ADS
+	extern void mx21_ldm_device_register(struct device *device);
+	extern void mx21_ldm_driver_register(struct device_driver *driver);
+
+	mx21_ldm_driver_register(&mtd_driver_ldm);
+	mx21_ldm_device_register(&mtd_device_ldm);
+#endif
+}
+
+static void mtd_ldm_unregister(void)
+{
+#ifdef CONFIG_405LP
+   extern void ebc_driver_unregister(struct device_driver *driver);
+   extern void ebc_device_unregister(struct device *device);
+
+   ebc_device_unregister(&mtd_device_ldm);
+   ebc_driver_unregister(&mtd_driver_ldm);
+#endif
+#ifdef CONFIG_ARCH_MAINSTONE
+   extern void pxasys_driver_unregister(struct device_driver *driver);
+   extern void pxasys_device_unregister(struct device *device);
+
+   pxasys_device_unregister(&mtd_device_ldm);
+   pxasys_driver_unregister(&mtd_driver_ldm);
+#endif
+#ifdef CONFIG_ARCH_MX2ADS
+	extern void mx21_ldm_device_unregister(struct device *device);
+	extern void mx21_ldm_driver_unregister(struct device_driver *driver);
+
+	mx21_ldm_device_unregister(&mtd_device_ldm);
+	mx21_ldm_driver_unregister(&mtd_driver_ldm);
+#endif
+}
+
+static int mtd_suspend(struct device * dev, u32 state, u32 level)
+{
+	switch (level) {
+	case SUSPEND_POWER_DOWN:
+		mtd_pm_callback(NULL, PM_SUSPEND, NULL);
+		break;
+        }
+	
+	return 0;
+}
+
+static int mtd_resume(struct device * dev, u32 level)
+{
+	switch (level) {
+	case RESUME_POWER_ON:
+		mtd_pm_callback(NULL, PM_RESUME, NULL);
+		break;
+        }
+	
+	return 0;
+}
+#endif /* linux-pm */
 
 /*====================================================================*/
 /* Support for /proc/mtd */
 
 #ifdef CONFIG_PROC_FS
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,2,0)
 static struct proc_dir_entry *proc_mtd;
-#endif
 
 static inline int mtd_proc_info (char *buf, int i)
 {
@@ -262,13 +444,8 @@ static inline int mtd_proc_info (char *buf, int i)
 		       this->erasesize, this->name);
 }
 
-static int mtd_read_proc ( char *page, char **start, off_t off,int count
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,2,0)
-                       ,int *eof, void *data_unused
-#else
-                        ,int unused
-#endif
-			)
+static int mtd_read_proc (char *page, char **start, off_t off, int count,
+			  int *eof, void *data_unused)
 {
 	int len, l, i;
         off_t   begin = 0;
@@ -288,9 +465,7 @@ static int mtd_read_proc ( char *page, char **start, off_t off,int count
                 }
         }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,2,0)
         *eof = 1;
-#endif
 
 done:
 	up(&mtd_table_mutex);
@@ -300,18 +475,6 @@ done:
         return ((count < begin+len-off) ? count : begin+len-off);
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,2,0)
-struct proc_dir_entry mtd_proc_entry = {
-        0,                 /* low_ino: the inode -- dynamic */
-        3, "mtd",     /* len of name and name */
-        S_IFREG | S_IRUGO, /* mode */
-        1, 0, 0,           /* nlinks, owner, group */
-        0, NULL,           /* size - unused; operations -- use default */
-        &mtd_read_proc,   /* function used to read data */
-        /* nothing more */
-    };
-#endif
-
 #endif /* CONFIG_PROC_FS */
 
 /*====================================================================*/
@@ -320,40 +483,34 @@ struct proc_dir_entry mtd_proc_entry = {
 int __init init_mtd(void)
 {
 #ifdef CONFIG_PROC_FS
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,2,0)
-	if ((proc_mtd = create_proc_entry( "mtd", 0, 0 )))
-	  proc_mtd->read_proc = mtd_read_proc;
-#else
-        proc_register_dynamic(&proc_root,&mtd_proc_entry);
-#endif
+	if ((proc_mtd = create_proc_entry( "mtd", 0, NULL )))
+		proc_mtd->read_proc = mtd_read_proc;
 #endif
 
-#if LINUX_VERSION_CODE < 0x20212
-	init_mtd_devices();
-#endif
-
-#ifdef CONFIG_PM
+// linux-pm #ifdef CONFIG_PM
 	mtd_pm_dev = pm_register(PM_UNKNOWN_DEV, 0, mtd_pm_callback);
-#endif
+#if defined(CONFIG_405LP) || defined(CONFIG_ARCH_MAINSTONE) || defined(CONFIG_ARCH_MX2ADS) || defined(CONFIG_ARCH_EZX) /* linux-pm */
+	mtd_ldm_register();
+#endif /* linux-pm */
+// linux-pm #endif
 	return 0;
 }
 
 static void __exit cleanup_mtd(void)
 {
-#ifdef CONFIG_PM
+// linux-pm #ifdef CONFIG_PM
 	if (mtd_pm_dev) {
 		pm_unregister(mtd_pm_dev);
 		mtd_pm_dev = NULL;
 	}
-#endif
+#if defined(CONFIG_405LP) || defined(CONFIG_ARCH_MAINSTONE) || defined(CONFIG_ARCH_MX2ADS) || defined(CONFIG_ARCH_EZX) /* linux-pm */
+	mtd_ldm_unregister();
+#endif /* linux-pm */
+// linux-pm #endif
 
 #ifdef CONFIG_PROC_FS
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,2,0)
         if (proc_mtd)
-          remove_proc_entry( "mtd", 0);
-#else
-        proc_unregister(&proc_root,mtd_proc_entry.low_ino);
-#endif
+		remove_proc_entry( "mtd", NULL);
 #endif
 }
 

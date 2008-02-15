@@ -1,0 +1,194 @@
+#!/bin/sh
+
+
+ARG0=`basename $0`
+ARG1=$1
+
+usage() {
+cat <<-EOF
+usage: usbd command
+    clone	clone device subdirectory from bk::/whiskey.enposte.net/usbd
+    build
+    tgz
+
+EOF
+}
+
+arch() {
+
+	SA1100=`egrep "CONFIG_SA11.*=y" .config | 
+		sed -e '/FREQ/d;/RTC/d;/FIR/d;/VOLT/d;/DMA/d;/USB/d;/REGMON/d;/_H3[1-9]/d;/_IDR/d'`
+
+	BUS=`egrep "^CONFIG_USBD_.*_BUS" .config | 
+		sed /GENERIC/d`
+
+	#echo SA1100: $SA1100
+	#echo BUS: $BUS
+	case "$BUS" in
+	CONFIG_USBD_SA1100_BUS*) export BUS=$SA1100 ;;
+	esac
+
+	BUS=`expr "$BUS" : '\(.*\)=.*'`
+
+	echo $BUS
+}
+
+usbdmake() {
+	pushd ../../..
+	make SUBDIRS=drivers/usb/device $*
+	popd
+}
+
+case "${ARG1}" in
+
+clone)
+	set -x
+	bk clone -q bk://whiskey.enposte.net/usbd usbd 
+	cd device
+	bk -r co -q
+	;;
+
+citool)
+	set -x
+	bk citool&
+	;;
+
+push)
+	set -x
+	bk push
+	;;
+
+
+patch-usb)
+	set -x
+	mv Config.in Config.in-
+	sed '/endmenu/d' < Config.in- > Config.in
+	(
+		echo
+		echo "source drivers/usb/device/Config.in" 
+		echo
+		echo "endmenu" 
+	) >> Config.in
+
+	cp Makefile Makefile-
+	(
+		echo
+		echo 'subdir-$(CONFIG_USBD)           += device'
+		echo
+	) >> Makefile
+
+	CWD=`pwd`
+	BASE=`dirname $CWD`
+	BASE=`dirname $BASE`
+	ln -s $BASE/.config device/.config
+	;;
+
+clean)
+	usbdmake clean
+	;;
+
+modules)
+	usbdmake modules
+	;;
+
+arch)
+	arch
+	;;
+
+build)
+
+	ARCH=`arch`
+	case "$ARCH" in
+	CONFIG_USBD_PXA_BUS)
+		export DEST=../../../../a3/latest_modules
+		export SRC=pxa
+		export NAME=pxa
+		export STRIP=arm-linux-strip
+		;;
+	CONFIG_USBD_L7205_BUS)
+		export DEST=/tftpboot/tmp/l7205/tmp
+		export SRC=l7205
+		export NAME=l7205
+		;;
+	CONFIG_USBD_SL11_BUS)
+		export DEST=/tftpboot/tmp/sl11/tmp
+		export SRC=sl11
+		export NAME=sl11
+		;;
+	CONFIG_SA1100_CALYPSO|CONFIG_SA1110_CALYPSO)
+		export DEST=/tftpboot/192.168.40.101/modules
+		export SRC=sa1100
+		export NAME=sa1100
+		;;
+	CONFIG_SA1100_ASSABET)
+		export DEST=/tftpboot/tmp/assabet/tmp
+		export SRC=sa1100
+		export NAME=sa1100
+		;;
+	CONFIG_SA1111)
+		export DEST=/tftpboot/tmp/vercel/tmp
+		export SRC=sa1100
+		export NAME=sa1100
+		;;
+	CONFIG_SA1100_H3XXX)
+		export DEST=/tftpboot/tmp/ipaq/tmp
+		export SRC=sa1100
+		export NAME=sa1100
+		;;
+	CONFIG_SA1100_BITSY)
+		export DEST=/tftpboot/tmp/ipaq/tmp
+		export SRC=sa1100
+		export NAME=sa1100
+		;;
+	CONFIG_SA1100_COLLIE)
+		export DEST=/tftpboot/tmp/collie/tmp
+		export SRC=sa1100
+		export NAME=sa1100
+		;;
+	CONFIG_USBD_SUPERH_BUS)
+		#export DEST=/tftpboot/tmp/sh7727/tmp 
+		export DEST=/tftpboot/192.168.40.230/rootfsdir/tmp
+		export SRC=superh
+		export NAME=superh
+		;;
+	esac
+
+	if [ ! -f "usbd-build.h" ] ; then
+		echo "#define USBD_BUILD          \"000\"" > usbd-build.h
+	else
+		sed < usbd-build.h '/USBD_BUILD/s/^#define.*USBD_BUILD.*"\(.*\)"/XX \1/' |
+		awk '{ if ($1 == "XX") printf "#define USBD_BUILD   \"%03d\"\n", $2+1 ; else print $0 }' > usbd-build.h-new
+		mv usbd-build.h-new usbd-build.h
+	fi
+
+	rm -rf *.o */*.o */*/*.o 2>/dev/null
+
+	usbdmake modules
+
+	echo ARCH: $ARCH
+	echo SRC: $SRC
+	echo DEST: $DEST
+	echo NAME: $NAME
+
+#	mkdir -p ${DEST} /tmp/USBD
+#	chown -R sl.sl /tmp/USBD
+
+	MODULES=` for i in usbdcore usbdmonitor serial_fd/serial_fd \
+		net_fd/net_fd bi/${NAME}_bi bi/gen_bi  ; do
+		[ -s "$i.o" ] && echo "$i.o" 
+		done`
+
+	echo MODULES: ${MODULES}
+	for i in ${MODULES} ; do
+		[ -n "$STRIP" ] && $STRIP -g $i
+		cp "$i" "$DEST"
+	done
+
+#	tar cvfz /tmp/USBD/$ARCH-`date '+%Y%m%d%H%M'`.tgz ${MODULES}
+
+	;;
+
+*)
+	usage
+	;;
+esac

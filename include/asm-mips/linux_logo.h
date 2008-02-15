@@ -17,10 +17,16 @@
  * Serial_console ascii image can be any size,
  * but should contain %s to display the version
  */
-
+ 
 #include <linux/init.h>
 #include <linux/version.h>
 #include <linux/config.h>
+
+/* MontaVista has one logo across architectures */
+
+#if 1
+#include <linux/linux_logo.h>
+#else
 
 #ifndef CONFIG_DECSTATION
 #	include <asm/linux_logo_sgi.h>
@@ -40,4 +46,5 @@ extern unsigned char linux_logo16_green[];
 extern unsigned char linux_logo16_blue[];
 extern unsigned char linux_logo16[];
 
+#endif
 #endif

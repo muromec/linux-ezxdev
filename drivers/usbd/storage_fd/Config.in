@@ -1,0 +1,31 @@
+#
+# Generic Mass Storage Function Driver
+#
+# Copyright (C) 2001 Lineo, Inc.
+# Copyright (C) 2001 Hewlett-Packard Co.
+
+# Copyright (C) 2004- Motorola
+# 2004-Dec-06 - Modified for EZXBASE By Zhao Liang <w20146@motorola.com>
+
+mainmenu_option next_comment
+
+comment "Mass Storage Function"
+
+dep_tristate '  Mass Storage Function' CONFIG_USBD_STORAGE $CONFIG_USBD
+
+if [ "$CONFIG_USBD_STORAGE" = "y" -o "$CONFIG_USBD_STORAGE" = "m" ]; then
+
+    hex     'VendorID (hex value)' CONFIG_USBD_STORAGE_VENDORID "0x05f9"
+    hex     'ProductID (hex value)' CONFIG_USBD_STORAGE_PRODUCTID "0xffff"
+
+    int     'OUT Endpoint (0-15)' CONFIG_USBD_STORAGE_OUT_ENDPOINT "1"
+    int     'OUT PacketSize (16, 32, 64)' CONFIG_USBD_STORAGE_OUT_PKTSIZE "64"
+    int     'IN Endpoint (0-15)' CONFIG_USBD_STORAGE_IN_ENDPOINT "2"
+    int     'IN PacketSize (16, 32, 64)' CONFIG_USBD_STORAGE_IN_PKTSIZE "64"
+    
+    bool '  Support for iTunes Sideband' CONFIG_ITUNES_SIDEBAND
+
+fi
+
+endmenu
+

@@ -3,6 +3,7 @@
  *
  *  Copyright (C) 1991, 1992, 1995  Linus Torvalds
  *  Modifications for ARM (C) 1994, 1995, 1996,1997 Russell King
+ *  Copyright (C) 2004-2005 Motorola, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -15,6 +16,8 @@
  *              fixed set_rtc_mmss, fixed time.year for >= 2000, new mktime
  *  1998-12-20  Updated NTP code according to technical memorandum Jan '96
  *              "A Kernel Model for Precision Timekeeping" by Dave Mills
+ *  2005-12-27  Yin Kangkai (Kai) (kkyin@motorola.com)
+ *              Fixed do_set_rtc. 
  */
 #include <linux/config.h>
 #include <linux/module.h>
@@ -71,7 +74,7 @@ unsigned long (*gettimeoffset)(void) = dummy_gettimeoffset;
 /*
  * Handle kernel profile stuff...
  */
-static inline void do_profile(struct pt_regs *regs)
+inline void do_profile(struct pt_regs *regs)
 {
 	if (!user_mode(regs) &&
 	    prof_buffer &&
@@ -97,18 +100,43 @@ static long next_rtc_update;
  * CMOS clock accordingly every ~11 minutes.  set_rtc() has to be
  * called as close as possible to 500 ms before the new second
  * starts.
+ *
+ * Force sync of the RTC clock, and also in Bulverde, RCNR should 
+ * be set as close as possible to 0 ms but not 500 ms.
+ * 	--- Kai 
  */
+
 static inline void do_set_rtc(void)
 {
+	/*
+	 * I can't find any place where clears "STA_UNSYNC" bit,
+	 * and also EzX needs the sync of RTC and system time.
+	 */
+	/*
 	if (time_status & STA_UNSYNC || set_rtc == NULL)
+		return;
+	*/
+	if (unlikely(set_rtc == NULL))
 		return;
 
 	if (next_rtc_update &&
 	    time_before(xtime.tv_sec, next_rtc_update))
 		return;
 
+	/*
+	 * In Bulverde, we should update the RCNR as close as
+	 * possible to 0 ms, but not 500 ms.
+	 *
+	 * BTW, two bugs in below two lines: 
+	 * 1. 500 ms should be 500,000; (fixed in latest kernel)
+	 * 2. '&&' should be '||'. (not fix yet)
+	 */
+	/*
 	if (xtime.tv_usec < 50000 - (tick >> 1) &&
 	    xtime.tv_usec >= 50000 + (tick >> 1))
+		return;
+	*/
+	if (xtime.tv_usec > tick)
 		return;
 
 	if (set_rtc())
@@ -136,7 +164,7 @@ EXPORT_SYMBOL(leds_event);
 #endif
 
 #ifdef CONFIG_LEDS_TIMER
-static void do_leds(void)
+void do_leds(void)
 {
 	static unsigned int count = 50;
 
@@ -148,6 +176,15 @@ static void do_leds(void)
 #else
 #define do_leds()
 #endif
+
+static struct irqaction timer_irq = {
+	.name	= "timer",
+};
+
+/*
+ * Include architecture specific code
+ */
+#include <asm/arch/time.h>
 
 void do_gettimeofday(struct timeval *tv)
 {
@@ -176,6 +213,7 @@ void do_gettimeofday(struct timeval *tv)
 	tv->tv_usec = usec;
 }
 
+extern int power_ic_rtc_set_time(struct timeval *power_ic_time);
 void do_settimeofday(struct timeval *tv)
 {
 	write_lock_irq(&xtime_lock);
@@ -194,21 +232,14 @@ void do_settimeofday(struct timeval *tv)
 	}
 
 	xtime = *tv;
+        power_ic_rtc_set_time(tv);
+
 	time_adjust = 0;		/* stop active adjtime() */
 	time_status |= STA_UNSYNC;
 	time_maxerror = NTP_PHASE_LIMIT;
 	time_esterror = NTP_PHASE_LIMIT;
 	write_unlock_irq(&xtime_lock);
 }
-
-static struct irqaction timer_irq = {
-	name: "timer",
-};
-
-/*
- * Include architecture specific code
- */
-#include <asm/arch/time.h>
 
 /*
  * This must cause the timer to start ticking.

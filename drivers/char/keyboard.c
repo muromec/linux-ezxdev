@@ -108,7 +108,11 @@ static k_handfn
 static k_hand key_handler[16] = {
 	do_self, do_fn, do_spec, do_pad, do_dead, do_cons, do_cur, do_shift,
 	do_meta, do_ascii, do_lock, do_lowercase, do_slock, do_dead2,
+#if	!defined(CONFIG_SA1100_H3XXX)
 	do_ignore, do_ignore
+#else
+	do_dead2 /* XFree86 keysysms */, do_ignore
+#endif /* CONFIG_SA1100_H3XXX */
 };
 
 /* Key types processed even in raw modes */
@@ -137,7 +141,11 @@ const int max_vals[] = {
 	255, SIZE(func_table) - 1, SIZE(spec_fn_table) - 1, NR_PAD - 1,
 	NR_DEAD - 1, 255, 3, NR_SHIFT - 1,
 	255, NR_ASCII - 1, NR_LOCK - 1, 255,
+#if	!defined(CONFIG_SA1100_H3XXX)
 	NR_LOCK - 1, 255
+#else
+	NR_LOCK - 1, 255, 255
+#endif /* CONFIG_SA1100_H3XXX */
 };
 
 const int NR_TYPES = SIZE(max_vals);
@@ -246,6 +254,9 @@ void handle_scancode(unsigned char scancode, int down)
 	} else if (sysrq_pressed) {
 		if (!up_flag) {
 			handle_sysrq(kbd_sysrq_xlate[keycode], kbd_pt_regs, kbd, tty);
+#ifdef CONFIG_KGDB_SYSRQ
+                        sysrq_pressed = 0; /* in case we miss the "up" event */
+#endif
 			goto out;
 		}
 	}

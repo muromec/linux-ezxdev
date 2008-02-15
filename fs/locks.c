@@ -2,6 +2,7 @@
 /*
  *  linux/fs/locks.c
  *
+ *
  *  Provide support for fcntl()'s F_GETLK, F_SETLK, and F_SETLKW calls.
  *  Doug Evans (dje@spiff.uucp), August 07, 1992
  *
@@ -113,6 +114,8 @@
  *  Leases and LOCK_MAND
  *  Matthew Wilcox <willy@linuxcare.com>, June, 2000.
  *  Stephen Rothwell <sfr@canb.auug.org.au>, June, 2000.
+ *  
+ *  2005-Apr-04 Motorola  Add security patch 
  */
 
 #include <linux/slab.h>
@@ -122,6 +125,7 @@
 #include <linux/capability.h>
 #include <linux/sched.h>
 #include <linux/timer.h>
+#include <linux/security.h>
 
 #include <asm/semaphore.h>
 #include <asm/uaccess.h>
@@ -1275,6 +1279,9 @@ int fcntl_setlease(unsigned int fd, struct file *filp, long arg)
 		return -EACCES;
 	if (!S_ISREG(inode->i_mode))
 		return -EINVAL;
+	error = security_file_lock(filp, arg);
+	if (error)
+		return error;
 
 	lock_kernel();
 
@@ -1342,6 +1349,11 @@ int fcntl_setlease(unsigned int fd, struct file *filp, long arg)
 	fl->fl_next = *before;
 	*before = fl;
 	list_add(&fl->fl_link, &file_lock_list);
+
+	error = security_file_set_fowner(filp);
+	if (error)
+		goto out_unlock;
+
 	filp->f_owner.pid = current->pid;
 	filp->f_owner.uid = current->uid;
 	filp->f_owner.euid = current->euid;
@@ -1392,6 +1404,10 @@ asmlinkage long sys_flock(unsigned int fd, unsigned int cmd)
 		&& !(filp->f_mode & 3))
 		goto out_putf;
 
+	error = security_file_lock(filp, type);
+	if (error)
+		goto out_putf;
+
 	lock_kernel();
 	error = flock_lock_file(filp, type,
 				(cmd & (LOCK_UN | LOCK_NB)) ? 0 : 1);
@@ -1406,9 +1422,8 @@ out:
 /* Report the first existing lock that would conflict with l.
  * This implements the F_GETLK command of fcntl().
  */
-int fcntl_getlk(unsigned int fd, struct flock *l)
+int fcntl_getlk(struct file *filp, struct flock *l)
 {
-	struct file *filp;
 	struct file_lock *fl, file_lock;
 	struct flock flock;
 	int error;
@@ -1420,19 +1435,14 @@ int fcntl_getlk(unsigned int fd, struct flock *l)
 	if ((flock.l_type != F_RDLCK) && (flock.l_type != F_WRLCK))
 		goto out;
 
-	error = -EBADF;
-	filp = fget(fd);
-	if (!filp)
-		goto out;
-
 	error = flock_to_posix_lock(filp, &file_lock, &flock);
 	if (error)
-		goto out_putf;
+		goto out;
 
 	if (filp->f_op && filp->f_op->lock) {
 		error = filp->f_op->lock(filp, F_GETLK, &file_lock);
 		if (error < 0)
-			goto out_putf;
+			goto out;
 		else if (error == LOCK_USE_CLNT)
 		  /* Bypass for NFS with no locking - 2.0.36 compat */
 		  fl = posix_test_lock(filp, &file_lock);
@@ -1452,10 +1462,10 @@ int fcntl_getlk(unsigned int fd, struct flock *l)
 		 */
 		error = -EOVERFLOW;
 		if (fl->fl_start > OFFT_OFFSET_MAX)
-			goto out_putf;
+			goto out;
 		if ((fl->fl_end != OFFSET_MAX)
 		    && (fl->fl_end > OFFT_OFFSET_MAX))
-			goto out_putf;
+			goto out;
 #endif
 		flock.l_start = fl->fl_start;
 		flock.l_len = fl->fl_end == OFFSET_MAX ? 0 :
@@ -1467,8 +1477,6 @@ int fcntl_getlk(unsigned int fd, struct flock *l)
 	if (!copy_to_user(l, &flock, sizeof(flock)))
 		error = 0;
   
-out_putf:
-	fput(filp);
 out:
 	return error;
 }
@@ -1476,12 +1484,11 @@ out:
 /* Apply the lock described by l to an open file descriptor.
  * This implements both the F_SETLK and F_SETLKW commands of fcntl().
  */
-int fcntl_setlk(unsigned int fd, unsigned int cmd, struct flock *l)
+int fcntl_setlk(struct file *filp, unsigned int cmd, struct flock *l)
 {
-	struct file *filp;
 	struct file_lock *file_lock = locks_alloc_lock(0);
 	struct flock flock;
-	struct inode *inode;
+	struct inode *inode = filp->f_dentry->d_inode;
 	int error;
 
 	if (file_lock == NULL)
@@ -1494,17 +1501,6 @@ int fcntl_setlk(unsigned int fd, unsigned int cmd, struct flock *l)
 	if (copy_from_user(&flock, l, sizeof(flock)))
 		goto out;
 
-	/* Get arguments and validate them ...
-	 */
-
-	error = -EBADF;
-	filp = fget(fd);
-	if (!filp)
-		goto out;
-
-	error = -EINVAL;
-	inode = filp->f_dentry->d_inode;
-
 	/* Don't allow mandatory locks on files that may be memory mapped
 	 * and shared.
 	 */
@@ -1514,23 +1510,25 @@ int fcntl_setlk(unsigned int fd, unsigned int cmd, struct flock *l)
 
 		if (mapping->i_mmap_shared != NULL) {
 			error = -EAGAIN;
-			goto out_putf;
+			goto out;
 		}
 	}
 
+	/* Get arguments and validate them ...
+	 */
 	error = flock_to_posix_lock(filp, file_lock, &flock);
 	if (error)
-		goto out_putf;
+		goto out;
 	
 	error = -EBADF;
 	switch (flock.l_type) {
 	case F_RDLCK:
 		if (!(filp->f_mode & FMODE_READ))
-			goto out_putf;
+			goto out;
 		break;
 	case F_WRLCK:
 		if (!(filp->f_mode & FMODE_WRITE))
-			goto out_putf;
+			goto out;
 		break;
 	case F_UNLCK:
 		break;
@@ -1548,23 +1546,25 @@ int fcntl_setlk(unsigned int fd, unsigned int cmd, struct flock *l)
 	}
 }
 		if (!(filp->f_mode & 3))
-			goto out_putf;
+			goto out;
 		break;
 #endif
 	default:
 		error = -EINVAL;
-		goto out_putf;
+		goto out;
 	}
+
+	error = security_file_lock(filp, file_lock->fl_type);
+	if (error)
+		goto out;
 
 	if (filp->f_op && filp->f_op->lock != NULL) {
 		error = filp->f_op->lock(filp, cmd, file_lock);
 		if (error < 0)
-			goto out_putf;
+			goto out;
 	}
 	error = posix_lock_file(filp, file_lock, cmd == F_SETLKW);
 
-out_putf:
-	fput(filp);
 out:
 	locks_free_lock(file_lock);
 	return error;
@@ -1574,9 +1574,8 @@ out:
 /* Report the first existing lock that would conflict with l.
  * This implements the F_GETLK command of fcntl().
  */
-int fcntl_getlk64(unsigned int fd, struct flock64 *l)
+int fcntl_getlk64(struct file *filp, struct flock64 *l)
 {
-	struct file *filp;
 	struct file_lock *fl, file_lock;
 	struct flock64 flock;
 	int error;
@@ -1588,19 +1587,15 @@ int fcntl_getlk64(unsigned int fd, struct flock64 *l)
 	if ((flock.l_type != F_RDLCK) && (flock.l_type != F_WRLCK))
 		goto out;
 
-	error = -EBADF;
-	filp = fget(fd);
-	if (!filp)
-		goto out;
 
 	error = flock64_to_posix_lock(filp, &file_lock, &flock);
 	if (error)
-		goto out_putf;
+		goto out;
 
 	if (filp->f_op && filp->f_op->lock) {
 		error = filp->f_op->lock(filp, F_GETLK, &file_lock);
 		if (error < 0)
-			goto out_putf;
+			goto out;
 		else if (error == LOCK_USE_CLNT)
 		  /* Bypass for NFS with no locking - 2.0.36 compat */
 		  fl = posix_test_lock(filp, &file_lock);
@@ -1623,8 +1618,6 @@ int fcntl_getlk64(unsigned int fd, struct flock64 *l)
 	if (!copy_to_user(l, &flock, sizeof(flock)))
 		error = 0;
   
-out_putf:
-	fput(filp);
 out:
 	return error;
 }
@@ -1632,12 +1625,11 @@ out:
 /* Apply the lock described by l to an open file descriptor.
  * This implements both the F_SETLK and F_SETLKW commands of fcntl().
  */
-int fcntl_setlk64(unsigned int fd, unsigned int cmd, struct flock64 *l)
+int fcntl_setlk64(struct file *filp, unsigned int cmd, struct flock64 *l)
 {
-	struct file *filp;
 	struct file_lock *file_lock = locks_alloc_lock(0);
 	struct flock64 flock;
-	struct inode *inode;
+	struct inode *inode = filp->f_dentry->d_inode;
 	int error;
 
 	if (file_lock == NULL)
@@ -1650,16 +1642,6 @@ int fcntl_setlk64(unsigned int fd, unsigned int cmd, struct flock64 *l)
 	if (copy_from_user(&flock, l, sizeof(flock)))
 		goto out;
 
-	/* Get arguments and validate them ...
-	 */
-
-	error = -EBADF;
-	filp = fget(fd);
-	if (!filp)
-		goto out;
-
-	error = -EINVAL;
-	inode = filp->f_dentry->d_inode;
 
 	/* Don't allow mandatory locks on files that may be memory mapped
 	 * and shared.
@@ -1670,23 +1652,25 @@ int fcntl_setlk64(unsigned int fd, unsigned int cmd, struct flock64 *l)
 
 		if (mapping->i_mmap_shared != NULL) {
 			error = -EAGAIN;
-			goto out_putf;
+			goto out;
 		}
 	}
 
+	/* Get arguments and validate them ...
+	 */
 	error = flock64_to_posix_lock(filp, file_lock, &flock);
 	if (error)
-		goto out_putf;
+		goto out;
 	
 	error = -EBADF;
 	switch (flock.l_type) {
 	case F_RDLCK:
 		if (!(filp->f_mode & FMODE_READ))
-			goto out_putf;
+			goto out;
 		break;
 	case F_WRLCK:
 		if (!(filp->f_mode & FMODE_WRITE))
-			goto out_putf;
+			goto out;
 		break;
 	case F_UNLCK:
 		break;
@@ -1694,18 +1678,20 @@ int fcntl_setlk64(unsigned int fd, unsigned int cmd, struct flock64 *l)
 	case F_EXLCK:
 	default:
 		error = -EINVAL;
-		goto out_putf;
+		goto out;
 	}
+
+	error = security_file_lock(filp, file_lock->fl_type);
+	if (error)
+		goto out;
 
 	if (filp->f_op && filp->f_op->lock != NULL) {
 		error = filp->f_op->lock(filp, cmd, file_lock);
 		if (error < 0)
-			goto out_putf;
+			goto out;
 	}
 	error = posix_lock_file(filp, file_lock, cmd == F_SETLKW64);
 
-out_putf:
-	fput(filp);
 out:
 	locks_free_lock(file_lock);
 	return error;

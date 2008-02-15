@@ -10,6 +10,11 @@
  *
  */
 
+#if defined(CONFIG_CPU_SUBTYPE_SH7300)
+#include <asm/irq-sh7300.h>
+#elif defined(CONFIG_CPU_SUBTYPE_SH73180)
+#include <asm/irq-sh73180.h>
+#else
 #include <linux/config.h>
 #include <asm/machvec.h>
 #include <asm/ptrace.h>		/* for pt_regs */
@@ -17,6 +22,18 @@
 #if defined(__sh3__)
 #define INTC_IPRA  	0xfffffee2UL
 #define INTC_IPRB  	0xfffffee4UL
+#elif defined(CONFIG_CPU_SUBTYPE_SH73180)
+#define INTC_IPRA       0xA4080000UL
+#define INTC_IPRB       0xA4080004UL
+#define INTC_IPRC       0xA4080008UL
+#define INTC_IPRD       0xA408000CUL
+#define INTC_IPRE       0xA4080010UL
+#define INTC_IPRF       0xA4080014UL
+#define INTC_IPRG       0xA4080018UL
+#define INTC_IPRH       0xA408001CUL
+#define INTC_IPRI       0xA4080020UL
+#define INTC_IPRJ       0xA4080024UL
+#define INTC_IPRK       0xA4080028UL
 #elif defined(__SH4__)
 #define INTC_IPRA	0xffd00004UL
 #define INTC_IPRB	0xffd00008UL
@@ -97,6 +114,14 @@
 #define SCIF1_IPR_POS	1
 #define SCIF1_PRIORITY	3
 #endif
+#elif defined(CONFIG_CPU_SUBTYPE_SH73180)
+#define SCIF_ERI_IRQ	80
+#define SCIF_RXI_IRQ	81
+#define SCIF_BRI_IRQ	82
+#define SCIF_TXI_IRQ	83
+#define SCIF_IPR_ADDR	INTC_IPRG
+#define SCIF_IPR_POS	3
+#define SCIF_PRIORITY	3
 #endif
 
 /* NR_IRQS is made from three components:
@@ -123,6 +148,8 @@
 #  define ONCHIP_NR_IRQS 72
 # elif defined(CONFIG_CPU_SUBTYPE_ST40STB1)
 #  define ONCHIP_NR_IRQS 144
+# elif defined(CONFIG_CPU_SUBTYPE_SH73180)
+#  define ONCHIP_NR_IRQS 108
 # endif
 #endif
 
@@ -331,12 +358,22 @@ extern int cat68701_irq_demux(int irq);
 extern int systemasic_irq_demux(int irq);
 #define irq_demux systemasic_irq_demux
 
+#elif defined(CONFIG_SH_7751_SOLUTION_ENGINE)
+
+extern int se51_irq_demux(int irq);
+#define irq_demux se51_irq_demux
+
+#elif defined(CONFIG_SH_MOBILE_SOLUTION_ENGINE)
+
+extern int shmse_irq_demux(int irq);
+#define irq_demux shmse_irq_demux
+
 #else
 
 #define irq_demux(irq) __irq_demux(irq)
 
 #endif
 
-
+#endif /* !CONFIG_CPU_SUBTYPE_SH7300 */
 
 #endif /* __ASM_SH_IRQ_H */

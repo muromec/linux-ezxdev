@@ -1,5 +1,5 @@
 /*
- * linux/drivers/ide/alim15x3.c		Version 0.10	Jun. 9, 2000
+ * linux/drivers/ide/alim15x3.c		Version 0.11	Jun. 9, 2000
  *
  *  Copyright (C) 1998-2000 Michel Aubry, Maintainer
  *  Copyright (C) 1998-2000 Andrzej Krzysztofowicz, Maintainer
@@ -13,6 +13,12 @@
  **********************************************************************
  *  9/7/99 --Parts from the above author are included and need to be
  *  converted into standard interface, once I finish the thought.
+ *
+ *  History
+ *  v0.11
+ *      Mar 4 2002 Sen Dong <sen_dong@ali.com.tw>
+ *      Fix bug: UDMA mode 5 will not be enabled while initializing.
+ *      Change function of config_chipset_for_dma.
  */
 
 #include <linux/config.h>
@@ -405,7 +411,7 @@ static int config_chipset_for_dma (ide_drive_t *drive, byte ultra33)
 	if (!drive->init_speed)
 		drive->init_speed = speed;
 
-	rval = (int)(	((id->dma_ultra >> 11) & 3) ? ide_dma_on :
+	rval = (int)(	((id->dma_ultra >> 11) & 7) ? ide_dma_on :
 			((id->dma_ultra >> 8) & 7) ? ide_dma_on :
 			((id->dma_mword >> 8) & 7) ? ide_dma_on :
 			((id->dma_1word >> 8) & 7) ? ide_dma_on :
@@ -680,6 +686,7 @@ void __init ide_init_ali15x3 (ide_hwif_t *hwif)
 	hwif->drives[1].autotune = 1;
 	hwif->speedproc = &ali15x3_tune_chipset;
 
+#ifndef CONFIG_POWERK2
 #ifdef CONFIG_BLK_DEV_IDEDMA
 	if ((hwif->dma_base) && (m5229_revision >= 0x20)) {
 		/*
@@ -694,6 +701,11 @@ void __init ide_init_ali15x3 (ide_hwif_t *hwif)
 #else
 	hwif->autodma = 0;
 #endif /* CONFIG_BLK_DEV_IDEDMA */
+#else
+	/* The microdrive on the interposer card of the PowerK2 is not
+	   properly wired for DMA, so never do it */
+	hwif->autodma = 0;
+#endif /* CONFIG_POWERK2 */
 }
 
 void __init ide_dmacapable_ali15x3 (ide_hwif_t *hwif, unsigned long dmabase)

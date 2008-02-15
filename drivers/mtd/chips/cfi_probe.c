@@ -1,19 +1,26 @@
 /* 
-   Common Flash Interface probe code.
-   (C) 2000 Red Hat. GPL'd.
-   $Id: cfi_probe.c,v 1.66 2001/10/02 15:05:12 dwmw2 Exp $
-*/
+ *  Common Flash Interface probe code.
+ *  (C) 2000 Red Hat. GPL'd.
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ *  $Id: cfi_probe.c,v 1.77 2004/07/14 08:38:44 dwmw2 Exp $
+ *
+ *  01/15/2005  Susan Gu <w15879@motorola.com>
+ *       - Modified for EzX and pm support 
+ */
 
 #include <linux/config.h>
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
+#include <linux/init.h>
 #include <asm/io.h>
 #include <asm/byteorder.h>
 #include <linux/errno.h>
 #include <linux/slab.h>
 #include <linux/interrupt.h>
 
+#include <linux/mtd/xip.h>
 #include <linux/mtd/map.h>
 #include <linux/mtd/cfi.h>
 #include <linux/mtd/gen_probe.h>
@@ -24,62 +31,155 @@
 static void print_cfi_ident(struct cfi_ident *);
 #endif
 
-int cfi_jedec_setup(struct cfi_private *p_cfi, int index);
-int cfi_jedec_lookup(int index, int mfr_id, int dev_id);
+#ifdef CONFIG_PM
+extern struct pm_flash_s pm_flash;
+#endif
 
 static int cfi_probe_chip(struct map_info *map, __u32 base,
-			  struct flchip *chips, struct cfi_private *cfi);
+			  unsigned long *chip_map, struct cfi_private *cfi);
 static int cfi_chip_setup(struct map_info *map, struct cfi_private *cfi);
 
 struct mtd_info *cfi_probe(struct map_info *map);
 
-/* check for QRY, or search for jedec id.
+#ifdef CONFIG_MTD_XIP
+
+/* only needed for short periods, so this is rather simple */
+#define xip_disable()	local_irq_disable()
+
+#define xip_allowed(base, map) \
+do { \
+	(void) map_read(map, base); \
+	asm volatile (".rep 8; nop; .endr"); \
+	local_irq_enable(); \
+} while (0)
+
+#define xip_enable(base, map, cfi) \
+do { \
+	cfi_send_gen_cmd(0xF0, 0, base, map, cfi, cfi->device_type, NULL); \
+	cfi_send_gen_cmd(0xFF, 0, base, map, cfi, cfi->device_type, NULL); \
+	xip_allowed(base, map); \
+} while (0)
+
+#define xip_disable_qry(base, map, cfi) \
+do { \
+	xip_disable(); \
+	cfi_send_gen_cmd(0xF0, 0, base, map, cfi, cfi->device_type, NULL); \
+	cfi_send_gen_cmd(0xFF, 0, base, map, cfi, cfi->device_type, NULL); \
+	cfi_send_gen_cmd(0x98, 0x55, base, map, cfi, cfi->device_type, NULL); \
+} while (0)
+
+#else
+
+#define xip_disable()			do { } while (0)
+#define xip_allowed(base, map)		do { } while (0)
+#define xip_enable(base, map, cfi)	do { } while (0)
+#define xip_disable_qry(base, map, cfi) do { } while (0)
+
+#endif
+
+/* check for QRY.
    in: interleave,type,mode
    ret: table index, <0 for error
  */
-static inline int qry_present(struct map_info *map, __u32 base,
+static int __xipram qry_present(struct map_info *map, __u32 base,
 				struct cfi_private *cfi)
 {
 	int osf = cfi->interleave * cfi->device_type;	// scale factor
+	map_word val;
+	map_word qry;
 
-	if (cfi_read(map,base+osf*0x10)==cfi_build_cmd('Q',map,cfi) &&
-	    cfi_read(map,base+osf*0x11)==cfi_build_cmd('R',map,cfi) &&
-	    cfi_read(map,base+osf*0x12)==cfi_build_cmd('Y',map,cfi))
-		return 1;	// ok !
+	qry =  cfi_build_cmd('Q', map, cfi);
+	val = map_read(map, base + osf*0x10);
 
-	return 0; 	// nothing found
+	if (!map_word_equal(map, qry, val))
+		return 0;
+
+	qry =  cfi_build_cmd('R', map, cfi);
+	val = map_read(map, base + osf*0x11);
+
+	if (!map_word_equal(map, qry, val))
+		return 0;
+
+	qry =  cfi_build_cmd('Y', map, cfi);
+	val = map_read(map, base + osf*0x12);
+
+	if (!map_word_equal(map, qry, val))
+		return 0;
+
+	return 1; 	// nothing found
 }
 
-static int cfi_probe_chip(struct map_info *map, __u32 base,
-			  struct flchip *chips, struct cfi_private *cfi)
+static int __xipram cfi_probe_chip(struct map_info *map, __u32 base,
+				   unsigned long *chip_map, struct cfi_private *cfi)
 {
 	int i;
 	
+	if ((base + 0) >= map->size) {
+		printk(KERN_NOTICE
+			"Probe at base[0x00](0x%08lx) past the end of the map(0x%08lx)\n",
+			(unsigned long)base, map->size -1);
+		return 0;
+	}
+	if ((base + 0xff) >= map->size) {
+		printk(KERN_NOTICE
+			"Probe at base[0x55](0x%08lx) past the end of the map(0x%08lx)\n",
+			(unsigned long)base + 0x55, map->size -1);
+		return 0;
+	}
+
+#ifdef CONFIG_PM
+	atomic_inc(&(pm_flash.pm_flash_count));
+#endif
+
+	xip_disable();
 	cfi_send_gen_cmd(0xF0, 0, base, map, cfi, cfi->device_type, NULL);
+	cfi_send_gen_cmd(0xFF, 0, base, map, cfi, cfi->device_type, NULL);
 	cfi_send_gen_cmd(0x98, 0x55, base, map, cfi, cfi->device_type, NULL);
 
-	if (!qry_present(map,base,cfi))
+	if (!qry_present(map,base,cfi)) {
+		xip_enable(base, map, cfi);		
+		#ifdef CONFIG_PM
+			atomic_dec(&(pm_flash.pm_flash_count));
+		#endif		
 		return 0;
+	}
 
 	if (!cfi->numchips) {
 		/* This is the first time we're called. Set up the CFI 
 		   stuff accordingly and return */
-		return cfi_chip_setup(map, cfi);
+		int ret = 0;
+		ret = cfi_chip_setup(map, cfi);
+		#ifdef CONFIG_PM
+			atomic_dec(&(pm_flash.pm_flash_count));
+		#endif				
+		return ret;
 	}
 
 	/* Check each previous chip to see if it's an alias */
-	for (i=0; i<cfi->numchips; i++) {
+ 	for (i=0; i < (base >> cfi->chipshift); i++) {
+ 		unsigned long start;
+ 		if(!test_bit(i, chip_map)) {
+			/* Skip location; no valid chip at this address */
+ 			continue; 
+ 		}
+ 		start = i << cfi->chipshift;
 		/* This chip should be in read mode if it's one
 		   we've already touched. */
-		if (qry_present(map,chips[i].start,cfi)) {
+		if (qry_present(map, start, cfi)) {
 			/* Eep. This chip also had the QRY marker. 
 			 * Is it an alias for the new one? */
-			cfi_send_gen_cmd(0xF0, 0, chips[i].start, map, cfi, cfi->device_type, NULL);
+			cfi_send_gen_cmd(0xF0, 0, start, map, cfi, cfi->device_type, NULL);
+			cfi_send_gen_cmd(0xFF, 0, start, map, cfi, cfi->device_type, NULL);
 
 			/* If the QRY marker goes away, it's an alias */
-			if (!qry_present(map, chips[i].start, cfi)) {
+			if (!qry_present(map, start, cfi)) {
+				xip_allowed(base, map);
 				printk(KERN_DEBUG "%s: Found an alias at 0x%x for the chip at 0x%lx\n",
-				       map->name, base, chips[i].start);
+				       map->name, base, start);
+				       
+				#ifdef CONFIG_PM
+					atomic_dec(&(pm_flash.pm_flash_count));
+				#endif		
 				return 0;
 			}
 			/* Yes, it's actually got QRY for data. Most 
@@ -87,10 +187,15 @@ static int cfi_probe_chip(struct map_info *map, __u32 base,
 			 * too and if it's the same, assume it's an alias. */
 			/* FIXME: Use other modes to do a proper check */
 			cfi_send_gen_cmd(0xF0, 0, base, map, cfi, cfi->device_type, NULL);
+			cfi_send_gen_cmd(0xFF, 0, start, map, cfi, cfi->device_type, NULL);
 			
 			if (qry_present(map, base, cfi)) {
+				xip_allowed(base, map);
 				printk(KERN_DEBUG "%s: Found an alias at 0x%x for the chip at 0x%lx\n",
-				       map->name, base, chips[i].start);
+				       map->name, base, start);
+				#ifdef CONFIG_PM
+					atomic_dec(&(pm_flash.pm_flash_count));
+				#endif		
 				return 0;
 			}
 		}
@@ -98,33 +203,34 @@ static int cfi_probe_chip(struct map_info *map, __u32 base,
 	
 	/* OK, if we got to here, then none of the previous chips appear to
 	   be aliases for the current one. */
-	if (cfi->numchips == MAX_CFI_CHIPS) {
-		printk(KERN_WARNING"%s: Too many flash chips detected. Increase MAX_CFI_CHIPS from %d.\n", map->name, MAX_CFI_CHIPS);
-		/* Doesn't matter about resetting it to Read Mode - we're not going to talk to it anyway */
-		return -1;
-	}
-	chips[cfi->numchips].start = base;
-	chips[cfi->numchips].state = FL_READY;
+	set_bit((base >> cfi->chipshift), chip_map); /* Update chip map */
 	cfi->numchips++;
 	
 	/* Put it back into Read Mode */
 	cfi_send_gen_cmd(0xF0, 0, base, map, cfi, cfi->device_type, NULL);
+	cfi_send_gen_cmd(0xFF, 0, base, map, cfi, cfi->device_type, NULL);
+	xip_allowed(base, map);
 
-	printk(KERN_INFO "%s: Found %d x%d devices at 0x%x in %d-bit mode\n",
+	printk(KERN_INFO "%s: Found %d x%d devices at 0x%x in %d-bit bank\n",
 	       map->name, cfi->interleave, cfi->device_type*8, base,
-	       map->buswidth*8);
+	       map->bankwidth*8);
+	       
+	#ifdef CONFIG_PM
+		atomic_dec(&(pm_flash.pm_flash_count));
+	#endif		
 	
 	return 1;
 }
 
-static int cfi_chip_setup(struct map_info *map, 
-		   struct cfi_private *cfi)
+static int __xipram cfi_chip_setup(struct map_info *map, 
+				   struct cfi_private *cfi)
 {
 	int ofs_factor = cfi->interleave*cfi->device_type;
 	__u32 base = 0;
 	int num_erase_regions = cfi_read_query(map, base + (0x10 + 28)*ofs_factor);
 	int i;
 
+	xip_enable(base, map, cfi);
 #ifdef DEBUG_CFI
 	printk("Number of erase regions: %d\n", num_erase_regions);
 #endif
@@ -139,14 +245,33 @@ static int cfi_chip_setup(struct map_info *map,
 	
 	memset(cfi->cfiq,0,sizeof(struct cfi_ident));	
 	
-	cfi->cfi_mode = 1;
-	cfi->fast_prog=1;		/* CFI supports fast programming */
+	cfi->cfi_mode = CFI_MODE_CFI;
 	
 	/* Read the CFI info structure */
-	for (i=0; i<(sizeof(struct cfi_ident) + num_erase_regions * 4); i++) {
+	xip_disable_qry(base, map, cfi);
+	for (i=0; i<(sizeof(struct cfi_ident) + num_erase_regions * 4); i++)
 		((unsigned char *)cfi->cfiq)[i] = cfi_read_query(map,base + (0x10 + i)*ofs_factor);
-	}
-	
+
+	/* Note we put the device back into Read Mode BEFORE going into Auto
+	 * Select Mode, as some devices support nesting of modes, others
+	 * don't. This way should always work.
+	 * On cmdset 0001 the writes of 0xaa and 0x55 are not needed, and
+	 * so should be treated as nops or illegal (and so put the device
+	 * back into Read Mode, which is a nop in this case).
+	 */
+	cfi_send_gen_cmd(0xf0,     0, base, map, cfi, cfi->device_type, NULL);
+	cfi_send_gen_cmd(0xaa, 0x555, base, map, cfi, cfi->device_type, NULL);
+	cfi_send_gen_cmd(0x55, 0x2aa, base, map, cfi, cfi->device_type, NULL);
+	cfi_send_gen_cmd(0x90, 0x555, base, map, cfi, cfi->device_type, NULL);
+	cfi->mfr = cfi_read_query(map, base);
+	cfi->id = cfi_read_query(map, base + ofs_factor);    
+
+	/* Put it back into Read Mode */
+	cfi_send_gen_cmd(0xF0, 0, base, map, cfi, cfi->device_type, NULL);
+	/* ... even if it's an Intel chip */
+	cfi_send_gen_cmd(0xFF, 0, base, map, cfi, cfi->device_type, NULL);
+	xip_allowed(base, map);
+
 	/* Do any necessary byteswapping */
 	cfi->cfiq->P_ID = le16_to_cpu(cfi->cfiq->P_ID);
 	
@@ -170,8 +295,10 @@ static int cfi_chip_setup(struct map_info *map,
 		       (cfi->cfiq->EraseRegionInfo[i] & 0xffff) + 1);
 #endif
 	}
-	/* Put it back into Read Mode */
-	cfi_send_gen_cmd(0xF0, 0, base, map, cfi, cfi->device_type, NULL);
+
+	printk(KERN_INFO "%s: Found %d x%d devices at 0x%x in %d-bit bank\n",
+	       map->name, cfi->interleave, cfi->device_type*8, base,
+	       map->bankwidth*8);
 
 	return 1;
 }
@@ -231,11 +358,11 @@ static void print_cfi_ident(struct cfi_ident *cfip)
 		printk("No Alternate Algorithm Table\n");
 		
 		
-	printk("Vcc Minimum: %x.%x V\n", cfip->VccMin >> 4, cfip->VccMin & 0xf);
-	printk("Vcc Maximum: %x.%x V\n", cfip->VccMax >> 4, cfip->VccMax & 0xf);
+	printk("Vcc Minimum: %2d.%d V\n", cfip->VccMin >> 4, cfip->VccMin & 0xf);
+	printk("Vcc Maximum: %2d.%d V\n", cfip->VccMax >> 4, cfip->VccMax & 0xf);
 	if (cfip->VppMin) {
-		printk("Vpp Minimum: %x.%x V\n", cfip->VppMin >> 4, cfip->VppMin & 0xf);
-		printk("Vpp Maximum: %x.%x V\n", cfip->VppMax >> 4, cfip->VppMax & 0xf);
+		printk("Vpp Minimum: %2d.%d V\n", cfip->VppMin >> 4, cfip->VppMin & 0xf);
+		printk("Vpp Maximum: %2d.%d V\n", cfip->VppMax >> 4, cfip->VppMax & 0xf);
 	}
 	else
 		printk("No Vpp line\n");
@@ -250,11 +377,11 @@ static void print_cfi_ident(struct cfi_ident *cfip)
 	else
 		printk("Full buffer write not supported\n");
 	
-	printk("Typical block erase timeout: %d 탎\n", 1<<cfip->BlockEraseTimeoutTyp);
-	printk("Maximum block erase timeout: %d 탎\n", (1<<cfip->BlockEraseTimeoutMax) * (1<<cfip->BlockEraseTimeoutTyp));
+	printk("Typical block erase timeout: %d ms\n", 1<<cfip->BlockEraseTimeoutTyp);
+	printk("Maximum block erase timeout: %d ms\n", (1<<cfip->BlockEraseTimeoutMax) * (1<<cfip->BlockEraseTimeoutTyp));
 	if (cfip->ChipEraseTimeoutTyp || cfip->ChipEraseTimeoutMax) {
-		printk("Typical chip erase timeout: %d 탎\n", 1<<cfip->ChipEraseTimeoutTyp); 
-		printk("Maximum chip erase timeout: %d 탎\n", (1<<cfip->ChipEraseTimeoutMax) * (1<<cfip->ChipEraseTimeoutTyp));
+		printk("Typical chip erase timeout: %d ms\n", 1<<cfip->ChipEraseTimeoutTyp); 
+		printk("Maximum chip erase timeout: %d ms\n", (1<<cfip->ChipEraseTimeoutMax) * (1<<cfip->ChipEraseTimeoutTyp));
 	}
 	else
 		printk("Chip erase not supported\n");
@@ -294,8 +421,8 @@ static void print_cfi_ident(struct cfi_ident *cfip)
 #endif /* DEBUG_CFI */
 
 static struct chip_probe cfi_chip_probe = {
-	name: "CFI",
-	probe_chip: cfi_probe_chip
+	.name		= "CFI",
+	.probe_chip	= cfi_probe_chip
 };
 
 struct mtd_info *cfi_probe(struct map_info *map)
@@ -308,9 +435,9 @@ struct mtd_info *cfi_probe(struct map_info *map)
 }
 
 static struct mtd_chip_driver cfi_chipdrv = {
-	probe: cfi_probe,
-	name: "cfi_probe",
-	module: THIS_MODULE
+	.probe		= cfi_probe,
+	.name		= "cfi_probe",
+	.module		= THIS_MODULE
 };
 
 int __init cfi_probe_init(void)
@@ -330,3 +457,4 @@ module_exit(cfi_probe_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("David Woodhouse <dwmw2@infradead.org> et al.");
 MODULE_DESCRIPTION("Probe code for CFI-compliant flash chips");
+

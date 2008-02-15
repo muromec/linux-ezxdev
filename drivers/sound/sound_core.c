@@ -33,6 +33,11 @@
  *	FIXME: we have to resolve modules and fine grained load/unload
  *	locking at some point in 2.3.x.
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by w20076, for EZX platform
+ */
 
 #include <linux/config.h>
 #include <linux/module.h>
@@ -203,7 +208,7 @@ static void sound_remove_unit(struct sound_unit **list, int unit)
  *	1	*8		Sequencers
  *	2	*16		Midi
  *	3	*16		DSP
- *	4	*16		SunDSP
+ *	4	*16		SunDSP / audio
  *	5	*16		DSP16
  *	6	--		sndstat (obsolete)
  *	7	*16		unused
@@ -250,13 +255,13 @@ int register_sound_special(struct file_operations *fops, int unit)
 		name = "audio";
 		break;
 	    case 5:
-		name = "unknown5";
+		name = "dsp16";
 		break;
 	    case 6:		/* Was once sndstat */
-		name = "unknown6";
+		name = "phone";
 		break;
 	    case 7:
-		name = "unknown7";
+		name = "fmradio";
 		break;
 	    case 8:
 		name = "sequencer2";
@@ -348,8 +353,40 @@ int register_sound_dsp(struct file_operations *fops, int dev)
 	return sound_insert_unit(&chains[3], fops, dev, 3, 131,
 				 "dsp", S_IWUSR | S_IRUSR);
 }
-
 EXPORT_SYMBOL(register_sound_dsp);
+
+
+int register_sound_audio(struct file_operations *fops, int dev)
+{
+	return sound_insert_unit(&chains[4], fops, dev, 4, 132,
+				 "audio", S_IWUSR | S_IRUSR);
+}
+EXPORT_SYMBOL(register_sound_audio);
+
+
+int register_sound_dsp16(struct file_operations *fops, int dev)
+{
+	return sound_insert_unit(&chains[5], fops, dev, 5, 133,
+				 "dsp16", S_IWUSR | S_IRUSR);
+}
+EXPORT_SYMBOL(register_sound_dsp16);
+
+
+int register_sound_phone(struct file_operations *fops, int dev)
+{
+	return sound_insert_unit(&chains[6], fops, dev, 6, 134,
+				 "phone", S_IRUSR);
+}
+EXPORT_SYMBOL(register_sound_phone);
+
+
+int register_sound_fm(struct file_operations *fops, int dev)
+{
+	return sound_insert_unit(&chains[7], fops, dev, 7, 135,
+				 "fmradio", S_IWUSR | S_IRUSR);
+}
+EXPORT_SYMBOL(register_sound_fm);
+
 
 /**
  *	register_sound_synth - register a synth device
@@ -431,9 +468,36 @@ void unregister_sound_dsp(int unit)
 {
 	return sound_remove_unit(&chains[3], unit);
 }
-
-
 EXPORT_SYMBOL(unregister_sound_dsp);
+
+
+void unregister_sound_audio(int unit)
+{
+	return sound_remove_unit(&chains[4], unit);
+}
+EXPORT_SYMBOL(unregister_sound_audio);
+
+
+void unregister_sound_dsp16(int unit)
+{
+	return sound_remove_unit(&chains[5], unit);
+}
+EXPORT_SYMBOL(unregister_sound_dsp16);
+
+
+void unregister_sound_phone(int unit)
+{
+	return sound_remove_unit(&chains[6], unit);
+}
+EXPORT_SYMBOL(unregister_sound_phone);
+
+
+void unregister_sound_fm(int unit)
+{
+	return sound_remove_unit(&chains[7], unit);
+}
+EXPORT_SYMBOL(unregister_sound_fm);
+
 
 /**
  *	unregister_sound_synth - unregister a synth device
@@ -485,13 +549,7 @@ int soundcore_open(struct inode *inode, struct file *file)
 	struct file_operations *new_fops = NULL;
 
 	chain=unit&0x0F;
-	if(chain==4 || chain==5)	/* dsp/audio/dsp16 */
-	{
-		unit&=0xF0;
-		unit|=3;
-		chain=3;
-	}
-	
+
 	spin_lock(&sound_loader_lock);
 	s = __look_for_unit(chain, unit);
 	if (s)
@@ -571,3 +629,4 @@ static int __init init_soundcore(void)
 
 module_init(init_soundcore);
 module_exit(cleanup_soundcore);
+

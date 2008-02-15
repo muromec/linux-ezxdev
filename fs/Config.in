@@ -1,12 +1,23 @@
 #
 # File system configuration
 #
+# Copyright (c) 2005 Motorola Inc.
+#
+# 11 Oct 2005, Ru Yi <e5537c@motorola.com>
+# Added the mount record region for EzX
+
+
 mainmenu_option next_comment
 comment 'File systems'
 
 bool 'Quota support' CONFIG_QUOTA
+bool 'POSIX Access Control List support' CONFIG_FS_POSIX_ACL
 tristate 'Kernel automounter support' CONFIG_AUTOFS_FS
 tristate 'Kernel automounter version 4 support (also supports v3)' CONFIG_AUTOFS4_FS
+
+if [ "$CONFIG_ARCH_EZXBASE" ] ; then
+   bool 'Mount Record for flash  support' CONFIG_MOUNT_RECORD
+fi
 
 tristate 'Reiserfs support' CONFIG_REISERFS_FS
 dep_mbool '  Enable reiserfs debug mode' CONFIG_REISERFS_CHECK $CONFIG_REISERFS_FS
@@ -45,10 +56,34 @@ fi
 dep_tristate 'Journalling Flash File System v2 (JFFS2) support' CONFIG_JFFS2_FS $CONFIG_MTD
 if [ "$CONFIG_JFFS2_FS" = "y" -o "$CONFIG_JFFS2_FS" = "m" ] ; then
    int 'JFFS2 debugging verbosity (0 = quiet, 2 = noisy)' CONFIG_JFFS2_FS_DEBUG 0
+   bool 'JFFS2 write-buffering support' CONFIG_JFFS2_FS_WRITEBUFFER
+   bool 'JFFS2 ZLIB compression support (recommended)' CONFIG_JFFS2_ZLIB
+   bool 'JFFS2 RTIME compression support (recommended)' CONFIG_JFFS2_RTIME
+   bool 'JFFS2 RUBIN compression support' CONFIG_JFFS2_RUBIN
+   bool 'JFFS2 LZO compression support' CONFIG_JFFS2_LZO
+   bool 'JFFS2 LZARI compression support' CONFIG_JFFS2_LZARI
+   choice 'JFFS2 default compression mode' \
+        "none                                   CONFIG_JFFS2_CMODE_NONE \
+         priority                               CONFIG_JFFS2_CMODE_PRIORITY \
+         size                                   CONFIG_JFFS2_CMODE_SIZE" priority
+   define_bool CONFIG_JFFS2_SUMMARY y
+   bool 'JFFS2 proc interface support' CONFIG_JFFS2_PROC
 fi
 tristate 'Compressed ROM file system support' CONFIG_CRAMFS
+dep_mbool '  Use linear addressing for cramfs' CONFIG_CRAMFS_LINEAR $CONFIG_CRAMFS
+dep_bool '    Support XIP on linear cramfs' CONFIG_CRAMFS_LINEAR_XIP $CONFIG_CRAMFS_LINEAR
+dep_bool '    Root file system on linear cramfs' CONFIG_ROOT_CRAMFS_LINEAR $CONFIG_CRAMFS_LINEAR $CONFIG_CRAMFS
+if [ "$CONFIG_CRAMFS_LINEAR_XIP" = "y" ]; then
+	bool '   Support XIP debugging on linear cramfs' CONFIG_XIP_DEBUGGABLE
+fi    
+
+
 bool 'Virtual memory file system support (former shm fs)' CONFIG_TMPFS
 define_bool CONFIG_RAMFS y
+
+tristate 'Persistent and Protected RAM file system support' CONFIG_PRAM_FS
+dep_bool '  Disable write protection (default is enabled)' CONFIG_PRAMFS_NOWP $CONFIG_PRAM_FS
+dep_bool '  Root file system on pramfs' CONFIG_ROOT_PRAMFS $CONFIG_PRAM_FS
 
 tristate 'ISO 9660 CDROM file system support' CONFIG_ISO9660_FS
 dep_mbool '  Microsoft Joliet CDROM extensions' CONFIG_JOLIET $CONFIG_ISO9660_FS
@@ -92,6 +127,16 @@ dep_mbool '  UDF write support (DANGEROUS)' CONFIG_UDF_RW $CONFIG_UDF_FS $CONFIG
 
 tristate 'UFS file system support (read only)' CONFIG_UFS_FS
 dep_mbool '  UFS file system write support (DANGEROUS)' CONFIG_UFS_FS_WRITE $CONFIG_UFS_FS $CONFIG_EXPERIMENTAL
+
+tristate 'SGI XFS filesystem support' CONFIG_XFS_FS
+dep_mbool    '  Enable XFS Realtime support' CONFIG_XFS_RT $CONFIG_XFS_FS
+dep_mbool    '  Enable XFS Quota' CONFIG_XFS_QUOTA $CONFIG_XFS_FS
+if [ "$CONFIG_XFS_FS" != "n" ]; then
+    dep_tristate '  Enable XFS DMAPI' CONFIG_XFS_DMAPI $CONFIG_XFS_FS
+    if [ "$CONFIG_XFS_DMAPI" != "n" ]; then
+       define_bool CONFIG_HAVE_XFS_DMAPI y
+    fi
+fi
 
 if [ "$CONFIG_NET" = "y" ]; then
 

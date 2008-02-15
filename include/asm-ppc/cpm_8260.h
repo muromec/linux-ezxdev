@@ -74,6 +74,7 @@
 #define CPM_CR_INIT_TX		((ushort)0x0002)
 #define CPM_CR_HUNT_MODE	((ushort)0x0003)
 #define CPM_CR_STOP_TX		((ushort)0x0004)
+#define CPM_CR_GRA_STOP_TX	((ushort)0x0005)
 #define CPM_CR_RESTART_TX	((ushort)0x0006)
 #define CPM_CR_SET_GADDR	((ushort)0x0008)
 
@@ -81,13 +82,23 @@
 	((PG << 26) | (SBC << 21) | (MCN << 6) | OP)
 
 /* Dual Port RAM addresses.  The first 16K is available for almost
- * any CPM use, so we put the BDs there.  The first 128 bytes are
- * used for SMC1 and SMC2 parameter RAM, so we start allocating
+ * any CPM use, so we put the BDs there.  The first 256 bytes are
+ * used for SMC1, SMC2, I2C, and SPI parameter RAM, so we start allocating
  * BDs above that.  All of this must change when we start
  * downloading RAM microcode.
+ *
+ * If KGDB is enabled, we need to reserve an extra 64 byte buffer for
+ * its use in the serial driver.
  */
-#define CPM_DATAONLY_BASE	((uint)128)
-#define CPM_DATAONLY_SIZE	((uint)(16 * 1024) - CPM_DATAONLY_BASE)
+#ifdef CONFIG_KGDB
+#define KGDB_DPRAM_BUFSIZE	((uint)0x0040)
+#define KGDB_DPRAM_OFFSET	(CPM_DATAONLY_BASE + CPM_DATAONLY_SIZE)
+#else
+#define KGDB_DPRAM_BUFSIZE	0
+#endif
+#define CPM_DATAONLY_BASE	((uint)256)
+#define CPM_DATAONLY_SIZE	((uint)(16 * 1024) - CPM_DATAONLY_BASE \
+				- KGDB_DPRAM_BUFSIZE)
 #define CPM_DP_NOSPACE		((uint)0x7fffffff)
 #define CPM_FCC_SPECIAL_BASE	((uint)0x0000b000)
 
@@ -169,6 +180,9 @@ typedef struct cpm_buf_desc {
 #define PROFF_SMC1	(0)
 #define PROFF_SMC2	(64)
 
+/* Do I2C while we are here.....Same 64-byte alignment.
+ */
+#define PROFF_I2C	(128)
 
 /* Define enough so I can at least use the serial port as a UART.
  */

@@ -1,0 +1,6 @@
+
+# Beginnings of a kbuild-2.5 makefile --- offer@sgi.com
+
+objlink(CONFIG_SECURITY_DTE dte_plug.o dte.o inode.o mount.o read_policy.o task.o module.o path.o syscall.o)
+
+select(CONFIG_SECURITY_DTE dte_plug.o)

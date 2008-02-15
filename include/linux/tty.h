@@ -1,3 +1,18 @@
+/*
+ * Copyright 2003,2005 Motorola, Inc. All Rights Reserved.
+ */
+/*
+ * Revision History:
+ *                    Modification     Tracking
+ * Author                 Date          Number     Description of Changes
+ * ----------------   ------------    ----------   -------------------------
+ * Lin WeiQiang(w17202) 12/23/2003    LIBdd63300    port A760 drivers to E680
+ * Liu Changhui(w20041) 01/18/2005    LIBff53883    add ldisc number for new ldisc modem_ppp_async and modem_relay
+ * Liang Yumin(e5667c) 10/08/2005     LIBhh02399    BT UART quality promotion 
+ * Chen Yifei(e3359c)  11/29/2005     LIBhh50017    add change log to DataNetwork kernel related codes for GPL issue
+ *
+ */
+
 #ifndef _LINUX_TTY_H
 #define _LINUX_TTY_H
 
@@ -34,7 +49,9 @@
  * hardcoded at present.)
  */
 #define NR_PTYS		256	/* ptys/major */
-#define NR_LDISCS	16
+/* porting from A760 GPRS feature  lin weiqiang   2003-12-17 */
+/*#define NR_LDISCS	16 */
+#define NR_LDISCS	20
 
 /*
  * Unix98 PTY's can be defined as any multiple of NR_PTYS up to

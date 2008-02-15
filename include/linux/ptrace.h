@@ -21,6 +21,27 @@
 
 #define PTRACE_SYSCALL		  24
 
+/* 0x4200-0x4300 are reserved for architecture-independent additions.  */
+#define PTRACE_SETOPTIONS      0x4200
+#define PTRACE_GETEVENTMSG     0x4201
+
+/* options set using PTRACE_SETOPTIONS */
+#define PTRACE_O_TRACESYSGOOD  0x00000001
+#define PTRACE_O_TRACEFORK     0x00000002
+#define PTRACE_O_TRACEVFORK    0x00000004
+#define PTRACE_O_TRACECLONE    0x00000008
+#define PTRACE_O_TRACEEXEC     0x00000010
+
+/* Wait extended result codes for the above trace options.  */
+#define PTRACE_EVENT_FORK      1
+#define PTRACE_EVENT_VFORK     2
+#define PTRACE_EVENT_CLONE     3
+#define PTRACE_EVENT_EXEC      4
+
+struct task_struct;
+extern int ptrace_request(struct task_struct *child, long request, long addr, long data);
+extern void ptrace_notify(int exit_code);
+
 #include <asm/ptrace.h>
 
 #endif

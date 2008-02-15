@@ -1,0 +1,75 @@
+#
+# USB device configuration from the device viewpoint (e.g. Linux running inside a USB device, not as host)
+#
+# Copyright (C) 2001 Lineo, Inc.
+# Copyright (C) 2001 Hewlett-Packard Co.
+mainmenu_option next_comment
+comment 'USB Device Bus Interface Support'
+
+# StrongArm
+if [ "$CONFIG_ARCH_SA1100" = "y" ]; then
+    dep_tristate '  Intel StrongArm SA-1110 (Assabet, Ipaq) support' CONFIG_USBD_SA1100_BUS $CONFIG_USBD
+    dep_mbool '    USB traffic keeps device awake' CONFIG_USBD_TRAFFIC_KEEPAWAKE $CONFIG_SA1110_CALYPSO
+
+    if [ "$CONFIG_USBD_SA1100_BUS" = "y" -o "$CONFIG_USBD_SA1100_BUS" = "m" ]; then
+       int '    USBD Stall watchdog timeout (seconds, 0 for none)' CONFIG_USBD_STALL_TIMEOUT "0" $CONFIG_USBD_SA1100_BUS
+       int '    USBD Stall disconnect duration (seconds)' CONFIG_USBD_STALL_DISCONNECT_DURATION "2" $CONFIG_USBD_SA1100_BUS
+    fi
+fi
+
+# PXA250 - Xscale
+if [ "$CONFIG_ARCH_PXA" = "y" -o "$CONFIG_CPU_XSCALE" = "y" ]; then
+    dep_tristate '  PXA (Xscale) support' CONFIG_USBD_PXA_BUS $CONFIG_USBD
+    if [ "$CONFIG_USBD_PXA_BUS" = "y" -o "$CONFIG_USBD_PXA_BUS" = "m" ]; then
+        bool 'Use DMA for IN transfers' CONFIG_USBD_PXA_DMA_IN
+    fi
+    if [ "$CONFIG_USBD_PXA_BUS" = "y" -o "$CONFIG_USBD_PXA_BUS" = "m" ]; then
+        bool 'Use DMA for OUT transfers' CONFIG_USBD_PXA_DMA_OUT
+    fi
+fi
+
+# Intel Bulverde support
+if [ "$CONFIG_CPU_BULVERDE" = "y" ] ; then
+    dep_tristate '  WMMX (Xscale) support' CONFIG_USBD_WMMX_BUS $CONFIG_USBD
+    if [ "$CONFIG_USBD_WMMX_BUS" = "y" -o "$CONFIG_USBD_WMMX_BUS" = "m" ]; then
+        bool 'Use DMA for IN transfers' CONFIG_USBD_WMMX_DMA_IN
+    fi
+    if [ "$CONFIG_USBD_WMMX_BUS" = "y" -o "$CONFIG_USBD_WMMX_BUS" = "m" ]; then
+        bool 'Use DMA for OUT transfers' CONFIG_USBD_WMMX_DMA_OUT
+    fi
+fi
+
+# Linkup
+if [ "$CONFIG_ARCH_L7200" = "y" ]; then
+    dep_tristate '  L7205 (Linkup) support' CONFIG_USBD_L7205_BUS $CONFIG_USBD
+    dep_mbool    '    L7210-AB fix' CONFIG_USBD_L7210AB_FIX $CONFIG_USBD_L7205_BUS
+fi
+
+# Scanlogic
+if [ "$CONFIG_SUPERH" = "y" -o "$CONFIG_X86" = "y" ]; then
+    dep_tristate '  Scanlogic SL11 Device support' CONFIG_USBD_SL11_BUS $CONFIG_USBD
+fi
+
+# Hitachi SH7622 or SH7727
+if [ "$CONFIG_CPU_SUBTYPE_SH7622" = "y" -o "$CONFIG_CPU_SUBTYPE_SH7727" = "y" ]; then
+    dep_tristate '  SuperH Device support' CONFIG_USBD_SUPERH_BUS $CONFIG_USBD
+fi
+
+# Toshiba TC86C001
+if [ "$CONFIG_TOSHIBA_RBTX4927" = "y" -o "$CONFIG_TOSHIBA_RBTX4925" = "y" ]; then
+   dep_tristate '  Toshiba TC86C001 Device support' CONFIG_USBD_TC86C001_BUS $CONFIG_USBD
+fi
+
+# TI OMAP
+if [ "$CONFIG_ARCH_OMAP" = "y" ]; then
+    dep_tristate '  TI OMAP1510/1610/730 support' CONFIG_USBD_OMAP1510_BUS $CONFIG_USBD
+fi
+
+# Motorola MX2
+if [ "$CONFIG_ARCH_MX2ADS" = "y" ]; then
+   dep_tristate '  MX2 Device support' CONFIG_USBD_MX2ADS_BUS $CONFIG_USBD
+fi
+
+dep_tristate '  Generic Bus Interface support' CONFIG_USBD_GENERIC_BUS $CONFIG_USBD
+
+endmenu

@@ -1,11 +1,14 @@
 /*
  *  linux/arch/arm/mm/init.c
  *
- *  Copyright (C) 1995-2000 Russell King
+ *  Copyright (C) 1995-2002 Russell King
+ *  Copyright (C) 2005 Motorola, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
+ *
+ * Port to EzX platform by Susan (w15879@motorola.com).
  */
 #include <linux/config.h>
 #include <linux/signal.h>
@@ -37,7 +40,7 @@
 #ifndef CONFIG_DISCONTIGMEM
 #define NR_NODES	1
 #else
-#define NR_NODES	4
+#define NR_NODES	16
 #endif
 
 #ifdef CONFIG_CPU_32
@@ -46,11 +49,17 @@
 #define TABLE_OFFSET	0
 #endif
 
-#define TABLE_SIZE	((TABLE_OFFSET + PTRS_PER_PTE) * sizeof(void *))
+#define TABLE_SIZE	((TABLE_OFFSET + PTRS_PER_PTE) * sizeof(pte_t))
 
 static unsigned long totalram_pages;
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 extern char _stext, _text, _etext, _end, __init_begin, __init_end;
+extern unsigned long phys_initrd_start;
+extern unsigned long phys_initrd_size;
+
+#ifdef CONFIG_XIP_ROM
+extern char _endtext, _sdata;
+#endif
 
 /*
  * The sole use of this is to pass memory configuration
@@ -292,6 +301,7 @@ find_memend_and_nodes(struct meminfo *mi, struct node_info *np)
 	 * also get rid of some of the stuff above as well.
 	 */
 	max_low_pfn = memend_pfn - O_PFN_DOWN(PHYS_OFFSET);
+//	max_pfn = memend_pfn - O_PFN_DOWN(PHYS_OFFSET);
 	mi->end = memend_pfn << PAGE_SHIFT;
 
 	return bootmem_pages;
@@ -300,18 +310,17 @@ find_memend_and_nodes(struct meminfo *mi, struct node_info *np)
 static int __init check_initrd(struct meminfo *mi)
 {
 	int initrd_node = -2;
-
 #ifdef CONFIG_BLK_DEV_INITRD
+	unsigned long end = phys_initrd_start + phys_initrd_size;
+
 	/*
 	 * Make sure that the initrd is within a valid area of
 	 * memory.
 	 */
-	if (initrd_start) {
-		unsigned long phys_initrd_start, phys_initrd_end;
+	if (phys_initrd_size) {
 		unsigned int i;
 
-		phys_initrd_start = __pa(initrd_start);
-		phys_initrd_end   = __pa(initrd_end);
+		initrd_node = -1;
 
 		for (i = 0; i < mi->nr_banks; i++) {
 			unsigned long bank_end;
@@ -319,7 +328,7 @@ static int __init check_initrd(struct meminfo *mi)
 			bank_end = mi->bank[i].start + mi->bank[i].size;
 
 			if (mi->bank[i].start <= phys_initrd_start &&
-			    phys_initrd_end <= bank_end)
+			    end <= bank_end)
 				initrd_node = mi->bank[i].node;
 		}
 	}
@@ -327,8 +336,8 @@ static int __init check_initrd(struct meminfo *mi)
 	if (initrd_node == -1) {
 		printk(KERN_ERR "initrd (0x%08lx - 0x%08lx) extends beyond "
 		       "physical memory - disabling initrd\n",
-		       initrd_start, initrd_end);
-		initrd_start = initrd_end = 0;
+		       phys_initrd_start, end);
+		phys_initrd_start = phys_initrd_size = 0;
 	}
 #endif
 
@@ -346,7 +355,11 @@ static __init void reserve_node_zero(unsigned int bootmap_pfn, unsigned int boot
 	 * Register the kernel text and data with bootmem.
 	 * Note that this can only be in node 0.
 	 */
+#ifdef CONFIG_XIP_ROM
+	reserve_bootmem_node(pgdat, __pa(&_sdata), &_end - &_sdata);
+#else
 	reserve_bootmem_node(pgdat, __pa(&_stext), &_end - &_stext);
+#endif
 
 #ifdef CONFIG_CPU_32
 	/*
@@ -354,7 +367,7 @@ static __init void reserve_node_zero(unsigned int bootmap_pfn, unsigned int boot
 	 * and can only be in node 0.
 	 */
 	reserve_bootmem_node(pgdat, __pa(swapper_pg_dir),
-			     PTRS_PER_PGD * sizeof(void *));
+			     PTRS_PER_PGD * sizeof(pgd_t));
 #endif
 	/*
 	 * And don't forget to reserve the allocator bitmap,
@@ -378,16 +391,31 @@ static __init void reserve_node_zero(unsigned int bootmap_pfn, unsigned int boot
 	 */
 	if (machine_is_archimedes() || machine_is_a5k())
 		reserve_bootmem_node(pgdat, 0x02000000, 0x00080000);
-	if (machine_is_edb7211())
+	if (machine_is_edb7211() || machine_is_fortunet())
 		reserve_bootmem_node(pgdat, 0xc0000000, 0x00020000);
 	if (machine_is_p720t())
 		reserve_bootmem_node(pgdat, PHYS_OFFSET, 0x00014000);
+#if (defined(CONFIG_OMAP7xx_CSMI) || defined(CONFIG_OMAP7xx_CSMI_MODULE))
+	/*
+	 * Reserve the last part of the SDRAM for the GSM code and data
+	 */
+	if (machine_is_omap_perseus2())
+		reserve_bootmem_node(pgdat, OMAP7xx_GSM_SDRAM_PHYS, 
+			OMAP7xx_GSM_SDRAM_SIZE);
+#endif
 #ifdef CONFIG_SA1111
 	/*
 	 * Because of the SA1111 DMA bug, we want to preserve
 	 * our precious DMA-able memory...
 	 */
 	reserve_bootmem_node(pgdat, PHYS_OFFSET, __pa(swapper_pg_dir)-PHYS_OFFSET);
+#endif
+
+#ifdef CONFIG_ARCH_EZX
+	/*
+	 * reserve the first page memory for exiting sleep and user off mode
+	 */
+	reserve_bootmem_node(pgdat, PHYS_OFFSET, PAGE_SIZE);
 #endif
 }
 
@@ -469,9 +497,12 @@ void __init bootmem_init(struct meminfo *mi)
 
 
 #ifdef CONFIG_BLK_DEV_INITRD
-	if (initrd_node >= 0)
-		reserve_bootmem_node(NODE_DATA(initrd_node), __pa(initrd_start),
-				     initrd_end - initrd_start);
+	if (phys_initrd_size && initrd_node >= 0) {
+		reserve_bootmem_node(NODE_DATA(initrd_node), phys_initrd_start,
+				     phys_initrd_size);
+		initrd_start = __phys_to_virt(phys_initrd_start);
+		initrd_end = initrd_start + phys_initrd_size;
+	}
 #endif
 
 	if (map_pg != bootmap_pfn + bootmap_pages)
@@ -583,7 +614,7 @@ static inline void free_area(unsigned long addr, unsigned long end, char *s)
 	}
 
 	if (size && s)
-		printk("Freeing %s memory: %dK\n", s, size);
+		printk(KERN_INFO "Freeing %s memory: %dK\n", s, size);
 }
 
 /*
@@ -596,8 +627,13 @@ void __init mem_init(void)
 	unsigned int codepages, datapages, initpages;
 	int i, node;
 
+#ifndef CONFIG_XIP_ROM
 	codepages = &_etext - &_text;
 	datapages = &_end - &_etext;
+#else
+	codepages = &_endtext - &_text;
+	datapages = &_end - &_sdata;
+#endif
 	initpages = &__init_end - &__init_begin;
 
 	high_memory = (void *)__va(meminfo.end);
@@ -653,11 +689,13 @@ void __init mem_init(void)
 
 void free_initmem(void)
 {
+#ifndef CONFIG_XIP_ROM
 	if (!machine_is_integrator()) {
 		free_area((unsigned long)(&__init_begin),
 			  (unsigned long)(&__init_end),
 			  "init");
 	}
+#endif
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD
@@ -666,8 +704,10 @@ static int keep_initrd;
 
 void free_initrd_mem(unsigned long start, unsigned long end)
 {
+#ifndef CONFIG_XIP_ROM
 	if (!keep_initrd)
 		free_area(start, end, "initrd");
+#endif
 }
 
 static int __init keepinitrd_setup(char *__unused)

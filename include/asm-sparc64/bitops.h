@@ -1,4 +1,4 @@
-/* $Id: bitops.h,v 1.38 2001/11/19 18:36:34 davem Exp $
+/* $Id: bitops.h,v 1.39 2002/01/30 01:40:00 davem Exp $
  * bitops.h: Bit string operations on the V9.
  *
  * Copyright 1996, 1997 David S. Miller (davem@caip.rutgers.edu)
@@ -7,11 +7,12 @@
 #ifndef _SPARC64_BITOPS_H
 #define _SPARC64_BITOPS_H
 
+#include <linux/compiler.h>
 #include <asm/byteorder.h>
 
-extern long ___test_and_set_bit(unsigned long nr, volatile void *addr);
-extern long ___test_and_clear_bit(unsigned long nr, volatile void *addr);
-extern long ___test_and_change_bit(unsigned long nr, volatile void *addr);
+extern long ___test_and_set_bit(unsigned long nr, volatile unsigned long *addr);
+extern long ___test_and_clear_bit(unsigned long nr, volatile unsigned long *addr);
+extern long ___test_and_change_bit(unsigned long nr, volatile unsigned long *addr);
 
 #define test_and_set_bit(nr,addr)	({___test_and_set_bit(nr,addr)!=0;})
 #define test_and_clear_bit(nr,addr)	({___test_and_clear_bit(nr,addr)!=0;})
@@ -21,109 +22,132 @@ extern long ___test_and_change_bit(unsigned long nr, volatile void *addr);
 #define change_bit(nr,addr)		((void)___test_and_change_bit(nr,addr))
 
 /* "non-atomic" versions... */
-#define __set_bit(X,Y)					\
-do {	unsigned long __nr = (X);			\
-	long *__m = ((long *) (Y)) + (__nr >> 6);	\
-	*__m |= (1UL << (__nr & 63));			\
-} while (0)
-#define __clear_bit(X,Y)				\
-do {	unsigned long __nr = (X);			\
-	long *__m = ((long *) (Y)) + (__nr >> 6);	\
-	*__m &= ~(1UL << (__nr & 63));			\
-} while (0)
-#define __change_bit(X,Y)				\
-do {	unsigned long __nr = (X);			\
-	long *__m = ((long *) (Y)) + (__nr >> 6);	\
-	*__m ^= (1UL << (__nr & 63));			\
-} while (0)
-#define __test_and_set_bit(X,Y)				\
-({	unsigned long __nr = (X);			\
-	long *__m = ((long *) (Y)) + (__nr >> 6);	\
-	long __old = *__m;				\
-	long __mask = (1UL << (__nr & 63));		\
-	*__m = (__old | __mask);			\
-	((__old & __mask) != 0);			\
-})
-#define __test_and_clear_bit(X,Y)			\
-({	unsigned long __nr = (X);			\
-	long *__m = ((long *) (Y)) + (__nr >> 6);	\
-	long __old = *__m;				\
-	long __mask = (1UL << (__nr & 63));		\
-	*__m = (__old & ~__mask);			\
-	((__old & __mask) != 0);			\
-})
-#define __test_and_change_bit(X,Y)			\
-({	unsigned long __nr = (X);			\
-	long *__m = ((long *) (Y)) + (__nr >> 6);	\
-	long __old = *__m;				\
-	long __mask = (1UL << (__nr & 63));		\
-	*__m = (__old ^ __mask);			\
-	((__old & __mask) != 0);			\
-})
+
+static __inline__ void __set_bit(int nr, volatile unsigned long *addr)
+{
+	volatile unsigned long *m = addr + (nr >> 6);
+
+	*m |= (1UL << (nr & 63));
+}
+
+static __inline__ void __clear_bit(int nr, volatile unsigned long *addr)
+{
+	volatile unsigned long *m = addr + (nr >> 6);
+
+	*m &= ~(1UL << (nr & 63));
+}
+
+static __inline__ void __change_bit(int nr, volatile unsigned long *addr)
+{
+	volatile unsigned long *m = addr + (nr >> 6);
+
+	*m ^= (1UL << (nr & 63));
+}
+
+static __inline__ int __test_and_set_bit(int nr, volatile unsigned long *addr)
+{
+	volatile unsigned long *m = addr + (nr >> 6);
+	long old = *m;
+	long mask = (1UL << (nr & 63));
+
+	*m = (old | mask);
+	return ((old & mask) != 0);
+}
+
+static __inline__ int __test_and_clear_bit(int nr, volatile unsigned long *addr)
+{
+	volatile unsigned long *m = addr + (nr >> 6);
+	long old = *m;
+	long mask = (1UL << (nr & 63));
+
+	*m = (old & ~mask);
+	return ((old & mask) != 0);
+}
+
+static __inline__ int __test_and_change_bit(int nr, volatile unsigned long *addr)
+{
+	volatile unsigned long *m = addr + (nr >> 6);
+	long old = *m;
+	long mask = (1UL << (nr & 63));
+
+	*m = (old ^ mask);
+	return ((old & mask) != 0);
+}
 
 #define smp_mb__before_clear_bit()	do { } while(0)
 #define smp_mb__after_clear_bit()	do { } while(0)
 
-extern __inline__ int test_bit(int nr, __const__ void *addr)
+static __inline__ int test_bit(int nr, __const__ volatile unsigned long *addr)
 {
-	return (1UL & (((__const__ long *) addr)[nr >> 6] >> (nr & 63))) != 0UL;
+	return (1UL & ((addr)[nr >> 6] >> (nr & 63))) != 0UL;
 }
 
 /* The easy/cheese version for now. */
-extern __inline__ unsigned long ffz(unsigned long word)
+static __inline__ unsigned long ffz(unsigned long word)
 {
 	unsigned long result;
 
-#ifdef ULTRA_HAS_POPULATION_COUNT	/* Thanks for nothing Sun... */
-	__asm__ __volatile__(
-"	brz,pn	%0, 1f\n"
-"	 neg	%0, %%g1\n"
-"	xnor	%0, %%g1, %%g2\n"
-"	popc	%%g2, %0\n"
-"1:	" : "=&r" (result)
-	  : "0" (word)
-	  : "g1", "g2");
-#else
-#if 1 /* def EASY_CHEESE_VERSION */
 	result = 0;
 	while(word & 1) {
 		result++;
 		word >>= 1;
 	}
-#else
-	unsigned long tmp;
-
-	result = 0;	
-	tmp = ~word & -~word;
-	if (!(unsigned)tmp) {
-		tmp >>= 32;
-		result = 32;
-	}
-	if (!(unsigned short)tmp) {
-		tmp >>= 16;
-		result += 16;
-	}
-	if (!(unsigned char)tmp) {
-		tmp >>= 8;
-		result += 8;
-	}
-	if (tmp & 0xf0) result += 4;
-	if (tmp & 0xcc) result += 2;
-	if (tmp & 0xaa) result ++;
-#endif
-#endif
 	return result;
 }
 
+/**
+ * __ffs - find first bit in word.
+ * @word: The word to search
+ *
+ * Undefined if no bit exists, so code should check against 0 first.
+ */
+static __inline__ unsigned long __ffs(unsigned long word)
+{
+	unsigned long result = 0;
+
+	while (!(word & 1UL)) {
+		result++;
+		word >>= 1;
+	}
+	return result;
+}
+
+/*
+ * fls: find last bit set.
+ */
+
+#define fls(x) generic_fls(x)
+
 #ifdef __KERNEL__
+
+/*
+ * Every architecture must define this function. It's the fastest
+ * way of searching a 140-bit bitmap where the first 100 bits are
+ * unlikely to be set. It's guaranteed that at least one of the 140
+ * bits is cleared.
+ */
+static inline int sched_find_first_bit(unsigned long *b)
+{
+	if (unlikely(b[0]))
+		return __ffs(b[0]);
+	if (unlikely(((unsigned int)b[1])))
+		return __ffs(b[1]) + 64;
+	if (b[1] >> 32)
+		return __ffs(b[1] >> 32) + 96;
+	return __ffs(b[2]) + 128;
+}
 
 /*
  * ffs: find first bit set. This is defined the same way as
  * the libc and compiler builtin ffs routines, therefore
  * differs in spirit from the above ffz (man ffs).
  */
-
-#define ffs(x) generic_ffs(x)
+static __inline__ int ffs(int x)
+{
+	if (!x)
+		return 0;
+	return __ffs((unsigned long)x);
+}
 
 /*
  * hweightN: returns the hamming weight (i.e. the number
@@ -132,7 +156,7 @@ extern __inline__ unsigned long ffz(unsigned long word)
 
 #ifdef ULTRA_HAS_POPULATION_COUNT
 
-extern __inline__ unsigned int hweight32(unsigned int w)
+static __inline__ unsigned int hweight32(unsigned int w)
 {
 	unsigned int res;
 
@@ -140,7 +164,7 @@ extern __inline__ unsigned int hweight32(unsigned int w)
 	return res;
 }
 
-extern __inline__ unsigned int hweight16(unsigned int w)
+static __inline__ unsigned int hweight16(unsigned int w)
 {
 	unsigned int res;
 
@@ -148,7 +172,7 @@ extern __inline__ unsigned int hweight16(unsigned int w)
 	return res;
 }
 
-extern __inline__ unsigned int hweight8(unsigned int w)
+static __inline__ unsigned int hweight8(unsigned int w)
 {
 	unsigned int res;
 
@@ -165,14 +189,69 @@ extern __inline__ unsigned int hweight8(unsigned int w)
 #endif
 #endif /* __KERNEL__ */
 
+/**
+ * find_next_bit - find the next set bit in a memory region
+ * @addr: The address to base the search on
+ * @offset: The bitnumber to start searching at
+ * @size: The maximum size to search
+ */
+static __inline__ unsigned long find_next_bit(unsigned long *addr, unsigned long size, unsigned long offset)
+{
+	unsigned long *p = addr + (offset >> 6);
+	unsigned long result = offset & ~63UL;
+	unsigned long tmp;
+
+	if (offset >= size)
+		return size;
+	size -= result;
+	offset &= 63UL;
+	if (offset) {
+		tmp = *(p++);
+		tmp &= (~0UL << offset);
+		if (size < 64)
+			goto found_first;
+		if (tmp)
+			goto found_middle;
+		size -= 64;
+		result += 64;
+	}
+	while (size & ~63UL) {
+		if ((tmp = *(p++)))
+			goto found_middle;
+		result += 64;
+		size -= 64;
+	}
+	if (!size)
+		return result;
+	tmp = *p;
+
+found_first:
+	tmp &= (~0UL >> (64 - size));
+	if (tmp == 0UL)        /* Are any bits set? */
+		return result + size; /* Nope. */
+found_middle:
+	return result + __ffs(tmp);
+}
+
+/**
+ * find_first_bit - find the first set bit in a memory region
+ * @addr: The address to start the search at
+ * @size: The maximum size to search
+ *
+ * Returns the bit-number of the first set bit, not the number of the byte
+ * containing a bit.
+ */
+#define find_first_bit(addr, size) \
+	find_next_bit((addr), (size), 0)
+
 /* find_next_zero_bit() finds the first zero bit in a bit string of length
  * 'size' bits, starting the search at bit 'offset'. This is largely based
  * on Linus's ALPHA routines, which are pretty portable BTW.
  */
 
-extern __inline__ unsigned long find_next_zero_bit(void *addr, unsigned long size, unsigned long offset)
+static __inline__ unsigned long find_next_zero_bit(unsigned long *addr, unsigned long size, unsigned long offset)
 {
-	unsigned long *p = ((unsigned long *) addr) + (offset >> 6);
+	unsigned long *p = addr + (offset >> 6);
 	unsigned long result = offset & ~63UL;
 	unsigned long tmp;
 
@@ -211,15 +290,15 @@ found_middle:
 #define find_first_zero_bit(addr, size) \
         find_next_zero_bit((addr), (size), 0)
 
-extern long ___test_and_set_le_bit(int nr, volatile void *addr);
-extern long ___test_and_clear_le_bit(int nr, volatile void *addr);
+extern long ___test_and_set_le_bit(int nr, volatile unsigned long *addr);
+extern long ___test_and_clear_le_bit(int nr, volatile unsigned long *addr);
 
 #define test_and_set_le_bit(nr,addr)	({___test_and_set_le_bit(nr,addr)!=0;})
 #define test_and_clear_le_bit(nr,addr)	({___test_and_clear_le_bit(nr,addr)!=0;})
 #define set_le_bit(nr,addr)		((void)___test_and_set_le_bit(nr,addr))
 #define clear_le_bit(nr,addr)		((void)___test_and_clear_le_bit(nr,addr))
 
-extern __inline__ int test_le_bit(int nr, __const__ void * addr)
+static __inline__ int test_le_bit(int nr, __const__ unsigned long * addr)
 {
 	int			mask;
 	__const__ unsigned char	*ADDR = (__const__ unsigned char *) addr;
@@ -232,9 +311,9 @@ extern __inline__ int test_le_bit(int nr, __const__ void * addr)
 #define find_first_zero_le_bit(addr, size) \
         find_next_zero_le_bit((addr), (size), 0)
 
-extern __inline__ unsigned long find_next_zero_le_bit(void *addr, unsigned long size, unsigned long offset)
+static __inline__ unsigned long find_next_zero_le_bit(unsigned long *addr, unsigned long size, unsigned long offset)
 {
-	unsigned long *p = ((unsigned long *) addr) + (offset >> 6);
+	unsigned long *p = addr + (offset >> 6);
 	unsigned long result = offset & ~63UL;
 	unsigned long tmp;
 
@@ -271,18 +350,22 @@ found_middle:
 
 #ifdef __KERNEL__
 
-#define ext2_set_bit			test_and_set_le_bit
-#define ext2_clear_bit			test_and_clear_le_bit
-#define ext2_test_bit  			test_le_bit
-#define ext2_find_first_zero_bit	find_first_zero_le_bit
-#define ext2_find_next_zero_bit		find_next_zero_le_bit
+#define ext2_set_bit(nr,addr)		test_and_set_le_bit((nr),(unsigned long *)(addr))
+#define ext2_clear_bit(nr,addr)		test_and_clear_le_bit((nr),(unsigned long *)(addr))
+#define ext2_test_bit(nr,addr)		test_le_bit((nr),(unsigned long *)(addr))
+#define ext2_find_first_zero_bit(addr, size) \
+	find_first_zero_le_bit((unsigned long *)(addr), (size))
+#define ext2_find_next_zero_bit(addr, size, off) \
+	find_next_zero_le_bit((unsigned long *)(addr), (size), (off))
 
 /* Bitmap functions for the minix filesystem.  */
-#define minix_test_and_set_bit(nr,addr) test_and_set_bit(nr,addr)
-#define minix_set_bit(nr,addr) set_bit(nr,addr)
-#define minix_test_and_clear_bit(nr,addr) test_and_clear_bit(nr,addr)
-#define minix_test_bit(nr,addr) test_bit(nr,addr)
-#define minix_find_first_zero_bit(addr,size) find_first_zero_bit(addr,size)
+#define minix_test_and_set_bit(nr,addr)	test_and_set_bit((nr),(unsigned long *)(addr))
+#define minix_set_bit(nr,addr)		set_bit((nr),(unsigned long *)(addr))
+#define minix_test_and_clear_bit(nr,addr) \
+	test_and_clear_bit((nr),(unsigned long *)(addr))
+#define minix_test_bit(nr,addr)		test_bit((nr),(unsigned long *)(addr))
+#define minix_find_first_zero_bit(addr,size) \
+	find_first_zero_bit((unsigned long *)(addr),(size))
 
 #endif /* __KERNEL__ */
 

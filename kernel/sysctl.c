@@ -17,6 +17,10 @@
  * The list_for_each() macro wasn't appropriate for the sysctl loop.
  *  Removed it and replaced it with older style, 03/23/00, Bill Wendling
  */
+/*
+ *
+ * 2005-Apr-04  Motorola  Add security patch 
+ */
 
 #include <linux/config.h>
 #include <linux/slab.h>
@@ -30,6 +34,7 @@
 #include <linux/init.h>
 #include <linux/sysrq.h>
 #include <linux/highuid.h>
+#include <linux/security.h>
 
 #include <asm/uaccess.h>
 
@@ -44,6 +49,7 @@ extern int panic_timeout;
 extern int C_A_D;
 extern int bdf_prm[], bdflush_min[], bdflush_max[];
 extern int sysctl_overcommit_memory;
+extern int sysctl_overcommit_ratio;
 extern int max_threads;
 extern atomic_t nr_queued_signals;
 extern int max_queued_signals;
@@ -86,10 +92,10 @@ extern int sysctl_ieee_emulation_warnings;
 extern int sysctl_userprocess_debug;
 #endif
 
-#ifdef CONFIG_PPC32
-extern unsigned long zero_paged_on, powersave_nap;
+#if defined(CONFIG_PPC32) && defined(CONFIG_6xx)
+extern int powersave_nap;
 int proc_dol2crvec(ctl_table *table, int write, struct file *filp,
-		  void *buffer, size_t *lenp);
+		   void *buffer, size_t *lenp);
 #endif
 
 #ifdef CONFIG_BSD_PROCESS_ACCT
@@ -185,9 +191,7 @@ static ctl_table kern_table[] = {
 	{KERN_SPARC_STOP_A, "stop-a", &stop_a_enabled, sizeof (int),
 	 0644, NULL, &proc_dointvec},
 #endif
-#ifdef CONFIG_PPC32
-	{KERN_PPC_ZEROPAGED, "zero-paged", &zero_paged_on, sizeof(int),
-	 0644, NULL, &proc_dointvec},
+#if defined(CONFIG_PPC32) && defined(CONFIG_6xx)
 	{KERN_PPC_POWERSAVE_NAP, "powersave-nap", &powersave_nap, sizeof(int),
 	 0644, NULL, &proc_dointvec},
 	{KERN_PPC_L2CR, "l2cr", NULL, 0,
@@ -265,6 +269,9 @@ static ctl_table vm_table[] = {
 	 &bdflush_min, &bdflush_max},
 	{VM_OVERCOMMIT_MEMORY, "overcommit_memory", &sysctl_overcommit_memory,
 	 sizeof(sysctl_overcommit_memory), 0644, NULL, &proc_dointvec},
+	{VM_OVERCOMMIT_RATIO, "overcommit_ratio",
+	 &sysctl_overcommit_ratio, sizeof(sysctl_overcommit_ratio), 0644,
+	 NULL, &proc_dointvec},
 	{VM_PAGERDAEMON, "kswapd",
 	 &pager_daemon, sizeof(pager_daemon_t), 0644, NULL, &proc_dointvec},
 	{VM_PGT_CACHE, "pagetable_cache", 
@@ -392,6 +399,10 @@ static int test_perm(int mode, int op)
 
 static inline int ctl_perm(ctl_table *table, int op)
 {
+	int error;
+	error = security_sysctl(table, op);
+	if (error)
+		return error;
 	return test_perm(table->mode, op);
 }
 

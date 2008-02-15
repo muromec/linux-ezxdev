@@ -15,6 +15,7 @@
 #include <linux/ioport.h>
 #include <linux/kd.h>
 #include <linux/pm.h>
+#include <asm/bootinfo.h>
 
 #define DISABLE_KBD_DURING_INTERRUPTS 0
 

@@ -4,6 +4,12 @@
  *  Copyright (C) 1991, 1992, 1993, 1994  Linus Torvalds
  *  Swap reorganised 29.12.95, Stephen Tweedie
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * add security patch by w20586, for EZX platform
+ * remove warning by e12051, for EZX platform
+ */
 
 #include <linux/slab.h>
 #include <linux/smp_lock.h>
@@ -14,6 +20,7 @@
 #include <linux/vmalloc.h>
 #include <linux/pagemap.h>
 #include <linux/shm.h>
+#include <linux/security.h>
 
 #include <asm/pgtable.h>
 
@@ -692,6 +699,7 @@ static int try_to_unuse(unsigned int type)
 		 * interactive performance.  Interruptible check on
 		 * signal_pending() would be nice, but changes the spec?
 		 */
+		debug_lock_break(551);
 		if (current->need_resched)
 			schedule();
 	}
@@ -730,6 +738,13 @@ asmlinkage long sys_swapoff(const char * specialfile)
 		}
 		prev = type;
 	}
+
+	err = security_swapoff(p);
+	if (err) {
+		swap_list_unlock();
+		goto out_dput;
+	}
+
 	err = -EINVAL;
 	if (type < 0) {
 		swap_list_unlock();
@@ -908,6 +923,11 @@ asmlinkage long sys_swapon(const char * specialfile, int swap_flags)
 	p->swap_file = nd.dentry;
 	p->swap_vfsmnt = nd.mnt;
 	swap_inode = nd.dentry->d_inode;
+
+	error = security_swapon(p);
+	if (error)
+		 goto bad_swap_2;
+
 	error = -EINVAL;
 
 	if (S_ISBLK(swap_inode->i_mode)) {
@@ -978,7 +998,7 @@ asmlinkage long sys_swapon(const char * specialfile, int swap_flags)
 		p->lowest_bit = 0;
 		p->highest_bit = 0;
 		for (i = 1 ; i < 8*PAGE_SIZE ; i++) {
-			if (test_bit(i,(char *) swap_header)) {
+			if (test_bit(i,(unsigned long *) swap_header)) {
 				if (!p->lowest_bit)
 					p->lowest_bit = i;
 				p->highest_bit = i;
@@ -993,7 +1013,7 @@ asmlinkage long sys_swapon(const char * specialfile, int swap_flags)
 			goto bad_swap;
 		}
 		for (i = 1 ; i < maxpages ; i++) {
-			if (test_bit(i,(char *) swap_header))
+			if (test_bit(i,(unsigned long *) swap_header))
 				p->swap_map[i] = 0;
 			else
 				p->swap_map[i] = SWAP_MAP_BAD;
@@ -1120,6 +1140,13 @@ void si_swapinfo(struct sysinfo *val)
 		if (swap_info[i].flags != SWP_USED)
 			continue;
 		for (j = 0; j < swap_info[i].max; ++j) {
+			if (conditional_schedule_needed()) {
+				debug_lock_break(551);
+				swap_list_unlock();
+				debug_lock_break(551);
+				unconditional_schedule();
+				swap_list_lock();
+			}
 			switch (swap_info[i].swap_map[j]) {
 				case 0:
 				case SWAP_MAP_BAD:

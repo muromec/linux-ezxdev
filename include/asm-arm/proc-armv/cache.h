@@ -128,6 +128,9 @@ static inline void flush_dcache_page(struct page *page)
 	}
 }
 
+#define flush_icache_user_range(vma,page,addr,len) \
+	flush_dcache_page(page)
+
 #define clean_dcache_entry(_s)		cpu_dcache_clean_entry((unsigned long)(_s))
 
 /*
@@ -202,7 +205,7 @@ static inline void flush_dcache_page(struct page *page)
  */
 #define flush_tlb_mm(_mm)						\
 	do {								\
-		if ((_mm) == current->active_mm)			\
+		if ((_mm) == current->active_mm || (_mm) == &init_mm)   \
 			cpu_tlb_invalidate_all();			\
 	} while (0)
 
@@ -213,7 +216,7 @@ static inline void flush_dcache_page(struct page *page)
  */
 #define flush_tlb_range(_mm,_start,_end)				\
 	do {								\
-		if ((_mm) == current->active_mm)			\
+		if ((_mm) == current->active_mm || (_mm) == &init_mm)	\
 			cpu_tlb_invalidate_range((_start), (_end));	\
 	} while (0)
 
@@ -221,10 +224,12 @@ static inline void flush_dcache_page(struct page *page)
  * Flush the specified user virtual address space translation.
  */
 #define flush_tlb_page(_vma,_page)					\
-	do {								\
-		if ((_vma)->vm_mm == current->active_mm)		\
-			cpu_tlb_invalidate_page((_page),		\
-				 ((_vma)->vm_flags & VM_EXEC));		\
+	do {                                                            \
+	        struct mm_struct *mm = ((_page) < TASK_SIZE) ?          \
+		        (_vma)->vm_mm : &init_mm;                       \
+	        if (mm == current->active_mm || mm == &init_mm)         \
+		        cpu_tlb_invalidate_page((_page), (_vma) ?	\
+				 ((_vma)->vm_flags & VM_EXEC) : 0);	\
 	} while (0)
 
 /*

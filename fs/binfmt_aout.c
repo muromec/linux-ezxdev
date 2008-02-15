@@ -420,9 +420,17 @@ beyond_if:
 	regs->gp = ex.a_gpvalue;
 #endif
 	start_thread(regs, ex.a_entry, current->mm->start_stack);
-	if (current->ptrace & PT_PTRACED)
-		send_sig(SIGTRAP, current, 0);
+	if (unlikely(current->ptrace & PT_PTRACED)) {
+		if (current->ptrace & PT_TRACE_EXEC)
+			ptrace_notify ((PTRACE_EVENT_EXEC << 8) | SIGTRAP);
+		else
+			send_sig(SIGTRAP, current, 0);
+	}
+#ifndef __arm__
 	return 0;
+#else
+	return regs->ARM_r0;
+#endif
 }
 
 static int load_aout_library(struct file *file)
@@ -452,8 +460,11 @@ static int load_aout_library(struct file *file)
 
 	/* For  QMAGIC, the starting address is 0x20 into the page.  We mask
 	   this off to get the starting address for the page */
-
-	start_addr =  ex.a_entry & 0xfffff000;
+#ifndef __arm__
+	start_addr = ex.a_entry & 0xfffff000;
+#else
+	start_addr = ex.a_entry & 0xffff8000;
+#endif
 
 	if ((N_TXTOFF(ex) & ~PAGE_MASK) != 0) {
 		static unsigned long error_time;

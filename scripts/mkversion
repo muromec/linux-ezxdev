@@ -1,6 +1,11 @@
+# 
+# Copyright (C) 2003 Motorola
+#
+# modified by a15285, for EZX platform
+#
 if [ ! -f .version ]
 then
     echo 1
 else
-    expr 0`cat .version` + 1
+    expr 0 + 1
 fi

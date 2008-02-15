@@ -54,6 +54,13 @@ static const char version2[] =
 #include <linux/etherdevice.h>
 #include "8390.h"
 
+#ifdef CONFIG_TOSHIBA_RBTX4925
+#include <asm/tx4925/toshiba_rbtx4925.h>
+#endif
+#ifdef CONFIG_TOSHIBA_RBTX4927
+#include <asm/tx4927/toshiba_rbtx4927/toshiba_rbtx4927.h>
+#endif
+
 /* Some defines that people can play with if so inclined. */
 
 /* Do we support clones that don't adhere to 14,15 of the SAprom ? */
@@ -105,6 +112,12 @@ bad_clone_list[] __initdata = {
     {"PCM-4823", "PCM-4823", {0x00, 0xc0, 0x6c}}, /* Broken Advantech MoBo */
     {"REALTEK", "RTL8019", {0x00, 0x00, 0xe8}}, /* no-name with Realtek chip */
     {"LCS-8834", "LCS-8836", {0x04, 0x04, 0x37}}, /* ShinyNet (SET) */
+    #ifdef CONFIG_TOSHIBA_RBTX4925
+    {"RBTX4925/RTL8019AS-1", "RBTX4925/RTL8019AS-2", {0x00, 0x60, 0x0a}}, /* Toshiba RBTX4925 built-in */
+    #endif
+    #ifdef CONFIG_TOSHIBA_RBTX4927
+    {"RBTX4927/RTL8019AS-1", "RBTX4927/RTL8019AS-2", {0x00, 0x60, 0x0a}}, /* Toshiba RBTX4927 built-in */
+    #endif
     {0,}
 };
 #endif
@@ -161,9 +174,40 @@ static void ne_block_output(struct net_device *dev, const int count,
 
 int __init ne_probe(struct net_device *dev)
 {
-	unsigned int base_addr = dev->base_addr;
+	unsigned int base_addr;
+
+	#ifdef CONFIG_TOSHIBA_RBTX4925
+	{
+	  dev->base_addr = RBTX4925_RTL_8019_BASE;
+	  dev->irq       = RBTX4925_RTL_8019_IRQ;
+	}
+	#endif
+	#ifdef CONFIG_TOSHIBA_RBTX4927
+	{
+	  dev->base_addr = RBTX4927_RTL_8019_BASE;
+	  dev->irq       = RBTX4927_RTL_8019_IRQ;
+	}
+	#endif
+
+	base_addr = dev->base_addr;
 
 	SET_MODULE_OWNER(dev);
+
+#if defined(CONFIG_NEC_OSPREY)
+       /* [jsun] Okay, this is a total hack.  NE2k on NEC Osprey is
+        * at 0x03fe0300 (+ VR4181_PORT_BASE).  However, the stupid
+        * include/linux/if.h:ifmap structure cannot handle u32 base value.
+         * We get the address chopped off.
+        *
+        * The real fix is to change ifmap structure.  However,
+        * There are some concerns (from David Miller) as to binary
+        * compatibility.  So I just hack this file for mvista tree only.
+        */
+       if (dev->base_addr == 0x0300) {
+               base_addr = dev->base_addr = 0x03fe0300;
+               printk(KERN_WARNING "nec.c : Modify NE2K base addr from 0x300 to 0x03fe0300 for NEC Osprey board!\n");
+       }
+#endif
 
 	/* First check any supplied i/o locations. User knows best. <cough> */
 	if (base_addr > 0x1ff)	/* Check a single specified location. */
@@ -442,6 +486,12 @@ static int __init ne_probe1(struct net_device *dev, int ioaddr)
 
 	printk("\n%s: %s found at %#x, using IRQ %d.\n",
 		dev->name, name, ioaddr, dev->irq);
+
+	#if defined(CONFIG_TOSHIBA_RBTX4925) || defined(CONFIG_TOSHIBA_RBTX4927)
+	{
+		wordlength = 1;
+	}
+	#endif
 
 	ei_status.name = name;
 	ei_status.tx_start_page = start_page;

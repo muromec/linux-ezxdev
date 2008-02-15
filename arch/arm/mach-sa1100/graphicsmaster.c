@@ -83,7 +83,7 @@ static int __init graphicsmaster_init(void)
 	 */
 	sa1110_mb_enable();
 
-	sa1111_init_irq(ADS_EXT_IRQ(0));
+	sa1111_init_irq(IRQ_BOARD_START);
 
 	return 0;
 }
@@ -101,49 +101,49 @@ static void ADS_IRQ_demux( int irq, void *dev_id, struct pt_regs *regs )
 	while( (irq = ADS_INT_ST1 | (ADS_INT_ST2 << 8)) ){
 		for( i = 0; i < 16; i++ )
 			if( irq & (1<<i) ) {
-				do_IRQ( ADS_EXT_IRQ(i), regs );
+				do_IRQ( IRQ_BOARD_START + i, regs );
 			}
 	}
 }
 
 static struct irqaction ADS_ext_irq = {
-	name:		"ADS_ext_IRQ",
-	handler:	ADS_IRQ_demux,
-	flags:		SA_INTERRUPT
+	.name		= "ADS_ext_IRQ",
+	.handler	= ADS_IRQ_demux,
+	.flags		= SA_INTERRUPT
 };
 
 static void ADS_mask_and_ack_irq0(unsigned int irq)
 {
-	int mask = (1 << (irq - ADS_EXT_IRQ(0)));
+	int mask = (1 << (irq - IRQ_BOARD_START));
 	ADS_INT_EN1 &= ~mask;
 	ADS_INT_ST1 = mask;
 }
 
 static void ADS_mask_irq0(unsigned int irq)
 {
-	ADS_INT_ST1 = (1 << (irq - ADS_EXT_IRQ(0)));
+	ADS_INT_ST1 = (1 << (irq - IRQ_BOARD_START));
 }
 
 static void ADS_unmask_irq0(unsigned int irq)
 {
-	ADS_INT_EN1 |= (1 << (irq - ADS_EXT_IRQ(0)));
+	ADS_INT_EN1 |= (1 << (irq - IRQ_BOARD_START));
 }
 
 static void ADS_mask_and_ack_irq1(unsigned int irq)
 {
-	int mask = (1 << (irq - ADS_EXT_IRQ(8)));
+	int mask = (1 << (irq - IRQ_BOARD_START - 8));
 	ADS_INT_EN2 &= ~mask;
 	ADS_INT_ST2 = mask;
 }
 
 static void ADS_mask_irq1(unsigned int irq)
 {
-	ADS_INT_ST2 = (1 << (irq - ADS_EXT_IRQ(8)));
+	ADS_INT_ST2 = (1 << (irq - IRQ_BOARD_START - 8));
 }
 
 static void ADS_unmask_irq1(unsigned int irq)
 {
-	ADS_INT_EN2 |= (1 << (irq - ADS_EXT_IRQ(8)));
+	ADS_INT_EN2 |= (1 << (irq - IRQ_BOARD_START - 8));
 }
 
 static void __init graphicsmaster_init_irq(void)
@@ -160,14 +160,14 @@ static void __init graphicsmaster_init_irq(void)
 	ADS_INT_ST1 = 0xff;
 	ADS_INT_ST2 = 0xff;
 
-	for (irq = ADS_EXT_IRQ(0); irq <= ADS_EXT_IRQ(7); irq++) {
+	for (irq = IRQ_BAORD_START; irq < IRQ_BOARD_START + 8; irq++) {
 		irq_desc[irq].valid	= 1;
 		irq_desc[irq].probe_ok	= 1;
 		irq_desc[irq].mask_ack	= ADS_mask_and_ack_irq0;
 		irq_desc[irq].mask	= ADS_mask_irq0;
 		irq_desc[irq].unmask	= ADS_unmask_irq0;
 	}
-	for (irq = ADS_EXT_IRQ(8); irq <= ADS_EXT_IRQ(15); irq++) {
+	for (irq = IRQ_BOARD_START + 8; irq < IRQ_BOARD_END; irq++) {
 		irq_desc[irq].valid	= 1;
 		irq_desc[irq].probe_ok	= 1;
 		irq_desc[irq].mask_ack	= ADS_mask_and_ack_irq1;
@@ -279,10 +279,10 @@ graphicsmaster_uart_pm(struct uart_port *port, u_int state, u_int oldstate)
 }
 
 static struct sa1100_port_fns graphicsmaster_port_fns __initdata = {
-	open:		graphicsmaster_uart_open,
-	get_mctrl:	graphicsmaster_get_mctrl,
-	set_mctrl:	graphicsmaster_set_mctrl,
-	pm:		graphicsmaster_uart_pm,
+	.open		= graphicsmaster_uart_open,
+	.get_mctrl	= graphicsmaster_get_mctrl,
+	.set_mctrl	= graphicsmaster_set_mctrl,
+	.pm		= graphicsmaster_uart_pm,
 };
 
 static void __init graphicsmaster_map_io(void)

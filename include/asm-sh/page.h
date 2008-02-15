@@ -80,13 +80,24 @@ typedef struct { unsigned long pgprot; } pgprot_t;
 #define __pa(x)			((unsigned long)(x)-PAGE_OFFSET)
 #define __va(x)			((void *)((unsigned long)(x)+PAGE_OFFSET))
 
+
 #ifndef CONFIG_DISCONTIGMEM
+
+/*Taken from 2.6*/
+#define PFN_START             (__MEMORY_START >> PAGE_SHIFT)
+#define pfn_to_page(pfn) (mem_map + (pfn) - PFN_START)
+#define page_to_pfn(page) ((unsigned long)((page) - mem_map) + PFN_START)
+#define pfn_valid(pfn) (((pfn) - PFN_START) < max_mapnr)
+
 #define phys_to_page(phys)	(mem_map + (((phys)-__MEMORY_START) >> PAGE_SHIFT))
 #define VALID_PAGE(page)	((page - mem_map) < max_mapnr)
 #define page_to_phys(page)	(((page - mem_map) << PAGE_SHIFT) + __MEMORY_START)
 #endif
 
 #define virt_to_page(kaddr)	phys_to_page(__pa(kaddr))
+
+#define VM_DATA_DEFAULT_FLAGS	(VM_READ | VM_WRITE | VM_EXEC | \
+				 VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC)
 
 #ifndef __ASSEMBLY__
 

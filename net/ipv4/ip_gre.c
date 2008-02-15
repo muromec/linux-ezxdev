@@ -9,6 +9,10 @@
  *	2 of the License, or (at your option) any later version.
  *
  */
+/*
+ *  2005-Apr-04 Motorola  Add security patch 
+ */
+
 
 #include <linux/config.h>
 #include <linux/module.h>
@@ -28,6 +32,7 @@
 #include <linux/inetdevice.h>
 #include <linux/igmp.h>
 #include <linux/netfilter_ipv4.h>
+#include <linux/security.h>
 
 #include <net/sock.h>
 #include <net/ip.h>
@@ -651,6 +656,7 @@ int ipgre_rcv(struct sk_buff *skb)
 		skb->nf_debug = 0;
 #endif
 #endif
+		security_ip_decapsulate(skb);
 		ipgre_ecn_decapsulate(iph, skb);
 		netif_rx(skb);
 		read_unlock(&ipgre_lock);
@@ -883,6 +889,7 @@ static int ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 	skb->nf_debug = 0;
 #endif
 #endif
+	security_ip_encapsulate(skb);
 
 	IPTUNNEL_XMIT();
 	tunnel->recursion--;

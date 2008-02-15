@@ -3,6 +3,10 @@
  *
  *  Copyright (C) 1991, 1992  Linus Torvalds
  */
+/*
+ *
+ * 2005-Apr-04  Motorola  Add security patch 
+ */
 
 #include <linux/config.h>
 #include <linux/slab.h>
@@ -13,9 +17,12 @@
 #include <linux/personality.h>
 #include <linux/tty.h>
 #include <linux/namespace.h>
+#include <linux/security.h>
 #ifdef CONFIG_BSD_PROCESS_ACCT
 #include <linux/acct.h>
 #endif
+
+#include <linux/trace.h>
 
 #include <asm/uaccess.h>
 #include <asm/pgtable.h>
@@ -28,49 +35,23 @@ int getrusage(struct task_struct *, int, struct rusage *);
 
 static void release_task(struct task_struct * p)
 {
-	if (p != current) {
+	if (p == current)
+		BUG();
 #ifdef CONFIG_SMP
-		/*
-		 * Wait to make sure the process isn't on the
-		 * runqueue (active on some other CPU still)
-		 */
-		for (;;) {
-			task_lock(p);
-			if (!task_has_cpu(p))
-				break;
-			task_unlock(p);
-			do {
-				cpu_relax();
-				barrier();
-			} while (task_has_cpu(p));
-		}
-		task_unlock(p);
+	wait_task_inactive(p);
 #endif
-		atomic_dec(&p->user->processes);
-		free_uid(p->user);
-		unhash_process(p);
+	atomic_dec(&p->user->processes);
+    security_task_free(p);
+	free_uid(p->user);
+	unhash_process(p);
 
-		release_thread(p);
-		current->cmin_flt += p->min_flt + p->cmin_flt;
-		current->cmaj_flt += p->maj_flt + p->cmaj_flt;
-		current->cnswap += p->nswap + p->cnswap;
-		/*
-		 * Potentially available timeslices are retrieved
-		 * here - this way the parent does not get penalized
-		 * for creating too many processes.
-		 *
-		 * (this cannot be used to artificially 'generate'
-		 * timeslices, because any timeslice recovered here
-		 * was given away by the parent in the first place.)
-		 */
-		current->counter += p->counter;
-		if (current->counter >= MAX_COUNTER)
-			current->counter = MAX_COUNTER;
-		p->pid = 0;
-		free_task_struct(p);
-	} else {
-		printk("task releasing itself\n");
-	}
+	release_thread(p);
+	current->cmin_flt += p->min_flt + p->cmin_flt;
+	current->cmaj_flt += p->maj_flt + p->cmaj_flt;
+	current->cnswap += p->nswap + p->cnswap;
+	sched_exit(p);
+	p->pid = 0;
+	free_task_struct(p);
 }
 
 /*
@@ -150,6 +131,79 @@ static inline int has_stopped_jobs(int pgrp)
 	return retval;
 }
 
+/**
+ * reparent_to_init() - Reparent the calling kernel thread to the init task.
+ *
+ * If a kernel thread is launched as a result of a system call, or if
+ * it ever exits, it should generally reparent itself to init so that
+ * it is correctly cleaned up on exit.
+ *
+ * The various task state such as scheduling policy and priority may have
+ * been inherited from a user process, so we reset them to sane values here.
+ *
+ * NOTE that reparent_to_init() gives the caller full capabilities.
+ */
+void reparent_to_init(void)
+{
+	write_lock_irq(&tasklist_lock);
+
+	/* Reparent to init */
+	REMOVE_LINKS(current);
+	current->p_pptr = child_reaper;
+	current->p_opptr = child_reaper;
+	SET_LINKS(current);
+
+	/* Set the exit signal to SIGCHLD so we signal init on exit */
+	current->exit_signal = SIGCHLD;
+
+	current->ptrace = 0;
+	if ((current->policy == SCHED_OTHER) && (task_nice(current) < 0))
+		set_user_nice(current, 0);
+	/* cpus_allowed? */
+	/* rt_priority? */
+	/* signals? */
+	current->cap_effective = CAP_INIT_EFF_SET;
+	current->cap_inheritable = CAP_INIT_INH_SET;
+	current->cap_permitted = CAP_FULL_SET;
+	current->keep_capabilities = 0;
+	memcpy(current->rlim, init_task.rlim, sizeof(*(current->rlim)));
+	current->user = INIT_USER;
+
+	write_unlock_irq(&tasklist_lock);
+}
+
+/*
+ *	Put all the gunge required to become a kernel thread without
+ *	attached user resources in one place where it belongs.
+ */
+
+void daemonize(void)
+{
+	struct fs_struct *fs;
+
+
+	/*
+	 * If we were started as result of loading a module, close all of the
+	 * user space pages.  We don't need them, and if we didn't close them
+	 * they would be locked into memory.
+	 */
+	exit_mm(current);
+
+	current->session = 1;
+	current->pgrp = 1;
+	current->tty = NULL;
+
+	/* Become as one with the init task */
+
+	exit_fs(current);	/* current->fs->count--; */
+	fs = init_task.fs;
+	current->fs = fs;
+	atomic_inc(&fs->count);
+ 	exit_files(current);
+	current->files = init_task.files;
+	atomic_inc(&current->files->count);
+}
+
 /*
  * When we die, we re-parent all our children.
  * Try to give them to another thread in our thread
@@ -171,6 +225,7 @@ static inline void forget_original_parent(struct task_struct * father)
 			/* Make sure we're not reparenting to ourselves */
 			p->p_opptr = child_reaper;
 
+			p->first_time_slice = 0;
 			if (p->pdeath_signal) send_sig(p->pdeath_signal, p, 0);
 		}
 	}
@@ -196,6 +251,8 @@ static inline void close_files(struct files_struct * files)
 			}
 			i++;
 			set >>= 1;
+			debug_lock_break(1);
+			conditional_schedule();
 		}
 	}
 }
@@ -282,7 +339,9 @@ struct mm_struct * start_lazy_tlb(void)
 	current->mm = NULL;
 	/* active_mm is still 'mm' */
 	atomic_inc(&mm->mm_count);
+	preempt_disable();
 	enter_lazy_tlb(mm, current, smp_processor_id());
+	preempt_enable();
 	return mm;
 }
 
@@ -313,8 +372,8 @@ static inline void __exit_mm(struct task_struct * tsk)
 		/* more a memory barrier than a real lock */
 		task_lock(tsk);
 		tsk->mm = NULL;
-		task_unlock(tsk);
 		enter_lazy_tlb(mm, current, smp_processor_id());
+		task_unlock(tsk);
 		mmput(mm);
 	}
 }
@@ -343,7 +402,7 @@ static void exit_notify(void)
 	 * is about to become orphaned.
 	 */
 	 
-	t = current->p_pptr;
+	t = current->p_opptr;
 	
 	if ((t->pgrp != current->pgrp) &&
 	    (t->session == current->session) &&
@@ -435,11 +494,18 @@ NORET_TYPE void do_exit(long code)
 	tsk->flags |= PF_EXITING;
 	del_timer_sync(&tsk->real_timer);
 
+	if (unlikely(preempt_get_count()))
+		printk(KERN_INFO "note: %s[%d] exited with preempt_count %d\n",
+				current->comm, current->pid,
+				preempt_get_count());
+
 fake_volatile:
 #ifdef CONFIG_BSD_PROCESS_ACCT
 	acct_process(code);
 #endif
 	__exit_mm(tsk);
+
+	TRACE_PROCESS(TRACE_EV_PROCESS_EXIT, 0, 0);
 
 	lock_kernel();
 	sem_exit();
@@ -498,6 +564,8 @@ asmlinkage long sys_wait4(pid_t pid,unsigned int * stat_addr, int options, struc
 	if (options & ~(WNOHANG|WUNTRACED|__WNOTHREAD|__WCLONE|__WALL))
 		return -EINVAL;
 
+	TRACE_PROCESS(TRACE_EV_PROCESS_WAIT, pid, 0);
+
 	add_wait_queue(&current->wait_chldexit,&wait);
 repeat:
 	flag = 0;
@@ -525,6 +593,10 @@ repeat:
 			if (((p->exit_signal != SIGCHLD) ^ ((options & __WCLONE) != 0))
 			    && !(options & __WALL))
 				continue;
+
+			if (security_task_wait(p))
+				continue;
+
 			flag = 1;
 			switch (p->state) {
 			case TASK_STOPPED:
@@ -556,7 +628,7 @@ repeat:
 					REMOVE_LINKS(p);
 					p->p_pptr = p->p_opptr;
 					SET_LINKS(p);
-					do_notify_parent(p, SIGCHLD);
+					do_notify_parent(p, p->exit_signal);
 					write_unlock_irq(&tasklist_lock);
 				} else
 					release_task(p);
@@ -587,7 +659,7 @@ end_wait4:
 	return retval;
 }
 
-#if !defined(__alpha__) && !defined(__ia64__)
+#if !defined(__alpha__) && !defined(__ia64__) && !defined(__arm__)
 
 /*
  * sys_waitpid() remains for compatibility. waitpid() should be

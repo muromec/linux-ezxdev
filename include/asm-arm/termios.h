@@ -1,3 +1,10 @@
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * Motorola EzX changes:
+ *    add one more line displine for GPRSV
+ */
+
 #ifndef __ASM_ARM_TERMIOS_H
 #define __ASM_ARM_TERMIOS_H
 
@@ -66,7 +73,10 @@ struct termio {
 #define N_HDLC		13	/* synchronous HDLC */
 #define N_SYNC_PPP	14
 #define N_HCI		15  /* Bluetooth HCI UART */
-
+ /* porting from A760 GPRS  feature   linweiqiang   2003-12-17 */
+#define N_GPRS      16  /* virtual GPRS data line discipline  */
+#define N_MODEM_PPP 17  
+#define N_MODEM_RELAY 18
 #ifdef __KERNEL__
 
 /*

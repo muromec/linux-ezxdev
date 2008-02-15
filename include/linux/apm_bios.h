@@ -15,9 +15,18 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * General Public License for more details.
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by w20535, for EZX platform
+ */
 
+/* #include <linux/pm-devices.h> */
+
+#if !defined(CONFIG_ARCH_EZX)
 typedef unsigned short	apm_event_t;
 typedef unsigned short	apm_eventinfo_t;
+#endif
 
 #ifdef __KERNEL__
 
@@ -42,8 +51,8 @@ struct apm_bios_info {
 #define APM_16_BIT_SUPPORT	0x0001
 #define APM_32_BIT_SUPPORT	0x0002
 #define APM_IDLE_SLOWS_CLOCK	0x0004
-#define APM_BIOS_DISABLED      	0x0008
-#define APM_BIOS_DISENGAGED     0x0010
+#define APM_BIOS_DISABLED	  	0x0008
+#define APM_BIOS_DISENGAGED	 0x0010
 
 /*
  * Data for APM that is persistant across module unload/load
@@ -167,7 +176,6 @@ extern struct apm_info	apm_info;
 
 /*
  * APM Device IDs
- */
 #define APM_DEVICE_BIOS		0x0000
 #define APM_DEVICE_ALL		0x0001
 #define APM_DEVICE_DISPLAY	0x0100
@@ -181,6 +189,20 @@ extern struct apm_info	apm_info;
 #define APM_DEVICE_OLD_ALL	0xffff
 #define APM_DEVICE_CLASS	0x00ff
 #define APM_DEVICE_MASK		0xff00
+ */
+/*
+ *  APM devices IDs for non-x86
+ */
+#define APM_DEVICE_ALL		PM_SYS_DEV
+#define APM_DEVICE_DISPLAY	  PM_DISPLAY_DEV
+#define APM_DEVICE_STORAGE	PM_STORAGE_DEV
+#define APM_DEVICE_PARALLEL	PM_PARALLEL_DEV
+#define APM_DEVICE_SERIAL	PM_SERIAL_DEV
+#define APM_DEVICE_NETWORK	PM_NETWORK_DEV
+#define APM_DEVICE_PCMCIA	PM_PCMCIA_DEV
+#define APM_DEVICE_BATTERY	PM_BATTERY_DEV
+#define APM_DEVICE_TPANEL	PM_TPANEL_DEV
+
 
 #ifdef __KERNEL__
 /*
@@ -214,5 +236,154 @@ extern struct apm_info	apm_info;
 
 #define APM_IOC_STANDBY		_IO('A', 1)
 #define APM_IOC_SUSPEND		_IO('A', 2)
+#define APM_IOC_SET_WAKEUP	_IO('A', 3)
+
+#if	defined(CONFIG_ARCH_SA1100)
+#define APM_AC_OFFLINE 0
+#define APM_AC_ONLINE 1
+#define APM_AC_BACKUP 2
+#define APM_AC_UNKNOWN 0xFF
+
+#define APM_BATTERY_STATUS_HIGH 0
+#define APM_BATTERY_STATUS_LOW  1
+#define APM_BATTERY_STATUS_CRITICAL 2
+#define APM_BATTERY_STATUS_CHARGING 3
+#define APM_BATTERY_STATUS_UNKNOWN 0xFF
+
+#define APM_BATTERY_LIFE_UNKNOWN 0xFFFF
+#define APM_BATTERY_LIFE_MINUTES 0x8000
+#define APM_BATTERY_LIFE_VALUE_MASK 0x7FFF
+#endif
+
+#if defined(CONFIG_ARCH_EZX)
+//#define APM_DEBUG
+
+#ifdef APM_DEBUG
+#define APM_DPRINTK(format, args...)	printk(format, ##args)
+#else
+#define APM_DPRINTK(format, args...)
+#endif
+
+struct  ipm_config {
+	/*  Below  items must be set to set configurations. */
+	unsigned int	core_freq;	/*  in khz. */
+	unsigned int	core_vltg;	/*  in mV.  */
+	unsigned int	turbo_ratio;	/*  specify the N value.	*/
+	unsigned int	cpu_mode;
+	unsigned int	fast_bus_mode;
+	unsigned int	sys_bus_freq;
+	unsigned int	mem_bus_freq;
+	unsigned int	lcd_freq;
+	unsigned int	enabled_device;
+};
+
+struct clk_regs {
+	unsigned long cccr;
+	unsigned long clkcfg;
+	unsigned long mdrefr;
+};
+
+/*
+ * kernel event definitions for our ezx platform
+ */
+typedef struct {
+	unsigned short type;	/*	What type of IPM events.	*/
+	unsigned short kind;	/*	What kind, or sub-type of events.*/
+	unsigned int info;
+} apm_event_t;
+
+/* event types */
+#define	APM_EVENT_PROFILER	0x0		/*	Profiler events.	*/
+#define	APM_EVENT_PMU		0x1		/*	PMU events, may not need.	*/
+#define	APM_EVENT_DEVICE	0x2		/*	Device event.	*/
+
+/* event kinds */ 
+#define	EVENT_PROF_IDLE		0x0		/* CPU utility */
+#define	EVENT_PROF_PERF		0x1		/* bottleneck: mem or cpu */
+#define EVENT_PROF_SLEEP	0x2		/* sleep condition */
+
+#define EVENT_DEV_ACCS		0x0
+#define EVENT_DEV_BT		0x1
+#define EVENT_DEV_TS		0x2
+#define EVENT_DEV_KEY		0x3
+#define EVENT_DEV_RTC		0x4
+#define EVENT_DEV_FLIP		0x5
+#define EVENT_DEV_ICL		0x6
+#define EVENT_DEV_BBWDI		0x7
+
+/* event info */
+#define PERF_CPU_BOUND		0x1
+#define PERF_MEM_BOUND		0x2
+
+#define DEV_OFF			0x0
+#define DEV_ON			0x1
+
+#define DEV_DETACH              0x0
+#define DEV_ATTACH              0x1
+
+/*
+ * some new io control commands
+ */
+#define APM_IOC_GET_IPM_CONFIG		_IOR('A', 4, struct ipm_config)
+#define APM_IOC_SET_IPM_CONFIG		_IOW('A', 5, struct ipm_config)
+#define APM_IOC_SLEEP			_IOW('A', 6, int)
+#define APM_IOC_SET_SPROF_WIN		_IOW('A', 7, int)
+#define APM_IOC_WAKEUP_ENABLE		_IOW('A', 8, int)
+#define APM_IOC_WAKEUP_DISABLE		_IOW('A', 9, int)
+#define APM_IOC_POWEROFF		_IO('A', 10)
+#define APM_IOC_RESET_BP		_IO('A', 11)
+#define APM_IOC_USEROFF_ENABLE		_IOW('A', 12, int)
+#define APM_IOC_NOTIFY_BP		_IOW('A', 13, int)
+#define APM_IOC_REFLASH			_IO('A', 14)
+#define APM_IOC_PASSTHRU		_IO('A', 15)
+#define	APM_IOC_STARTPMU		_IOW('A', 16, int)
+#define	APM_IOC_SET_IPROF_WIN		_IOW('A', 17, int)
+
+/* parameters passed to APM_IOC_NOTIFY_BP in order to signal BP */
+#define APM_NOTIFY_BP_QUIET		1
+#define APM_NOTIFY_BP_UNHOLD		0
+
+
+#define FCS_EOF			/* do FCS in EOF handler */
+#ifdef FCS_EOF
+#define WAIT_MORE_EOF		/* do FCS in next EOF if this EOF handler was delayed too long */
+#endif
+//#define FCS_WITH_MEM
+
+extern void apm_event_notify(short type, short kind, int info);
+extern int periodic_jobs_done(void);
+
+extern int get_core_voltage(void);
+extern int enter_13M_quickly(void);
+extern void exit_13M_quickly(int mode);
+
+extern int get_ipm_config(struct ipm_config  *ret_conf);
+extern int set_ipm_config(struct ipm_config  *set_conf);
+
+#endif /* CONFIG_ARCH_EZX */
+
+
+/*
+ * Maximum number of events stored
+ */
+#define APM_MAX_EVENTS		  20
+
+/*
+ * The per-file APM data
+ */
+struct apm_user {
+	int		magic;
+	struct apm_user *next;
+	int		suser: 1;
+	int		suspend_wait: 1;
+	int		suspend_result;
+	int		suspends_pending;
+	int		standbys_pending;
+	int		suspends_read;
+	int		standbys_read;
+	int		event_head;
+	int		event_tail;
+	apm_event_t	events[APM_MAX_EVENTS];
+};
 
 #endif	/* LINUX_APM_H */

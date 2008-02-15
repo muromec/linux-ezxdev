@@ -27,13 +27,13 @@ static inline void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk,
 
 static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next, struct task_struct *tsk, unsigned cpu)
 {
-	if (prev != next) {
+	if (likely(prev != next)) {
 		/* stop flush ipis for the previous mm */
 		clear_bit(cpu, &prev->cpu_vm_mask);
 		/*
 		 * Re-load LDT if necessary
 		 */
-		if (prev->context.segments != next->context.segments)
+		if (unlikely(prev->context.segments != next->context.segments))
 			load_LDT(next);
 #ifdef CONFIG_SMP
 		cpu_tlbstate[cpu].state = TLBSTATE_OK;

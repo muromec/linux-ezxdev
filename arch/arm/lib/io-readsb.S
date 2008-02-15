@@ -9,7 +9,6 @@
  */
 #include <linux/linkage.h>
 #include <asm/assembler.h>
-#include <asm/hardware.h>
 
 .insb_align:	rsb	ip, ip, #4
 		cmp	ip, r2
@@ -30,80 +29,87 @@ ENTRY(__raw_readsb)
 		ands	ip, r1, #3
 		bne	.insb_align
 
-.insb_aligned:	stmfd	sp!, {r4 - r6, lr}
+.insb_aligned:	stmfd	sp!, {r4, r5, lr}
 
 		subs	r2, r2, #16
 		bmi	.insb_no_16
 
 .insb_16_lp:	ldrb	r3, [r0]
+		mov	r3, r3, put_byte_0
 		ldrb	r4, [r0]
-		orr	r3, r3, r4, lsl #8
+		orr	r3, r3, r4, put_byte_1
 		ldrb	r4, [r0]
-		orr	r3, r3, r4, lsl #16
+		orr	r3, r3, r4, put_byte_2
 		ldrb	r4, [r0]
-		orr	r3, r3, r4, lsl #24
+		orr	r3, r3, r4, put_byte_3
 		ldrb	r4, [r0]
+		mov	r4, r4, put_byte_0
 		ldrb	r5, [r0]
-		orr	r4, r4, r5, lsl #8
+		orr	r4, r4, r5, put_byte_1
 		ldrb	r5, [r0]
-		orr	r4, r4, r5, lsl #16
+		orr	r4, r4, r5, put_byte_2
 		ldrb	r5, [r0]
-		orr	r4, r4, r5, lsl #24
+		orr	r4, r4, r5, put_byte_3
 		ldrb	r5, [r0]
-		ldrb	r6, [r0]
-		orr	r5, r5, r6, lsl #8
-		ldrb	r6, [r0]
-		orr	r5, r5, r6, lsl #16
-		ldrb	r6, [r0]
-		orr	r5, r5, r6, lsl #24
-		ldrb	r6, [r0]
+		mov	r5, r5, put_byte_0
 		ldrb	ip, [r0]
-		orr	r6, r6, ip, lsl #8
+		orr	r5, r5, ip, put_byte_1
 		ldrb	ip, [r0]
-		orr	r6, r6, ip, lsl #16
+		orr	r5, r5, ip, put_byte_2
 		ldrb	ip, [r0]
-		orr	r6, r6, ip, lsl #24
-		stmia	r1!, {r3 - r6}
+		orr	r5, r5, ip, put_byte_3
+		ldrb	ip, [r0]
+		mov	ip, ip, put_byte_0
+		ldrb	lr, [r0]
+		orr	ip, ip, lr, put_byte_1
+		ldrb	lr, [r0]
+		orr	ip, ip, lr, put_byte_2
+		ldrb	lr, [r0]
+		orr	ip, ip, lr, put_byte_3
+		stmia	r1!, {r3 - r5, ip}
 
 		subs	r2, r2, #16
 		bpl	.insb_16_lp
 
 		tst	r2, #15
-		LOADREGS(eqfd, sp!, {r4 - r6, pc})
+		LOADREGS(eqfd, sp!, {r4, r5, pc})
 
 .insb_no_16:	tst	r2, #8
 		beq	.insb_no_8
 
 		ldrb	r3, [r0]
+		mov	r3, r3, put_byte_0
 		ldrb	r4, [r0]
-		orr	r3, r3, r4, lsl #8
+		orr	r3, r3, r4, put_byte_1
 		ldrb	r4, [r0]
-		orr	r3, r3, r4, lsl #16
+		orr	r3, r3, r4, put_byte_2
 		ldrb	r4, [r0]
-		orr	r3, r3, r4, lsl #24
+		orr	r3, r3, r4, put_byte_3
 		ldrb	r4, [r0]
+		mov	r4, r4, put_byte_0
 		ldrb	r5, [r0]
-		orr	r4, r4, r5, lsl #8
+		orr	r4, r4, r5, put_byte_1
 		ldrb	r5, [r0]
-		orr	r4, r4, r5, lsl #16
+		orr	r4, r4, r5, put_byte_2
 		ldrb	r5, [r0]
-		orr	r4, r4, r5, lsl #24
+		orr	r4, r4, r5, put_byte_3
 		stmia	r1!, {r3, r4}
 
 .insb_no_8:	tst	r2, #4
 		beq	.insb_no_4
 
 		ldrb	r3, [r0]
+		mov	r3, r3, put_byte_0
 		ldrb	r4, [r0]
-		orr	r3, r3, r4, lsl #8
+		orr	r3, r3, r4, put_byte_1
 		ldrb	r4, [r0]
-		orr	r3, r3, r4, lsl #16
+		orr	r3, r3, r4, put_byte_2
 		ldrb	r4, [r0]
-		orr	r3, r3, r4, lsl #24
+		orr	r3, r3, r4, put_byte_3
 		str	r3, [r1], #4
 
 .insb_no_4:	ands	r2, r2, #3
-		LOADREGS(eqfd, sp!, {r4 - r6, pc})
+		LOADREGS(eqfd, sp!, {r4, r5, pc})
 
 		cmp	r2, #2
 		ldrb	r3, [r0]
@@ -113,4 +119,4 @@ ENTRY(__raw_readsb)
 		ldrgtb	r3, [r0]
 		strgtb	r3, [r1]
 
-		LOADREGS(fd, sp!, {r4 - r6, pc})
+		LOADREGS(fd, sp!, {r4, r5, pc})

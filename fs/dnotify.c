@@ -12,6 +12,8 @@
  * WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * General Public License for more details.
+ *
+ * 2005-Apr-05 Motorol Add security patch
  */
 #include <linux/fs.h>
 #include <linux/sched.h>
@@ -19,6 +21,7 @@
 #include <linux/init.h>
 #include <linux/spinlock.h>
 #include <linux/slab.h>
+#include <linux/security.h>
 
 extern void send_sigio(struct fown_struct *fown, int fd, int band);
 
@@ -68,6 +71,7 @@ int fcntl_dirnotify(int fd, struct file *filp, unsigned long arg)
 	struct dnotify_struct **prev;
 	struct inode *inode;
 	fl_owner_t id = current->files;
+	int error = 0;
 
 	if ((arg & ~DN_MULTISHOT) == 0) {
 		dnotify_flush(filp, id);
@@ -88,11 +92,15 @@ int fcntl_dirnotify(int fd, struct file *filp, unsigned long arg)
 			odn->dn_fd = fd;
 			odn->dn_mask |= arg;
 			inode->i_dnotify_mask |= arg & ~DN_MULTISHOT;
-			kmem_cache_free(dn_cache, dn);
-			goto out;
+			goto out_free;
 		}
 		prev = &odn->dn_next;
 	}
+
+	error = security_file_set_fowner(filp);
+	if (error)
+		goto out_free;
+
 	filp->f_owner.pid = current->pid;
 	filp->f_owner.uid = current->uid;
 	filp->f_owner.euid = current->euid;
@@ -105,7 +113,10 @@ int fcntl_dirnotify(int fd, struct file *filp, unsigned long arg)
 	inode->i_dnotify = dn;
 out:
 	write_unlock(&dn_lock);
-	return 0;
+	return error;
+out_free:
+	kmem_cache_free(dn_cache, dn);
+	goto out;
 }
 
 void __inode_dir_notify(struct inode *inode, unsigned long event)

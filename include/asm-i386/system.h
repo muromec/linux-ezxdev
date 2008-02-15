@@ -12,25 +12,22 @@
 struct task_struct;	/* one of the stranger aspects of C forward declarations.. */
 extern void FASTCALL(__switch_to(struct task_struct *prev, struct task_struct *next));
 
-#define prepare_to_switch()	do { } while(0)
 #define switch_to(prev,next,last) do {					\
 	asm volatile("pushl %%esi\n\t"					\
 		     "pushl %%edi\n\t"					\
 		     "pushl %%ebp\n\t"					\
 		     "movl %%esp,%0\n\t"	/* save ESP */		\
-		     "movl %3,%%esp\n\t"	/* restore ESP */	\
+		     "movl %2,%%esp\n\t"	/* restore ESP */	\
 		     "movl $1f,%1\n\t"		/* save EIP */		\
-		     "pushl %4\n\t"		/* restore EIP */	\
+		     "pushl %3\n\t"		/* restore EIP */	\
 		     "jmp __switch_to\n"				\
 		     "1:\t"						\
 		     "popl %%ebp\n\t"					\
 		     "popl %%edi\n\t"					\
 		     "popl %%esi\n\t"					\
-		     :"=m" (prev->thread.esp),"=m" (prev->thread.eip),	\
-		      "=b" (last)					\
+		     :"=m" (prev->thread.esp),"=m" (prev->thread.eip)	\
 		     :"m" (next->thread.esp),"m" (next->thread.eip),	\
-		      "a" (prev), "d" (next),				\
-		      "b" (prev));					\
+		      "a" (prev), "d" (next));				\
 } while (0)
 
 #define _set_base(addr,base) do { unsigned long __pr; \
@@ -305,28 +302,50 @@ static inline unsigned long __cmpxchg(volatile void *ptr, unsigned long old,
 #define smp_mb()	mb()
 #define smp_rmb()	rmb()
 #define smp_wmb()	wmb()
+#define set_mb(var, value) do { xchg(&var, value); } while (0)
 #else
 #define smp_mb()	barrier()
 #define smp_rmb()	barrier()
 #define smp_wmb()	barrier()
+#define set_mb(var, value) do { var = value; barrier(); } while (0)
 #endif
 
-#define set_mb(var, value) do { xchg(&var, value); } while (0)
 #define set_wmb(var, value) do { var = value; wmb(); } while (0)
 
 /* interrupt control.. */
 #define __save_flags(x)		__asm__ __volatile__("pushfl ; popl %0":"=g" (x): /* no input */)
+#ifdef CONFIG_ILATENCY
+extern void intr_cli(const char *, unsigned);
+extern void intr_sti(const char *, unsigned, int);
+extern void intr_restore_flags(const char *, unsigned, unsigned);
+extern void intr_sync_flag(const char *, unsigned lineno); 
+
+#define __intr_cli()                    __asm__ __volatile__("cli": : :"memory")
+#define __intr_sti()                    __asm__ __volatile__("sti": : :"memory")
+#define __intr_restore_flags(x)         __asm__ __volatile__("pushl %0 ; popfl": /* no output */ :"g" (x):"memory")
+#define safe_halt()                     __sti()
+#define __cli() intr_cli(__BASE_FILE__, __LINE__)
+#define __sti() intr_sti(__BASE_FILE__, __LINE__,0)
+#define __restore_flags(x) intr_restore_flags(__BASE_FILE__, __LINE__, x)
+#else
 #define __restore_flags(x) 	__asm__ __volatile__("pushl %0 ; popfl": /* no output */ :"g" (x):"memory", "cc")
 #define __cli() 		__asm__ __volatile__("cli": : :"memory")
 #define __sti()			__asm__ __volatile__("sti": : :"memory")
 /* used in the idle loop; sti takes one instruction cycle to complete */
 #define safe_halt()		__asm__ __volatile__("sti; hlt": : :"memory")
-
+#endif /* CONFIG_ILATENCY */
 /* For spinlocks etc */
 #define local_irq_save(x)	__asm__ __volatile__("pushfl ; popl %0 ; cli":"=g" (x): /* no input */ :"memory")
 #define local_irq_restore(x)	__restore_flags(x)
 #define local_irq_disable()	__cli()
 #define local_irq_enable()	__sti()
+
+#define irqs_disabled()			\
+({					\
+	unsigned long flags;		\
+	__save_flags(flags);		\
+	!(flags & (1<<9));		\
+})
 
 #ifdef CONFIG_SMP
 

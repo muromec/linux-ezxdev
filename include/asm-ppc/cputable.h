@@ -1,5 +1,5 @@
 /*
- * BK Id: %F% %I% %G% %U% %#%
+ * BK Id: SCCS/s.cputable.h 1.8 10/29/02 10:49:09 trini
  */
 /*
  *  include/asm-ppc/cputable.h
@@ -76,6 +76,7 @@ extern struct cpu_spec		*cur_cpu_spec[];
 #define CPU_FTR_L3_DISABLE_NAP		0x00001000
 #define CPU_FTR_NAP_DISABLE_L2_PR	0x00002000
 #define CPU_FTR_DUAL_PLL_750FX		0x00004000
+#define CPU_FTR_NO_DPM			0x00008000
 
 #ifdef __ASSEMBLY__
 

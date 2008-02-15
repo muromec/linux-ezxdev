@@ -75,6 +75,17 @@ static inline void write_ireg(u_long base, u_int reg, u_int val)
 		" : : "r" (val), "r" (reg), "r" (ISAIO_BASE + 0x0464));
 }
 
+static inline unsigned short read_ireg(u_long base_addr, u_int reg)
+{
+	u_short v;
+	__asm__(
+	"str%?h	%1, [%2]	@ NAT_RAP\n\t"
+	"str%?h	%0, [%2, #8]	@ NET_IDP\n\t"
+	: "=r" (v)
+	: "r" (reg), "r" (ISAIO_BASE + 0x0464));
+	return v;
+}
+
 #define am_writeword(dev,off,val) __raw_writew(val, ISAMEM_BASE + ((off) << 1))
 #define am_readword(dev,off)      __raw_readw(ISAMEM_BASE + ((off) << 1))
 
@@ -257,6 +268,23 @@ am79c961_init_for_open(struct net_device *dev)
 	write_rreg (dev->base_addr, CSR0, CSR0_IENA|CSR0_STRT);
 }
 
+static void am79c961_timer(unsigned long data)
+{
+	struct net_device *dev = (struct net_device *)data;
+	struct dev_priv *priv = (struct dev_priv *)dev->priv;
+	unsigned int lnkstat, carrier;
+
+	lnkstat = read_ireg(dev->base_addr, ISALED0) & ISALED0_LNKST;
+	carrier = netif_carrier_ok(dev);
+
+	if (lnkstat && !carrier)
+		netif_carrier_on(dev);
+	else if (!lnkstat && carrier)
+		netif_carrier_off(dev);
+
+	mod_timer(&priv->timer, jiffies + 5*HZ);
+}
+
 /*
  * Open/initialize the board.
  */
@@ -274,6 +302,11 @@ am79c961_open(struct net_device *dev)
 
 	am79c961_init_for_open(dev);
 
+	netif_carrier_off(dev);
+
+	priv->timer.expires = jiffies;
+	add_timer(&priv->timer);
+
 	netif_start_queue(dev);
 
 	return 0;
@@ -288,7 +321,10 @@ am79c961_close(struct net_device *dev)
 	struct dev_priv *priv = (struct dev_priv *)dev->priv;
 	unsigned long flags;
 
+	del_timer_sync(&priv->timer);
+
 	netif_stop_queue(dev);
+	netif_carrier_off(dev);
 
 	spin_lock_irqsave(priv->chip_lock, flags);
 	write_rreg (dev->base_addr, CSR0, CSR0_STOP);
@@ -578,10 +614,10 @@ am79c961_hw_init(struct net_device *dev)
 {
 	struct dev_priv *priv = (struct dev_priv *)dev->priv;
 
-	spin_lock_irq(priv->chip_lock);
+	spin_lock_irq(&priv->chip_lock);
 	write_rreg (dev->base_addr, CSR0, CSR0_STOP);
 	write_rreg (dev->base_addr, CSR3, CSR3_MASKALL);
-	spin_unlock_irq(priv->chip_lock);
+	spin_unlock_irq(&priv->chip_lock);
 
 	am79c961_ramtest(dev, 0x66);
 	am79c961_ramtest(dev, 0x99);
@@ -645,6 +681,11 @@ static int __init am79c961_init(void)
 		dev->dev_addr[i] = inb(dev->base_addr + i * 2) & 0xff;
 		printk (i == 5 ? "%02x\n" : "%02x:", dev->dev_addr[i]);
 	}
+
+	spin_lock_init(&priv->chip_lock);
+	init_timer(&priv->timer);
+	priv->timer.data = (unsigned long)dev;
+	priv->timer.function = am79c961_timer;
 
 	if (am79c961_hw_init(dev))
 		goto release;

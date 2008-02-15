@@ -1,3 +1,9 @@
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by e12499, for EZX platform
+ */
+
 #ifndef _LINUX_FB_H
 #define _LINUX_FB_H
 
@@ -32,6 +38,29 @@
 #define FBIOPUT_MODEINFO        0x4617
 #define FBIOGET_DISPINFO        0x4618
 
+/* added for backlight control */
+#define FBIOSETBKLIGHT          0x4619
+#define FBIOGETBKLIGHT          0x461A
+#define FBIOSETBRIGHTNESS       0x461B
+#define FBIOGETBRIGHTNESS       0x461C
+#define FBIOENABLE2BFS          0x4620  //Added for supporting Peter's request //
+#define FBIODISABLE2BFS         0x4621  //Added for supporting Peter's request //
+#define FBIOCHECK2BFS           0x4622  //Added for supporting Peter's request //
+#define FBIOCKMAINVALIDFB       0x4623  //Added for checking main valid channel is not base channel //
+#define FBIOSMARTUPDATE         0x4625  //Added for smart panel screen updating //
+/* Below is for overlay2 */
+#define FBIOENABLEOVL2            0x4626
+#define FBIODISABLEOVL2            0x4627
+#define FBIOGET_OVL2_MAPINFO			0x4628
+#define FBIOGET_OVL2FIX			0x4629
+#define FBIOGET_OVL2VAR			0x462a
+#define FBIOPUT_OVL2VAR			0x462b
+#define FBIOPAN_DISPLAY_OVL2	 0x462c
+#define FBIOADJUST_TRANS		 0x462d	 /* Added  to support transparency adjustment */
+#define FBIOSET_BRIGHTNESSRANGE		 0x462e	 /* Added  to make app can set the range of backlight brightess */
+/* For CLI CSTN panel power management  */
+#define FBIOENTERCLIPWRSAVE					0x462f	 /* Added  to support CLI CSTN partial mode */
+#define FBIOEXITCLIPWRSAVE					0x4630	 /* Added  to support CLI CSTN partial mode */
 
 #define FB_TYPE_PACKED_PIXELS		0	/* Packed Pixels	*/
 #define FB_TYPE_PLANES			1	/* Non interleaved planes */
@@ -95,6 +124,7 @@
 #define FB_ACCEL_SIS_GLAMOUR    36	/* SiS 300/630/540              */
 #define FB_ACCEL_3DLABS_PERMEDIA3 37	/* 3Dlabs Permedia 3		*/
 #define FB_ACCEL_ATI_RADEON	38	/* ATI Radeon family		*/
+#define FB_ACCEL_EPSON_SED1356  39      /* Epson SED1356                */
 
 
 #define FB_ACCEL_NEOMAGIC_NM2070 90	/* NeoMagic NM2070              */
@@ -139,7 +169,12 @@ struct fb_bitfield {
 	__u32 msb_right;		/* != 0 : Most significant bit is */ 
 					/* right */ 
 };
-
+/* Added to support app setting visible backlight dutycycle range*/
+struct bk_visible_dutycycle_range
+{
+	unsigned long min;
+	unsigned long max;
+};
 #define FB_NONSTD_HAM		1	/* Hold-And-Modify (HAM)        */
 
 #define FB_ACTIVATE_NOW		0	/* set values immediately (or vbl)*/
@@ -170,6 +205,9 @@ struct fb_bitfield {
 #define FB_VMODE_YWRAP		256	/* ywrap instead of panning     */
 #define FB_VMODE_SMOOTH_XPAN	512	/* smooth xpan possible (internally used) */
 #define FB_VMODE_CONUPDATE	512	/* don't update x/yoffset	*/
+
+/* For double buffering printk log */
+#define DBPRINTK  //
 
 struct fb_var_screeninfo {
 	__u32 xres;			/* visible resolution		*/
@@ -223,11 +261,34 @@ struct fb_con2fbmap {
 	__u32 framebuffer;
 };
 
+#if (0)
+struct fb_ovl2_mapinfo
+{
+	unsigned long ovl2_offset;
+	unsigned long ovl2_size;
+	unsigned long ovl2_priv;
+	unsigned long ovl2_framelen;
+	unsigned long aylen;
+	unsigned long acblen;
+	unsigned long acrlen;
+};
+#endif
+
 /* VESA Blanking Levels */
 #define VESA_NO_BLANKING        0
 #define VESA_VSYNC_SUSPEND      1
 #define VESA_HSYNC_SUSPEND      2
 #define VESA_POWERDOWN          3
+
+/* added for backlight */
+#define BKLIGHT_OFF             0
+#define BKLIGHT_ON               1
+
+/* added for ts */
+#define SETTONORMAL             0
+//#define SETTOHWR                1
+#define SETTOCUSTOM             1
+#define GETPENSTYLE             2
 
 struct fb_monspecs {
 	__u32 hfmin;			/* hfreq lower limit (Hz) */
@@ -383,6 +444,18 @@ struct fb_info_gen {
     struct fbgen_hwswitch *fbhw;
 
    /* From here on everything is device dependent */
+};
+
+/* Added by Susan Gu for overlay2 framebuffer mmap */
+struct fb_ovl2_mapinfo
+{
+	unsigned long ovl2_offset;
+	unsigned long ovl2_size;
+	unsigned long ovl2_priv;
+	unsigned long ovl2_framelen;
+	unsigned long aylen;
+	unsigned long acblen;
+	unsigned long acrlen;
 };
 
     /*

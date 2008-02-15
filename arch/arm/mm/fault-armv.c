@@ -27,8 +27,9 @@
 #include <asm/uaccess.h>
 #include <asm/pgalloc.h>
 #include <asm/pgtable.h>
+#include <asm/unaligned.h>
+#include <asm/kgdb.h>
 
-extern void die_if_kernel(const char *str, struct pt_regs *regs, int err);
 extern void show_pte(struct mm_struct *mm, unsigned long addr);
 extern int do_page_fault(unsigned long addr, int error_code,
 			 struct pt_regs *regs);
@@ -112,6 +113,11 @@ do_DataAbort(unsigned long addr, int error_code, struct pt_regs *regs, int fsr)
 {
 	const struct fsr_info *inf = fsr_info + (fsr & 15);
 
+#ifdef CONFIG_KGDB
+	if(kgdb_active() && kgdb_fault_expected)
+		kgdb_handle_bus_error();
+#endif
+
 	if (!inf->fn(addr, error_code, regs))
 		return;
 
@@ -119,6 +125,11 @@ do_DataAbort(unsigned long addr, int error_code, struct pt_regs *regs, int fsr)
 		inf->name, fsr, addr);
 	force_sig(inf->sig, current);
 	show_pte(current->mm, addr);
+#ifdef	CONFIG_KGDB
+	if (!user_mode(regs) && kgdb_active()) {
+		do_kgdb(regs, inf->sig);
+	}
+#endif
 	die_if_kernel("Oops", regs, 0);
 }
 
@@ -236,9 +247,13 @@ make_coherent(struct vm_area_struct *vma, unsigned long addr, struct page *page)
  */
 void update_mmu_cache(struct vm_area_struct *vma, unsigned long addr, pte_t pte)
 {
-	struct page *page = pte_page(pte);
+	unsigned long pfn = pte_pfn(pte);
+	struct page *page;
 
-	if (VALID_PAGE(page) && page->mapping) {
+	if (!pfn_valid(pfn))
+		return;
+	page = pfn_to_page(pfn);
+	if (page->mapping) {
 		if (test_and_clear_bit(PG_dcache_dirty, &page->flags)) {
 			unsigned long kvirt = (unsigned long)page_address(page);
 			cpu_cache_clean_invalidate_range(kvirt, kvirt + PAGE_SIZE, 0);

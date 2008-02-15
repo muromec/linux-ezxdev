@@ -12,6 +12,11 @@
  * 2002-06-25: Code cleanup.
  *
  */
+/*
+ *
+ * 2005-Apr-04  Motorola  Add security patch 
+ */
+
 #include <linux/module.h>
 #include <linux/skbuff.h>
 #include <linux/init.h>
@@ -26,6 +31,7 @@
 #include <linux/brlock.h>
 #include <linux/sysctl.h>
 #include <linux/proc_fs.h>
+#include <linux/security.h>
 #include <net/sock.h>
 #include <net/route.h>
 
@@ -496,7 +502,7 @@ ipq_rcv_skb(struct sk_buff *skb)
 	if (type <= IPQM_BASE)
 		return;
 		
-	if(!cap_raised(NETLINK_CB(skb).eff_cap, CAP_NET_ADMIN))
+	if (security_netlink_recv(skb))
 		RCV_SKB_FAIL(-EPERM);
 	
 	write_lock_bh(&queue_lock);

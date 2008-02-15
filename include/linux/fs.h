@@ -1,3 +1,11 @@
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by w15879, for EZX platform
+ *
+ * 2005-Apr-04 Add security patch, Ni Jili
+ */
+
 #ifndef _LINUX_FS_H
 #define _LINUX_FS_H
 
@@ -70,6 +78,7 @@ extern int leases_enable, dir_notify_enable, lease_break_time;
 #define MAY_EXEC 1
 #define MAY_WRITE 2
 #define MAY_READ 4
+#define MAY_APPEND 8
 
 #define FMODE_READ 1
 #define FMODE_WRITE 2
@@ -113,6 +122,21 @@ extern int leases_enable, dir_notify_enable, lease_break_time;
 #define MS_VERBOSE	32768
 #define MS_ACTIVE	(1<<30)
 #define MS_NOUSER	(1<<31)
+
+/*
+ * These are the super block s_ext_attr_flags
+ */
+#define XATTR_MNT_FLAG_ALL		1	/* Extended attributes */
+#define XATTR_MNT_FLAG_USER		1	/* Extended user attributes */
+#define XATTR_MNT_FLAG_POSIX_ACL	2	/* Access Control Lists */
+
+#define __IS_XATTR_FLG(inode,flg) \
+	((inode)->i_sb && \
+	 (inode)->i_sb->s_xattr_flags & (XATTR_MNT_FLAG_ ## flg))
+
+#define IS_XATTR(inode)		__IS_XATTR_FLG(inode, ALL)
+#define IS_XATTR_USER(inode)	__IS_XATTR_FLG(inode, XATTR_USER)
+#define IS_POSIX_ACL(inode)	__IS_XATTR_FLG(inode, POSIX_ACL)
 
 /*
  * Superblock flags that can be altered by MS_REMOUNT
@@ -220,6 +244,7 @@ enum bh_state_bits {
 	BH_Wait_IO,	/* 1 if we should write out this buffer */
 	BH_Launder,	/* 1 if we can throttle on this buffer */
 	BH_JBD,		/* 1 if it has an attached journal_head */
+	BH_Delay,	/* 1 if the buffer is delayed allocate */
 
 	BH_PrivateStart,/* not a state bit, but the first bit available
 			 * for private allocation by other entities
@@ -283,6 +308,7 @@ void init_buffer(struct buffer_head *, bh_end_io_t *, void *);
 #define buffer_new(bh)		__buffer_state(bh,New)
 #define buffer_async(bh)	__buffer_state(bh,Async)
 #define buffer_launder(bh)	__buffer_state(bh,Launder)
+#define buffer_delay(bh)	__buffer_state(bh,Delay)
 
 #define bh_offset(bh)		((unsigned long)(bh)->b_data & ~PAGE_MASK)
 
@@ -320,6 +346,8 @@ extern void set_bh_page(struct buffer_head *bh, struct page *page, unsigned long
 #include <linux/usbdev_fs_i.h>
 #include <linux/jffs2_fs_i.h>
 #include <linux/cramfs_fs_sb.h>
+#include <linux/pram_fs_i.h>
+#include <linux/xfs_fs_i.h>
 
 /*
  * Attribute flags.  These should be or-ed together to figure out what
@@ -370,6 +398,7 @@ struct iattr {
 /*
  * Includes for diskquotas and mount structures.
  */
+#include <linux/xqm.h>
 #include <linux/quota.h>
 #include <linux/mount.h>
 
@@ -454,6 +483,7 @@ struct inode {
 	unsigned long		i_blksize;
 	unsigned long		i_blocks;
 	unsigned long		i_version;
+	unsigned short		i_bytes;
 	struct semaphore	i_sem;
 	struct semaphore	i_zombie;
 	struct inode_operations	*i_op;
@@ -480,6 +510,7 @@ struct inode {
 
 	atomic_t		i_writecount;
 	unsigned int		i_attr_flags;
+	void			*i_security;
 	__u32			i_generation;
 	union {
 		struct minix_inode_info		minix_i;
@@ -510,14 +541,50 @@ struct inode {
 		struct socket			socket_i;
 		struct usbdev_inode_info        usbdev_i;
 		struct jffs2_inode_info		jffs2_i;
+		struct pram_inode_info		pram_i;
+		struct xfs_inode_info		xfs_i;
 		void				*generic_ip;
 	} u;
 };
+
+static inline void inode_add_bytes(struct inode *inode, loff_t bytes)
+{
+	inode->i_blocks += bytes >> 9;
+	bytes &= 511;
+	inode->i_bytes += bytes;
+	if (inode->i_bytes >= 512) {
+		inode->i_blocks++;
+		inode->i_bytes -= 512;
+	}
+}
+
+static inline void inode_sub_bytes(struct inode *inode, loff_t bytes)
+{
+	inode->i_blocks -= bytes >> 9;
+	bytes &= 511;
+	if (inode->i_bytes < bytes) {
+		inode->i_blocks--;
+		inode->i_bytes += 512;
+	}
+	inode->i_bytes -= bytes;
+}
+
+static inline loff_t inode_get_bytes(struct inode *inode)
+{
+	return (((loff_t)inode->i_blocks) << 9) + inode->i_bytes;
+}
+
+static inline void inode_set_bytes(struct inode *inode, loff_t bytes)
+{
+	inode->i_blocks = bytes >> 9;
+	inode->i_bytes = bytes & 511;
+}
 
 struct fown_struct {
 	int pid;		/* pid or -pgrp where SIGIO should be sent */
 	uid_t uid, euid;	/* uid/euid of process setting the owner */
 	int signum;		/* posix.1b rt signal to be delivered on IO */
+	void *security;
 };
 
 struct file {
@@ -535,6 +602,7 @@ struct file {
 	int			f_error;
 
 	unsigned long		f_version;
+	void			*f_security;
 
 	/* needed for tty driver, and maybe others */
 	void			*private_data;
@@ -550,7 +618,16 @@ extern spinlock_t files_lock;
 #define get_file(x)	atomic_inc(&(x)->f_count)
 #define file_count(x)	atomic_read(&(x)->f_count)
 
+/* NOTICE:  libff79209_zch07_w20586_patch_lsm removed below function by introducing two new functions.
+	While CEE3.1 MV package still contains below function.  Need to resolve it */
 extern int init_private_file(struct file *, struct dentry *, int);
+
+/* NOTICE:  The below two functions are introduced by patch_lsm branch */
+
+/* Initialize and open a private file and allocate its security structure. */
+extern int open_private_file(struct file *, struct dentry *, int);
+/* Release a private file and free its security structure. */
+extern void close_private_file(struct file *file);
 
 #define	MAX_NON_LFS	((1UL<<31) - 1)
 
@@ -614,11 +691,11 @@ extern struct list_head file_lock_list;
 
 #include <linux/fcntl.h>
 
-extern int fcntl_getlk(unsigned int, struct flock *);
-extern int fcntl_setlk(unsigned int, unsigned int, struct flock *);
+extern int fcntl_getlk(struct file *, struct flock *);
+extern int fcntl_setlk(struct file *, unsigned int, struct flock *);
 
-extern int fcntl_getlk64(unsigned int, struct flock64 *);
-extern int fcntl_setlk64(unsigned int, unsigned int, struct flock64 *);
+extern int fcntl_getlk64(struct file *, struct flock64 *);
+extern int fcntl_setlk64(struct file *, unsigned int, struct flock64 *);
 
 /* fs/locks.c */
 extern void locks_init_lock(struct file_lock *);
@@ -662,15 +739,27 @@ struct nameidata {
 #define DQUOT_USR_ENABLED	0x01		/* User diskquotas enabled */
 #define DQUOT_GRP_ENABLED	0x02		/* Group diskquotas enabled */
 
-struct quota_mount_options
+struct quota_info
 {
 	unsigned int flags;			/* Flags for diskquotas on this device */
 	struct semaphore dqio_sem;		/* lock device while I/O in progress */
 	struct semaphore dqoff_sem;		/* serialize quota_off() and quota_on() on device */
 	struct file *files[MAXQUOTAS];		/* fp's to quotafiles */
-	time_t inode_expire[MAXQUOTAS];		/* expiretime for inode-quota */
-	time_t block_expire[MAXQUOTAS];		/* expiretime for block-quota */
-	char rsquash[MAXQUOTAS];		/* for quotas threat root as any other user */
+	struct mem_dqinfo info[MAXQUOTAS];	/* Information for each quota type */
+};
+
+struct quota_operations {
+	int (*quotaon)(struct super_block *, short, char *);
+	int (*quotaoff)(struct super_block *, short);
+	int (*quotasync)(struct super_block *, short);
+	int (*getinfo)(struct super_block *, short, struct mem_dqinfo *);
+	int (*setinfo)(struct super_block *, short, struct mem_dqinfo *, int);
+	int (*getdqblk)(struct super_block *, short, qid_t, struct mem_dqblk *);
+	int (*setdqblk)(struct super_block *, short, qid_t, struct mem_dqblk *, int);
+	int (*getxstate)(struct super_block *, struct fs_quota_stat *);
+	int (*setxstate)(struct super_block *, unsigned int, int);
+	int (*getxquota)(struct super_block *, short, qid_t, struct fs_disk_quota *);
+	int (*setxquota)(struct super_block *, short, qid_t, struct fs_disk_quota *);
 };
 
 /*
@@ -704,6 +793,8 @@ struct quota_mount_options
 #include <linux/usbdev_fs_sb.h>
 #include <linux/cramfs_fs_sb.h>
 #include <linux/jffs2_fs_sb.h>
+#include <linux/pram_fs_sb.h>
+#include <linux/xfs_fs_sb.h>
 
 extern struct list_head super_blocks;
 extern spinlock_t sb_lock;
@@ -721,12 +812,14 @@ struct super_block {
 	struct super_operations	*s_op;
 	struct dquot_operations	*dq_op;
 	unsigned long		s_flags;
+	unsigned long		s_xattr_flags;
 	unsigned long		s_magic;
 	struct dentry		*s_root;
 	struct rw_semaphore	s_umount;
 	struct semaphore	s_lock;
 	int			s_count;
 	atomic_t		s_active;
+	void                    *s_security;
 
 	struct list_head	s_dirty;	/* dirty inodes */
 	struct list_head	s_locked_inodes;/* inodes being synced */
@@ -734,7 +827,8 @@ struct super_block {
 
 	struct block_device	*s_bdev;
 	struct list_head	s_instances;
-	struct quota_mount_options s_dquot;	/* Diskquota specific options */
+ 	struct quota_info	s_dquot;	/* Diskquota specific options */
+	struct quota_operations	*s_qop;
 
 	union {
 		struct minix_sb_info	minix_sb;
@@ -762,6 +856,8 @@ struct super_block {
 		struct usbdev_sb_info   usbdevfs_sb;
 		struct jffs2_sb_info	jffs2_sb;
 		struct cramfs_sb_info	cramfs_sb;
+		struct pram_sb_info	pram_sb;
+		struct xfs_sb_info	xfs_sb;
 		void			*generic_sbp;
 	} u;
 	/*
@@ -846,6 +942,7 @@ struct file_operations {
 	ssize_t (*writev) (struct file *, const struct iovec *, unsigned long, loff_t *);
 	ssize_t (*sendpage) (struct file *, struct page *, int, size_t, loff_t *, int);
 	unsigned long (*get_unmapped_area)(struct file *, unsigned long, unsigned long, unsigned long, unsigned long);
+	int (*dmapi_map_event) (struct file *, struct vm_area_struct *, unsigned int);
 };
 
 struct inode_operations {
@@ -894,6 +991,7 @@ struct super_operations {
 	void (*delete_inode) (struct inode *);
 	void (*put_super) (struct super_block *);
 	void (*write_super) (struct super_block *);
+	int (*sync_fs) (struct super_block *);
 	void (*write_super_lockfs) (struct super_block *);
 	void (*unlockfs) (struct super_block *);
 	int (*statfs) (struct super_block *, struct statfs *);
@@ -926,6 +1024,7 @@ struct super_operations {
 	struct dentry * (*fh_to_dentry)(struct super_block *sb, __u32 *fh, int len, int fhtype, int parent);
 	int (*dentry_to_fh)(struct dentry *, __u32 *fh, int *lenp, int need_parent);
 	int (*show_options)(struct seq_file *, struct vfsmount *);
+	int (*dmapi_mount_event) (struct super_block *, char *);
 };
 
 /* Inode state bits.. */
@@ -935,6 +1034,7 @@ struct super_operations {
 #define I_LOCK			8
 #define I_FREEING		16
 #define I_CLEAR			32
+#define I_NEW			64
 
 #define I_DIRTY (I_DIRTY_SYNC | I_DIRTY_DATASYNC | I_DIRTY_PAGES)
 
@@ -957,9 +1057,9 @@ static inline void mark_inode_dirty_pages(struct inode *inode)
 struct dquot_operations {
 	void (*initialize) (struct inode *, short);
 	void (*drop) (struct inode *);
-	int (*alloc_block) (struct inode *, unsigned long, char);
+	int (*alloc_space) (struct inode *, qsize_t, char);
 	int (*alloc_inode) (const struct inode *, unsigned long);
-	void (*free_block) (struct inode *, unsigned long);
+	void (*free_space) (struct inode *, qsize_t);
 	void (*free_inode) (const struct inode *, unsigned long);
 	int (*transfer) (struct inode *, struct iattr *);
 };
@@ -1240,7 +1340,7 @@ static inline int fsync_inode_data_buffers(struct inode *inode)
 extern int inode_has_buffers(struct inode *);
 extern int filemap_fdatasync(struct address_space *);
 extern int filemap_fdatawait(struct address_space *);
-extern void sync_supers(kdev_t);
+extern void sync_supers(kdev_t dev, int wait);
 extern int bmap(struct inode *, int);
 extern int notify_change(struct dentry *, struct iattr *);
 extern int permission(struct inode *, int);
@@ -1345,6 +1445,7 @@ extern struct dentry * lookup_hash(struct qstr *, struct dentry *);
 extern void iput(struct inode *);
 extern void force_delete(struct inode *);
 extern struct inode * igrab(struct inode *);
+extern struct inode * ilookup(struct super_block *, unsigned long);
 extern ino_t iunique(struct super_block *, ino_t);
 
 typedef int (*find_inode_t)(struct inode *, unsigned long, void *);
@@ -1353,6 +1454,9 @@ static inline struct inode *iget(struct super_block *sb, unsigned long ino)
 {
 	return iget4(sb, ino, NULL, NULL);
 }
+
+extern struct inode * icreate(struct super_block *, unsigned long, int);
+extern void unlock_new_inode(struct inode *);
 
 extern void clear_inode(struct inode *);
 extern struct inode * get_empty_inode(void);
@@ -1419,6 +1523,7 @@ extern int try_to_release_page(struct page * page, int gfp_mask);
 extern int discard_bh_page(struct page *, unsigned long, int);
 #define block_flushpage(page, offset) discard_bh_page(page, offset, 1)
 #define block_invalidate_page(page) discard_bh_page(page, 0, 0)
+extern void create_empty_buffers(struct page *, kdev_t, unsigned long);
 extern int block_symlink(struct inode *, const char *, int);
 extern int block_write_full_page(struct page*, get_block_t*);
 extern int block_read_full_page(struct page*, get_block_t*);

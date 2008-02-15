@@ -104,7 +104,9 @@ nfs_read_inode(struct inode * inode)
 {
 	inode->i_blksize = inode->i_sb->s_blocksize;
 	inode->i_mode = 0;
+#ifndef CONFIG_SUPERH
 	inode->i_rdev = 0;
+#endif
 	/* We can't support UPDATE_ATIME(), since the server will reset it */
 	inode->i_flags |= S_NOATIME;
 	INIT_LIST_HEAD(&inode->u.nfs_i.read);
@@ -640,6 +642,9 @@ nfs_fill_inode(struct inode *inode, struct nfs_fh *fh, struct nfs_fattr *fattr)
 		 * that's precisely what we have in nfs_file_inode_operations.
 		 */
 		inode->i_op = &nfs_file_inode_operations;
+#ifdef CONFIG_SUPERH
+		inode->i_rdev = 0;
+#endif
 		if (S_ISREG(inode->i_mode)) {
 			inode->i_fop = &nfs_file_operations;
 			inode->i_data.a_ops = &nfs_file_aops;
@@ -679,6 +684,10 @@ nfs_find_actor(struct inode *inode, unsigned long ino, void *opaque)
 		return 0;
 	if (is_bad_inode(inode))
 		return 0;
+#ifdef CONFIG_SUPERH
+	if ((inode->i_mode & S_IFMT) != (fattr->mode & S_IFMT))
+		return 0;
+#endif
 	/* Force an attribute cache update if inode->i_count == 0 */
 	if (!atomic_read(&inode->i_count))
 		NFS_CACHEINV(inode);

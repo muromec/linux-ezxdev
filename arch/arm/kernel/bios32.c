@@ -245,7 +245,30 @@ static void __init pci_fixup_cy82c693(struct pci_dev *dev)
 	}
 }
 
+
+#ifdef CONFIG_ARCH_IXP12EB
+/* Properly setup 32-byte cache line size */
+static void __init pci_fixup_ixp12eb(struct pci_dev *dev)
+{
+	u8 foo;
+	pci_read_config_byte(dev, PCI_CACHE_LINE_SIZE, &foo);
+
+	printk("PCI: %s has cache line of %#02x\n", dev->name, foo);
+
+	pci_write_config_byte(dev, PCI_CACHE_LINE_SIZE, 8);
+
+}
+#endif
+
+
 struct pci_fixup pcibios_fixups[] = {
+#ifdef CONFIG_ARCH_IXP12EB
+	{
+		PCI_FIXUP_FINAL,
+		PCI_ANY_ID,		PCI_ANY_ID,
+		pci_fixup_ixp12eb
+	},
+#endif
 	{
 		PCI_FIXUP_HEADER,
 		PCI_VENDOR_ID_CONTAQ,	PCI_DEVICE_ID_CONTAQ_82C693,
@@ -456,6 +479,10 @@ extern struct hw_pci personal_server_pci;
 extern struct hw_pci ftv_pci;
 extern struct hw_pci shark_pci;
 extern struct hw_pci integrator_pci;
+extern struct hw_pci iq80310_pci;
+extern struct hw_pci iq80321_pci;
+extern struct hw_pci ixp1200_pci;
+extern struct hw_pci brh_pci;
 
 void __init pcibios_init(void)
 {
@@ -505,6 +532,30 @@ void __init pcibios_init(void)
 			break;
 		}
 #endif
+#ifdef CONFIG_ARCH_IQ80310
+		if (machine_is_iq80310()) {
+			hw = &iq80310_pci;
+			break;
+		}
+#endif
+#ifdef CONFIG_ARCH_IQ80321
+		if (machine_is_iq80321()) {
+			hw = &iq80321_pci;
+			break;
+		}
+#endif
+#ifdef CONFIG_ARCH_IXP1200
+		if(machine_is_ixp1200()) {
+			hw = &ixp1200_pci;
+			break;
+		}
+#endif
+#ifdef CONFIG_ARCH_BRH
+		if (machine_is_brh()) {
+			hw = &brh_pci;
+			break;
+		}
+#endif
 	} while (0);
 
 	if (hw == NULL)
@@ -541,7 +592,11 @@ void __init pcibios_init(void)
 	/*
 	 * Assign any unassigned resources.
 	 */
+#if !defined(CONFIG_ARCH_IOP3XX) && !defined(CONFIG_ARCH_IXP1200) \
+	&& !defined(CONFIG_ARCH_ADIFCC)
 	pci_assign_unassigned_resources();
+#endif
+
 	pci_fixup_irqs(root->hw->swizzle, root->hw->map_irq);
 }
 
@@ -584,7 +639,7 @@ void pcibios_align_resource(void *data, struct resource *res,
  * pcibios_enable_device - Enable I/O and memory.
  * @dev: PCI device to be enabled
  */
-int pcibios_enable_device(struct pci_dev *dev)
+int pcibios_enable_device(struct pci_dev *dev, int mask)
 {
 	u16 cmd, old_cmd;
 	int idx;
@@ -593,6 +648,10 @@ int pcibios_enable_device(struct pci_dev *dev)
 	pci_read_config_word(dev, PCI_COMMAND, &cmd);
 	old_cmd = cmd;
 	for (idx = 0; idx < 6; idx++) {
+		/* Only set up the requested stuff */
+		if (!(mask & (1 << idx)))
+			continue;
+
 		r = dev->resource + idx;
 		if (!r->start && r->end) {
 			printk(KERN_ERR "PCI: Device %s not available because"

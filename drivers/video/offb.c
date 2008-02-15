@@ -357,7 +357,7 @@ static void __init offb_init_nodriver(struct device_node *dp)
     } else
 	pitch = width;
     if ((up = (unsigned *)get_property(dp, "address", &len)) != NULL
-	&& len == sizeof(unsigned))
+	&& len >= sizeof(unsigned))
 	address = (u_long)*up;
     else {
 	for (i = 0; i < dp->n_addrs; ++i)
@@ -430,7 +430,7 @@ static void __init offb_init_fb(const char *name, const char *full_name,
     info->cmap_type = cmap_unknown;
     if (depth == 8)
     {
-    	/* XXX kludge for ati's */
+    	/* XXX kludge for ati */
 	if (dp && !strncmp(name, "ATY,Rage128", 11)) {
 		unsigned long regbase = dp->addrs[2].address;
 		info->cmap_adr = ioremap(regbase, 0x1FFF);

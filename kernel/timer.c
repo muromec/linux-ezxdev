@@ -23,7 +23,11 @@
 #include <linux/interrupt.h>
 #include <linux/kernel_stat.h>
 
+#include <linux/trace.h>
+
 #include <asm/uaccess.h>
+
+struct kernel_stat kstat;
 
 /*
  * Timekeeping variables
@@ -598,25 +602,7 @@ void update_process_times(int user_tick)
 	int cpu = smp_processor_id(), system = user_tick ^ 1;
 
 	update_one_process(p, user_tick, system, cpu);
-	if (p->pid) {
-		if (--p->counter <= 0) {
-			p->counter = 0;
-			/*
-			 * SCHED_FIFO is priority preemption, so this is 
-			 * not the place to decide whether to reschedule a
-			 * SCHED_FIFO task or not - Bhavesh Davda
-			 */
-			if (p->policy != SCHED_FIFO) {
-				p->need_resched = 1;
-			}
-		}
-		if (p->nice > 0)
-			kstat.per_cpu_nice[cpu] += user_tick;
-		else
-			kstat.per_cpu_user[cpu] += user_tick;
-		kstat.per_cpu_system[cpu] += system;
-	} else if (local_bh_count(cpu) || local_irq_count(cpu) > 1)
-		kstat.per_cpu_system[cpu] += system;
+	scheduler_tick(user_tick, system);
 }
 
 /*
@@ -624,17 +610,7 @@ void update_process_times(int user_tick)
  */
 static unsigned long count_active_tasks(void)
 {
-	struct task_struct *p;
-	unsigned long nr = 0;
-
-	read_lock(&tasklist_lock);
-	for_each_task(p) {
-		if ((p->state == TASK_RUNNING ||
-		     (p->state & TASK_UNINTERRUPTIBLE)))
-			nr += FIXED_1;
-	}
-	read_unlock(&tasklist_lock);
-	return nr;
+	return (nr_running() + nr_uninterruptible()) * FIXED_1;
 }
 
 /*
@@ -692,6 +668,7 @@ static inline void update_times(void)
 
 void timer_bh(void)
 {
+	TRACE_EVENT(TRACE_EV_KERNEL_TIMER, NULL);
 	update_times();
 	run_timer_list();
 }
@@ -827,6 +804,92 @@ asmlinkage long sys_getegid(void)
 
 #endif
 
+static void process_timeout(unsigned long __data)
+{
+	TRACE_TIMER(TRACE_EV_TIMER_EXPIRED, 0, 0, 0);
+	wake_up_process((task_t *)__data);
+}
+
+/**
+ * schedule_timeout - sleep until timeout
+ * @timeout: timeout value in jiffies
+ *
+ * Make the current task sleep until @timeout jiffies have
+ * elapsed. The routine will return immediately unless
+ * the current task state has been set (see set_current_state()).
+ *
+ * You can set the task state as follows -
+ *
+ * %TASK_UNINTERRUPTIBLE - at least @timeout jiffies are guaranteed to
+ * pass before the routine returns. The routine will return 0
+ *
+ * %TASK_INTERRUPTIBLE - the routine may return early if a signal is
+ * delivered to the current task. In this case the remaining time
+ * in jiffies will be returned, or 0 if the timer expired in time
+ *
+ * The current task state is guaranteed to be TASK_RUNNING when this 
+ * routine returns.
+ *
+ * Specifying a @timeout value of %MAX_SCHEDULE_TIMEOUT will schedule
+ * the CPU away without a bound on the timeout. In this case the return
+ * value will be %MAX_SCHEDULE_TIMEOUT.
+ *
+ * In all cases the return value is guaranteed to be non-negative.
+ */
+signed long schedule_timeout(signed long timeout)
+{
+	struct timer_list timer;
+	unsigned long expire;
+
+	switch (timeout)
+	{
+	case MAX_SCHEDULE_TIMEOUT:
+		/*
+		 * These two special cases are useful to be comfortable
+		 * in the caller. Nothing more. We could take
+		 * MAX_SCHEDULE_TIMEOUT from one of the negative value
+		 * but I' d like to return a valid offset (>=0) to allow
+		 * the caller to do everything it want with the retval.
+		 */
+		schedule();
+		goto out;
+	default:
+		/*
+		 * Another bit of PARANOID. Note that the retval will be
+		 * 0 since no piece of kernel is supposed to do a check
+		 * for a negative retval of schedule_timeout() (since it
+		 * should never happens anyway). You just have the printk()
+		 * that will tell you if something is gone wrong and where.
+		 */
+		if (timeout < 0)
+		{
+			printk(KERN_ERR "schedule_timeout: wrong timeout "
+			       "value %lx from %p\n", timeout,
+			       __builtin_return_address(0));
+			current->state = TASK_RUNNING;
+			goto out;
+		}
+	}
+
+	TRACE_TIMER(TRACE_EV_TIMER_SETTIMEOUT, 0, timeout, 0);
+
+	expire = timeout + jiffies;
+
+	init_timer(&timer);
+	timer.expires = expire;
+	timer.data = (unsigned long) current;
+	timer.function = process_timeout;
+
+	add_timer(&timer);
+	schedule();
+	del_timer_sync(&timer);
+
+	timeout = expire - jiffies;
+
+ out:
+	return timeout < 0 ? 0 : timeout;
+}
+
 /* Thread ID - the internal kernel "pid" */
 asmlinkage long sys_gettid(void)
 {
@@ -873,4 +936,3 @@ asmlinkage long sys_nanosleep(struct timespec *rqtp, struct timespec *rmtp)
 	}
 	return 0;
 }
-

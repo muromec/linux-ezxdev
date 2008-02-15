@@ -143,7 +143,7 @@ ENTRY(cpu_arm7_data_abort)
 		movs	pc, lr
 
 		b	Ldata_unknown
-		b	Ldata_unknown
+		b	Ldata_simple			@ swp
 		b	Ldata_unknown
 		b	Ldata_unknown
 		b	Ldata_lateldrpostconst		@ ldr	rd, [rn], #m
@@ -160,7 +160,7 @@ ENTRY(cpu_arm7_data_abort)
 Ldata_unknown:	@ Part of jumptable
 		mov	r0, r2
 		mov	r1, r4
-		mov	r2, r3
+		mov	r2, r5
 		bl	baddataabort
 		b	ret_from_exception
 
@@ -258,7 +258,6 @@ ENTRY(cpu_arm7_proc_fin)
 
 ENTRY(cpu_arm6_do_idle)
 ENTRY(cpu_arm7_do_idle)
-		mov	r0, #-EINVAL
 		mov	pc, lr
 
 /*

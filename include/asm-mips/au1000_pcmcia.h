@@ -23,8 +23,9 @@
  *
  * ########################################################################
  *
- *
+ * 
  */
+
 #ifndef __ASM_AU1000_PCMCIA_H
 #define __ASM_AU1000_PCMCIA_H
 
@@ -59,8 +60,6 @@ struct pcmcia_irq_info {
 	unsigned int irq;
 };
 
-typedef u_int memaddr_t;	/* fix me */
-
 struct au1000_pcmcia_socket {
 	socket_state_t        cs_state;
 	struct pcmcia_state   k_state;
@@ -70,7 +69,7 @@ struct au1000_pcmcia_socket {
 	pccard_io_map         io_map[MAX_IO_WIN];
 	pccard_mem_map        mem_map[MAX_WIN];
 	u32                   virt_io;
-	memaddr_t             phys_attr, phys_mem;	/*FIX ME*/
+	memaddr_t             phys_attr, phys_mem;
 	unsigned short        speed_io, speed_attr, speed_mem;
 };
 
@@ -91,5 +90,4 @@ extern struct pcmcia_low_level pb1x00_pcmcia_ops;
 #else
 error unknown Au1000 board
 #endif
-
 #endif /* __ASM_AU1000_PCMCIA_H */

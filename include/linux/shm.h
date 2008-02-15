@@ -1,3 +1,7 @@
+/*
+ * 2005-Apr-04 Motorola  Add security patch
+ */
+
 #ifndef _LINUX_SHM_H_
 #define _LINUX_SHM_H_
 
@@ -71,6 +75,19 @@ struct shm_info {
 };
 
 #ifdef __KERNEL__
+struct shmid_kernel /* private to the kernel */
+{	
+	struct kern_ipc_perm	shm_perm;
+	struct file *		shm_file;
+	int			id;
+	unsigned long		shm_nattch;
+	unsigned long		shm_segsz;
+	time_t			shm_atim;
+	time_t			shm_dtim;
+	time_t			shm_ctim;
+	pid_t			shm_cprid;
+	pid_t			shm_lprid;
+};
 
 /* shm_mode upper byte flags */
 #define	SHM_DEST	01000	/* segment will be destroyed on last detach */

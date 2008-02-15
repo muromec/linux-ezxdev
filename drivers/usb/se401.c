@@ -646,13 +646,14 @@ static int se401_set_size(struct usb_se401 *se401, int width, int height)
 		return 0;
 
 	/* Check for a valid mode */
-	if (width <= 0 || height <= 0)
+	if (!width || !height)
 		return 1;
+	/* Even number? */
 	if ((width & 1) || (height & 1))
 		return 1;
-	if (width>se401->width[se401->sizes-1])
+	if ((width>se401->width[se401->sizes-1]) || (width<se401->width[0]))
 		return 1;
-	if (height>se401->height[se401->sizes-1])
+	if ((height>se401->height[se401->sizes-1]) || (height<se401->width[0]))
 		return 1;
 
 	/* Stop a current stream and start it again at the new size */

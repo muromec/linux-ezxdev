@@ -3,7 +3,7 @@
  *
  * Author: Jonas Holmberg <jonas.holmberg@axis.com>
  *
- * $Id: amd_flash.c,v 1.17 2002/03/05 17:00:37 jonashg Exp $
+ * $Id: amd_flash.c,v 1.25 2004/08/09 13:19:43 dwmw2 Exp $
  *
  * Copyright (c) 2001 Axis Communications AB
  *
@@ -19,6 +19,7 @@
 #include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
+#include <linux/init.h>
 #include <linux/mtd/map.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/flashchip.h>
@@ -75,6 +76,7 @@
 /* Fujitsu */
 #define MBM29LV160TE	0x22C4
 #define MBM29LV160BE	0x2249
+#define MBM29LV800BB	0x225B
 
 /* ST - www.st.com */
 #define M29W800T	0x00D7
@@ -124,10 +126,10 @@ static struct mtd_info *amd_flash_probe(struct map_info *map);
 
 
 static struct mtd_chip_driver amd_flash_chipdrv = {
-	probe: amd_flash_probe,
-	destroy: amd_flash_destroy,
-	name: "amd_flash",
-	module: THIS_MODULE
+	.probe = amd_flash_probe,
+	.destroy = amd_flash_destroy,
+	.name = "amd_flash",
+	.module = THIS_MODULE
 };
 
 
@@ -139,11 +141,11 @@ static const char im_name[] = "amd_flash";
 static inline __u32 wide_read(struct map_info *map, __u32 addr)
 {
 	if (map->buswidth == 1) {
-		return map->read8(map, addr);
+		return map_read8(map, addr);
 	} else if (map->buswidth == 2) {
-		return map->read16(map, addr);
+		return map_read16(map, addr);
 	} else if (map->buswidth == 4) {
-		return map->read32(map, addr);
+		return map_read32(map, addr);
         }
 
 	return 0;
@@ -152,11 +154,11 @@ static inline __u32 wide_read(struct map_info *map, __u32 addr)
 static inline void wide_write(struct map_info *map, __u32 val, __u32 addr)
 {
 	if (map->buswidth == 1) {
-		map->write8(map, val, addr);
+		map_write8(map, val, addr);
 	} else if (map->buswidth == 2) {
-		map->write16(map, val, addr);
+		map_write16(map, val, addr);
 	} else if (map->buswidth == 4) {
-		map->write32(map, val, addr);
+		map_write32(map, val, addr);
 	}
 }
 
@@ -423,219 +425,228 @@ static int probe_new_chip(struct mtd_info *mtd, __u32 base,
 
 static struct mtd_info *amd_flash_probe(struct map_info *map)
 {
-	/* Keep this table on the stack so that it gets deallocated after the
-	 * probe is done.
-	 */
-	const struct amd_flash_info table[] = {
+	static const struct amd_flash_info table[] = {
 	{
-		mfr_id: MANUFACTURER_AMD,
-		dev_id: AM29LV160DT,
-		name: "AMD AM29LV160DT",
-		size: 0x00200000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x10000, numblocks: 31 },
-			{ offset: 0x1F0000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x1F8000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x1FC000, erasesize: 0x04000, numblocks:  1 }
+		.mfr_id = MANUFACTURER_AMD,
+		.dev_id = AM29LV160DT,
+		.name = "AMD AM29LV160DT",
+		.size = 0x00200000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x10000, .numblocks = 31 },
+			{ .offset = 0x1F0000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x1F8000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x1FC000, .erasesize = 0x04000, .numblocks =  1 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_AMD,
-		dev_id: AM29LV160DB,
-		name: "AMD AM29LV160DB",
-		size: 0x00200000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x04000, numblocks:  1 },
-			{ offset: 0x004000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x008000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x010000, erasesize: 0x10000, numblocks: 31 }
+		.mfr_id = MANUFACTURER_AMD,
+		.dev_id = AM29LV160DB,
+		.name = "AMD AM29LV160DB",
+		.size = 0x00200000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x04000, .numblocks =  1 },
+			{ .offset = 0x004000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x008000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x010000, .erasesize = 0x10000, .numblocks = 31 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_TOSHIBA,
-		dev_id: TC58FVT160,
-		name: "Toshiba TC58FVT160",
-		size: 0x00200000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x10000, numblocks: 31 },
-			{ offset: 0x1F0000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x1F8000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x1FC000, erasesize: 0x04000, numblocks:  1 }
+		.mfr_id = MANUFACTURER_TOSHIBA,
+		.dev_id = TC58FVT160,
+		.name = "Toshiba TC58FVT160",
+		.size = 0x00200000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x10000, .numblocks = 31 },
+			{ .offset = 0x1F0000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x1F8000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x1FC000, .erasesize = 0x04000, .numblocks =  1 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_FUJITSU,
-		dev_id: MBM29LV160TE,
-		name: "Fujitsu MBM29LV160TE",
-		size: 0x00200000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x10000, numblocks: 31 },
-			{ offset: 0x1F0000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x1F8000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x1FC000, erasesize: 0x04000, numblocks:  1 }
+		.mfr_id = MANUFACTURER_FUJITSU,
+		.dev_id = MBM29LV160TE,
+		.name = "Fujitsu MBM29LV160TE",
+		.size = 0x00200000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x10000, .numblocks = 31 },
+			{ .offset = 0x1F0000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x1F8000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x1FC000, .erasesize = 0x04000, .numblocks =  1 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_TOSHIBA,
-		dev_id: TC58FVB160,
-		name: "Toshiba TC58FVB160",
-		size: 0x00200000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x04000, numblocks:  1 },
-			{ offset: 0x004000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x008000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x010000, erasesize: 0x10000, numblocks: 31 }
+		.mfr_id = MANUFACTURER_TOSHIBA,
+		.dev_id = TC58FVB160,
+		.name = "Toshiba TC58FVB160",
+		.size = 0x00200000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x04000, .numblocks =  1 },
+			{ .offset = 0x004000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x008000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x010000, .erasesize = 0x10000, .numblocks = 31 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_FUJITSU,
-		dev_id: MBM29LV160BE,
-		name: "Fujitsu MBM29LV160BE",
-		size: 0x00200000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x04000, numblocks:  1 },
-			{ offset: 0x004000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x008000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x010000, erasesize: 0x10000, numblocks: 31 }
+		.mfr_id = MANUFACTURER_FUJITSU,
+		.dev_id = MBM29LV160BE,
+		.name = "Fujitsu MBM29LV160BE",
+		.size = 0x00200000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x04000, .numblocks =  1 },
+			{ .offset = 0x004000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x008000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x010000, .erasesize = 0x10000, .numblocks = 31 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_AMD,
-		dev_id: AM29LV800BB,
-		name: "AMD AM29LV800BB",
-		size: 0x00100000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x04000, numblocks:  1 },
-			{ offset: 0x004000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x008000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x010000, erasesize: 0x10000, numblocks: 15 }
+		.mfr_id = MANUFACTURER_AMD,
+		.dev_id = AM29LV800BB,
+		.name = "AMD AM29LV800BB",
+		.size = 0x00100000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x04000, .numblocks =  1 },
+			{ .offset = 0x004000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x008000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x010000, .erasesize = 0x10000, .numblocks = 15 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_AMD,
-		dev_id: AM29F800BB,
-		name: "AMD AM29F800BB",
-		size: 0x00100000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x04000, numblocks:  1 },
-			{ offset: 0x004000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x008000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x010000, erasesize: 0x10000, numblocks: 15 }
+		.mfr_id = MANUFACTURER_AMD,
+		.dev_id = AM29F800BB,
+		.name = "AMD AM29F800BB",
+		.size = 0x00100000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x04000, .numblocks =  1 },
+			{ .offset = 0x004000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x008000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x010000, .erasesize = 0x10000, .numblocks = 15 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_AMD,
-		dev_id: AM29LV800BT,
-		name: "AMD AM29LV800BT",
-		size: 0x00100000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x10000, numblocks: 15 },
-			{ offset: 0x0F0000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x0F8000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x0FC000, erasesize: 0x04000, numblocks:  1 }
+		.mfr_id = MANUFACTURER_AMD,
+		.dev_id = AM29LV800BT,
+		.name = "AMD AM29LV800BT",
+		.size = 0x00100000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x10000, .numblocks = 15 },
+			{ .offset = 0x0F0000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x0F8000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x0FC000, .erasesize = 0x04000, .numblocks =  1 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_AMD,
-		dev_id: AM29F800BT,
-		name: "AMD AM29F800BT",
-		size: 0x00100000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x10000, numblocks: 15 },
-			{ offset: 0x0F0000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x0F8000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x0FC000, erasesize: 0x04000, numblocks:  1 }
+		.mfr_id = MANUFACTURER_AMD,
+		.dev_id = AM29F800BT,
+		.name = "AMD AM29F800BT",
+		.size = 0x00100000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x10000, .numblocks = 15 },
+			{ .offset = 0x0F0000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x0F8000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x0FC000, .erasesize = 0x04000, .numblocks =  1 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_AMD,
-		dev_id: AM29LV800BB,
-		name: "AMD AM29LV800BB",
-		size: 0x00100000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x10000, numblocks: 15 },
-			{ offset: 0x0F0000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x0F8000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x0FC000, erasesize: 0x04000, numblocks:  1 }
+		.mfr_id = MANUFACTURER_AMD,
+		.dev_id = AM29LV800BB,
+		.name = "AMD AM29LV800BB",
+		.size = 0x00100000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x10000, .numblocks = 15 },
+			{ .offset = 0x0F0000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x0F8000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x0FC000, .erasesize = 0x04000, .numblocks =  1 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_ST,
-		dev_id: M29W800T,
-		name: "ST M29W800T",
-		size: 0x00100000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x10000, numblocks: 15 },
-			{ offset: 0x0F0000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x0F8000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x0FC000, erasesize: 0x04000, numblocks:  1 }
+		.mfr_id = MANUFACTURER_FUJITSU,
+		.dev_id = MBM29LV800BB,
+		.name = "Fujitsu MBM29LV800BB",
+		.size = 0x00100000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x04000, .numblocks =  1 },
+			{ .offset = 0x004000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x008000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x010000, .erasesize = 0x10000, .numblocks = 15 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_ST,
-		dev_id: M29W160DT,
-		name: "ST M29W160DT",
-		size: 0x00200000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x10000, numblocks: 31 },
-			{ offset: 0x1F0000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x1F8000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x1FC000, erasesize: 0x04000, numblocks:  1 }
+		.mfr_id = MANUFACTURER_ST,
+		.dev_id = M29W800T,
+		.name = "ST M29W800T",
+		.size = 0x00100000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x10000, .numblocks = 15 },
+			{ .offset = 0x0F0000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x0F8000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x0FC000, .erasesize = 0x04000, .numblocks =  1 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_ST,
-		dev_id: M29W160DB,
-		name: "ST M29W160DB",
-		size: 0x00200000,
-		numeraseregions: 4,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x04000, numblocks:  1 },
-			{ offset: 0x004000, erasesize: 0x02000, numblocks:  2 },
-			{ offset: 0x008000, erasesize: 0x08000, numblocks:  1 },
-			{ offset: 0x010000, erasesize: 0x10000, numblocks: 31 }
+		.mfr_id = MANUFACTURER_ST,
+		.dev_id = M29W160DT,
+		.name = "ST M29W160DT",
+		.size = 0x00200000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x10000, .numblocks = 31 },
+			{ .offset = 0x1F0000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x1F8000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x1FC000, .erasesize = 0x04000, .numblocks =  1 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_AMD,
-		dev_id: AM29BDS323D,
-		name: "AMD AM29BDS323D",
-		size: 0x00400000,
-		numeraseregions: 3,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x10000, numblocks: 48 },
-			{ offset: 0x300000, erasesize: 0x10000, numblocks: 15 },
-			{ offset: 0x3f0000, erasesize: 0x02000, numblocks:  8 },
+		.mfr_id = MANUFACTURER_ST,
+		.dev_id = M29W160DB,
+		.name = "ST M29W160DB",
+		.size = 0x00200000,
+		.numeraseregions = 4,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x04000, .numblocks =  1 },
+			{ .offset = 0x004000, .erasesize = 0x02000, .numblocks =  2 },
+			{ .offset = 0x008000, .erasesize = 0x08000, .numblocks =  1 },
+			{ .offset = 0x010000, .erasesize = 0x10000, .numblocks = 31 }
 		}
 	}, {
-		mfr_id: MANUFACTURER_AMD,
-		dev_id: AM29BDS643D,
-		name: "AMD AM29BDS643D",
-		size: 0x00800000,
-		numeraseregions: 3,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x10000, numblocks: 96 },
-			{ offset: 0x600000, erasesize: 0x10000, numblocks: 31 },
-			{ offset: 0x7f0000, erasesize: 0x02000, numblocks:  8 },
+		.mfr_id = MANUFACTURER_AMD,
+		.dev_id = AM29BDS323D,
+		.name = "AMD AM29BDS323D",
+		.size = 0x00400000,
+		.numeraseregions = 3,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x10000, .numblocks = 48 },
+			{ .offset = 0x300000, .erasesize = 0x10000, .numblocks = 15 },
+			{ .offset = 0x3f0000, .erasesize = 0x02000, .numblocks =  8 },
 		}
 	}, {
-		mfr_id: MANUFACTURER_ATMEL,
-		dev_id: AT49xV16x,
-		name: "Atmel AT49xV16x",
-		size: 0x00200000,
-		numeraseregions: 2,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x02000, numblocks:  8 },
-			{ offset: 0x010000, erasesize: 0x10000, numblocks: 31 }
+		.mfr_id = MANUFACTURER_AMD,
+		.dev_id = AM29BDS643D,
+		.name = "AMD AM29BDS643D",
+		.size = 0x00800000,
+		.numeraseregions = 3,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x10000, .numblocks = 96 },
+			{ .offset = 0x600000, .erasesize = 0x10000, .numblocks = 31 },
+			{ .offset = 0x7f0000, .erasesize = 0x02000, .numblocks =  8 },
 		}
 	}, {
-		mfr_id: MANUFACTURER_ATMEL,
-		dev_id: AT49xV16xT,
-		name: "Atmel AT49xV16xT",
-		size: 0x00200000,
-		numeraseregions: 2,
-		regions: {
-			{ offset: 0x000000, erasesize: 0x10000, numblocks: 31 },
-			{ offset: 0x1F0000, erasesize: 0x02000, numblocks:  8 }
+		.mfr_id = MANUFACTURER_ATMEL,
+		.dev_id = AT49xV16x,
+		.name = "Atmel AT49xV16x",
+		.size = 0x00200000,
+		.numeraseregions = 2,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x02000, .numblocks =  8 },
+			{ .offset = 0x010000, .erasesize = 0x10000, .numblocks = 31 }
+		}
+	}, {
+		.mfr_id = MANUFACTURER_ATMEL,
+		.dev_id = AT49xV16xT,
+		.name = "Atmel AT49xV16xT",
+		.size = 0x00200000,
+		.numeraseregions = 2,
+		.regions = {
+			{ .offset = 0x000000, .erasesize = 0x10000, .numblocks = 31 },
+			{ .offset = 0x1F0000, .erasesize = 0x02000, .numblocks =  8 }
 		}
 	} 
 	};
@@ -707,7 +718,7 @@ static struct mtd_info *amd_flash_probe(struct map_info *map)
 		       "memory for MTD erase region info\n", map->name);
 		kfree(mtd);
 		map->fldrv_priv = NULL;
-		return 0;
+		return NULL;
 	}
 
 	reg_idx = 0;
@@ -769,8 +780,8 @@ static struct mtd_info *amd_flash_probe(struct map_info *map)
 	map->fldrv_priv = private;
 
 	map->fldrv = &amd_flash_chipdrv;
-	MOD_INC_USE_COUNT;
 
+	__module_get(THIS_MODULE);
 	return mtd;
 }
 
@@ -809,7 +820,7 @@ retry:
 
 	chip->state = FL_READY;
 
-	map->copy_from(map, buf, adr, len);
+	map_copy_from(map, buf, adr, len);
 
 	wake_up(&chip->wq);
 	spin_unlock_bh(chip->mutex);
@@ -913,7 +924,7 @@ retry:
 
 	times_left = 500000;
 	while (times_left-- && flash_is_busy(map, adr, private->interleave)) { 
-		if (current->need_resched) {
+		if (need_resched()) {
 			spin_unlock_bh(chip->mutex);
 			schedule();
 			spin_lock_bh(chip->mutex);
@@ -971,7 +982,7 @@ static int amd_flash_write(struct mtd_info *mtd, loff_t to , size_t len,
 		u_char tmp_buf[4];
 		__u32 datum;
 
-		map->copy_from(map, tmp_buf,
+		map_copy_from(map, tmp_buf,
 			       bus_ofs + private->chips[chipnum].start,
 			       map->buswidth);
 		while (len && i < map->buswidth)
@@ -1044,7 +1055,7 @@ static int amd_flash_write(struct mtd_info *mtd, loff_t to , size_t len,
 		u_char tmp_buf[2];
 		__u32 datum;
 
-		map->copy_from(map, tmp_buf,
+		map_copy_from(map, tmp_buf,
 			       ofs + private->chips[chipnum].start,
 			       map->buswidth);
 		while (len--) {
@@ -1150,7 +1161,7 @@ retry:
 		/* Latency issues. Drop the lock, wait a while and retry */
 		spin_unlock_bh(chip->mutex);
 
-		if (current->need_resched)
+		if (need_resched())
 			schedule();
 		else
 			udelay(1);
@@ -1165,7 +1176,7 @@ retry:
 		__u8 verify;
 
 		for (address = adr; address < (adr + size); address++) {
-			if ((verify = map->read8(map, address)) != 0xFF) {
+			if ((verify = map_read8(map, address)) != 0xFF) {
 				error = 1;
 				break;
 			}
@@ -1296,9 +1307,7 @@ static int amd_flash_erase(struct mtd_info *mtd, struct erase_info *instr)
 	}
 		
 	instr->state = MTD_ERASE_DONE;
-	if (instr->callback) {
-		instr->callback(instr);
-	}
+	mtd_erase_callback(instr);
 	
 	return 0;
 }

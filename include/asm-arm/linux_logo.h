@@ -13,7 +13,7 @@
 #include <linux/init.h>
 #include <linux/version.h>
 
-#define linux_logo_banner "ARM Linux version " UTS_RELEASE
+#define linux_logo_banner "MontaVista ARM Linux version " UTS_RELEASE
 
 #include <linux/linux_logo.h>
 

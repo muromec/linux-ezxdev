@@ -17,11 +17,16 @@
  * Serial_console ascii image can be any size,
  * but should contain %s to display the version
  */
-
+ 
 #include <linux/init.h>
 #include <linux/version.h>
 
-#define linux_logo_banner "Linux/MIPS64 version " UTS_RELEASE
+#define linux_logo_banner "MontaVista Linux/MIPS64 version " UTS_RELEASE
+
+/* MontaVista has one Logo across arches */
+#if 1
+#include <linux/linux_logo.h>
+#else
 
 #define __HAVE_ARCH_LINUX_LOGO
 
@@ -916,4 +921,5 @@ unsigned char linux_logo[] __initdata = {
 #endif /* INCLUDE_LINUX_LOGO_DATA */
 
 #include <linux/linux_logo.h>
+#endif
 

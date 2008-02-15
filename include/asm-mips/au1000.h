@@ -28,10 +28,13 @@
  *  675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+ /*
+  * some definitions add by takuzo@sm.sony.co.jp and sato@sm.sony.co.jp
+  */
+
 #ifndef _AU1000_H_
 #define _AU1000_H_
 
-#include <linux/config.h>
 #include <linux/delay.h>
 #include <asm/io.h>
 
@@ -359,7 +362,7 @@ extern unsigned int get_au1000_lcd_clock(void);
 #define SYS_RTCREAD                 (SYS_BASE + 0x58)
 
 /* I2S Controller */
-#define I2S_DATA                    0xB1000000
+#define I2S_DATA                  0xB1000000
   #define I2S_DATA_MASK        (0xffffff)
 #define I2S_CONFIG                0xB1000004
   #define I2S_CONFIG_XU        (1<<25)
@@ -446,9 +449,9 @@ extern unsigned int get_au1000_lcd_clock(void);
 
 /* 4 byte offsets from AU1000_ETH_BASE */
 #define MAC_CONTROL                     0x0
-  #define MAC_RX_ENABLE               (1<<2)
+  #define MAC_RX_ENABLE               (1<<2) 
   #define MAC_TX_ENABLE               (1<<3)
-  #define MAC_DEF_CHECK               (1<<5)
+  #define MAC_DEF_CHECK               (1<<5) 
   #define MAC_SET_BL(X)       (((X)&0x3)<<6)
   #define MAC_AUTO_PAD                (1<<8)
   #define MAC_DISABLE_RETRY          (1<<10)
@@ -473,7 +476,7 @@ extern unsigned int get_au1000_lcd_clock(void);
 #define MAC_MCAST_LOW                  0x10
 #define MAC_MII_CNTRL                  0x14
   #define MAC_MII_BUSY                (1<<0)
-  #define MAC_MII_READ                     0
+  #define MAC_MII_READ                     0 
   #define MAC_MII_WRITE               (1<<1)
   #define MAC_SET_MII_SELECT_REG(X)   (((X)&0x1f)<<6)
   #define MAC_SET_MII_SELECT_PHY(X)   (((X)&0x1f)<<11)
@@ -557,7 +560,7 @@ extern unsigned int get_au1000_lcd_clock(void);
   #define RX_FILTER_FAIL             (1<<29)
   #define RX_PACKET_FILTER           (1<<30)
   #define RX_MISSED_FRAME            (1<<31)
-
+  
   #define RX_ERROR (RX_WDOG_TIMER | RX_RUNT | RX_OVERLEN |  \
                     RX_COLL | RX_MII_ERROR | RX_CRC_ERROR | \
                     RX_LEN_ERROR | RX_U_CNTRL_FRAME | RX_MISSED_FRAME)
@@ -920,12 +923,12 @@ extern unsigned int get_au1000_lcd_clock(void);
 
 #define Au1500_PCI_HDR            0xB4005100 // virtual, kseg0 addr
 
-/* All of our structures, like pci resource, have 32 bit members.
- * Drivers are expected to do an ioremap on the PCI MEM resource, but it's
- * hard to store 0x4 0000 0000 in a 32 bit type.  We require a small patch
- * to __ioremap to check for addresses between (u32)Au1500_PCI_MEM_START and
- * (u32)Au1500_PCI_MEM_END and change those to the full 36 bit PCI MEM
- * addresses.  For PCI IO, it's simpler because we get to do the ioremap
+/* All of our structures, like pci resource, have 32 bit members.  
+ * Drivers are expected to do an ioremap on the PCI MEM resource, but it's 
+ * hard to store 0x4 0000 0000 in a 32 bit type.  We require a small patch 
+ * to __ioremap to check for addresses between (u32)Au1500_PCI_MEM_START and 
+ * (u32)Au1500_PCI_MEM_END and change those to the full 36 bit PCI MEM 
+ * addresses.  For PCI IO, it's simpler because we get to do the ioremap 
  * ourselves and then adjust the device's resources.
  */
 #define Au1500_EXT_CFG            0x600000000

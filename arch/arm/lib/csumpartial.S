@@ -41,7 +41,7 @@ td3	.req	lr
 		tst	buf, #1			@ odd address?
 		ldrneb	td0, [buf], #1
 		subne	len, len, #1
-		adcnes	sum, sum, td0, lsl #8
+		adcnes	sum, sum, td0, put_byte_1
 
 .less4:		tst	len, #6
 		beq	.less8_byte
@@ -49,14 +49,18 @@ td3	.req	lr
 		/* we are now half-word aligned */
 
 .less8_wordlp:
-#ifdef __ARM_ARCH_4__
+#if __LINUX_ARM_ARCH__ >= 4
 		ldrh	td0, [buf], #2
 		sub	len, len, #2
 #else
 		ldrb	td0, [buf], #1
 		ldrb	td3, [buf], #1
 		sub	len, len, #2
+#ifndef __ARMEB__
 		orr	td0, td0, td3, lsl #8
+#else
+		orr	td0, td3, td0, lsl #8
+#endif
 #endif
 		adcs	sum, sum, td0
 		tst	len, #6
@@ -64,7 +68,7 @@ td3	.req	lr
 
 .less8_byte:	tst	len, #1			@ odd number of bytes
 		ldrneb	td0, [buf], #1		@ include last byte
-		adcnes	sum, sum, td0		@ update checksum
+		adcnes	sum, sum, td0, put_byte_0	@ update checksum
 
 .done:		adc	r0, sum, #0		@ collect up the last carry
 		ldr	td0, [sp], #4
@@ -76,17 +80,21 @@ td3	.req	lr
 .not_aligned:	tst	buf, #1			@ odd address
 		ldrneb	td0, [buf], #1		@ make even
 		subne	len, len, #1
-		adcnes	sum, sum, td0, lsl #8	@ update checksum
+		adcnes	sum, sum, td0, put_byte_1	@ update checksum
 
 		tst	buf, #2			@ 32-bit aligned?
-#ifdef __ARM_ARCH_4__
+#if __LINUX_ARM_ARCH__ >= 4
 		ldrneh	td0, [buf], #2		@ make 32-bit aligned
 		subne	len, len, #2
 #else
 		ldrneb	td0, [buf], #1
 		ldrneb	ip, [buf], #1
 		subne	len, len, #2
+#ifndef __ARMEB__
 		orrne	td0, td0, ip, lsl #8
+#else
+		orrne	td0, ip, td0, lsl #8
+#endif
 #endif
 		adcnes	sum, sum, td0		@ update checksum
 		mov	pc, lr
@@ -95,6 +103,8 @@ ENTRY(csum_partial)
 		stmfd	sp!, {buf, lr}
 		cmp	len, #8			@ Ensure that we have at least
 		blo	.less8			@ 8 bytes to copy.
+
+	PLD(	pld	[buf, #0]	)
 
 		adds	sum, sum, #0		@ C = 0
 		tst	buf, #3			@ Test destination alignment
@@ -110,11 +120,11 @@ ENTRY(csum_partial)
 		adcs	sum, sum, td2
 		adcs	sum, sum, td3
 		ldmia	buf!, {td0, td1, td2, td3}
+		sub	ip, ip, #32
 		adcs	sum, sum, td0
 		adcs	sum, sum, td1
 		adcs	sum, sum, td2
 		adcs	sum, sum, td3
-		sub	ip, ip, #32
 		teq	ip, #0
 		bne	2b
 		ldmfd	sp!, {r4 - r5}

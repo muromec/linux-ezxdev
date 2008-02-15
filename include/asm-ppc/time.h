@@ -1,7 +1,4 @@
 /*
- * BK Id: SCCS/s.time.h 1.17 10/23/01 08:09:35 trini
- */
-/*
  * Common time prototypes and such for all ppc machines.
  *
  * Written by Cort Dougan (cort@fsmlabs.com) to merge
@@ -16,6 +13,10 @@
 #include <linux/mc146818rtc.h>
 #include <linux/threads.h>
 
+#ifdef CONFIG_PPC_ISERIES
+#include <asm/iSeries/Paca.h>
+#include <asm/iSeries/HvCall.h>
+#endif
 #include <asm/processor.h>
 
 /* time.c */
@@ -32,14 +33,14 @@ extern void set_dec_cpu6(unsigned int val);
 int via_calibrate_decr(void);
 
 /* Accessor functions for the decrementer register.
- * The 4xx doesn't even have a decrementer.  I tried to use the
- * generic timer interrupt code, which seems OK, with the 4xx PIT
+ * The 40x doesn't even have a decrementer.  I tried to use the
+ * generic timer interrupt code, which seems OK, with the 40x PIT
  * in auto-reload mode.  The problem is PIT stops counting when it
  * hits zero.  If it would wrap, we could use it just like a decrementer.
  */
 static __inline__ unsigned int get_dec(void)
 {
-#if defined(CONFIG_4xx)
+#if defined(CONFIG_40x)
 	return (mfspr(SPRN_PIT));
 #else
 	return (mfspr(SPRN_DEC));
@@ -48,10 +49,28 @@ static __inline__ unsigned int get_dec(void)
 
 static __inline__ void set_dec(unsigned int val)
 {
-#if defined(CONFIG_4xx)
+#if defined(CONFIG_40x)
 	return;		/* Have to let it auto-reload */
 #elif defined(CONFIG_8xx_CPU6)
 	set_dec_cpu6(val);
+#elif defined(CONFIG_PPC_ISERIES)
+/*
+ * Add code here to set the virtual decrementer in 
+ * ItLpPaca if we have shared processors and to
+ * invoke the hypervisor as needed.
+ */
+	struct Paca * paca;
+	int cur_dec;
+	
+	paca = (struct Paca *)mfspr(SPRG1);
+	if ( paca->xLpPaca.xSharedProc ) {
+		paca->xLpPaca.xVirtualDecr = val;
+		cur_dec = get_dec();
+		if ( cur_dec > val )
+			HvCall_setVirtualDecr();
+	}
+	else
+		mtspr(SPRN_DEC, val);
 #else
 	mtspr(SPRN_DEC, val);
 #endif
@@ -69,15 +88,48 @@ extern __inline__ int const __USE_RTC(void) {
 
 extern __inline__ unsigned long get_tbl(void) {
 	unsigned long tbl;
+#if defined(CONFIG_403GCX)
+	asm volatile("mfspr %0, 0x3dd" : "=r" (tbl));
+#else
 	asm volatile("mftb %0" : "=r" (tbl));
+#endif
 	return tbl;
 }
 
 extern __inline__ unsigned long get_tbu(void) {
 	unsigned long tbl;
+#if defined(CONFIG_403GCX)
+	asm volatile("mfspr %0, 0x3dc" : "=r" (tbl));
+#else
 	asm volatile("mftbu %0" : "=r" (tbl));
+#endif
 	return tbl;
 }
+
+/* Get the 64-bit timebase. The Iseries has an external entry point.  The
+   normal routine compiles inline to 5 instructions, and should work for all
+   32-bit PowerPC machines.  */
+
+#ifdef CONFIG_PPC_ISERIES
+u64 get_tb64(void);
+#else
+extern __inline__ u64 get_tb64(void) {
+	union {
+		u64 ul64;
+		struct {
+			u32 u;
+			u32 l;
+		} ul32;
+	} tb;
+
+	do {
+		tb.ul32.u = get_tbu();
+		tb.ul32.l = get_tbl();
+	} while (get_tbu() != tb.ul32.u);
+
+	return tb.ul64;
+}
+#endif
 
 extern __inline__ void set_tb(unsigned int upper, unsigned int lower)
 {

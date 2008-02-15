@@ -10,6 +10,11 @@
  * Fork is rather simple, once you get the hang of it, but the memory
  * management can be a bitch. See 'mm/memory.c': 'copy_page_range()'
  */
+/*
+ *
+ *  2005-Apr-04 Motoroal  Add security patch
+ */
+
 
 #include <linux/config.h>
 #include <linux/slab.h>
@@ -22,6 +27,10 @@
 #include <linux/namespace.h>
 #include <linux/personality.h>
 #include <linux/compiler.h>
+#include <linux/security.h>
+#include <linux/mman.h>
+
+#include <linux/trace.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -30,13 +39,14 @@
 
 /* The idle threads do not count.. */
 int nr_threads;
-int nr_running;
 
 int max_threads;
 unsigned long total_forks;	/* Handle normal Linux uptimes. */
 int last_pid;
 
 struct task_struct *pidhash[PIDHASH_SZ];
+
+rwlock_t tasklist_lock __cacheline_aligned = RW_LOCK_UNLOCKED;  /* outer */
 
 void add_wait_queue(wait_queue_head_t *q, wait_queue_t * wait)
 {
@@ -143,6 +153,7 @@ static inline int dup_mmap(struct mm_struct * mm)
 {
 	struct vm_area_struct * mpnt, *tmp, **pprev;
 	int retval;
+	unsigned long charge = 0;
 
 	flush_cache_mm(current->mm);
 	mm->locked_vm = 0;
@@ -171,6 +182,17 @@ static inline int dup_mmap(struct mm_struct * mm)
 		retval = -ENOMEM;
 		if(mpnt->vm_flags & VM_DONTCOPY)
 			continue;
+
+		/*
+		 * FIXME: shared writable map accounting should be one off
+		 */
+		if (mpnt->vm_flags & VM_ACCOUNT) {
+			unsigned int len = (mpnt->vm_end - mpnt->vm_start) >> PAGE_SHIFT;
+			if (!vm_enough_memory(len, 1))
+				goto fail_nomem;
+			charge += len;
+		}
+
 		tmp = kmem_cache_alloc(vm_area_cachep, SLAB_KERNEL);
 		if (!tmp)
 			goto fail_nomem;
@@ -215,9 +237,12 @@ static inline int dup_mmap(struct mm_struct * mm)
 	retval = 0;
 	build_mmap_rb(mm);
 
-fail_nomem:
+out:
 	flush_tlb_mm(current->mm);
 	return retval;
+fail_nomem:
+	vm_unacct_memory(charge);
+	goto out;
 }
 
 spinlock_t mmlist_lock __cacheline_aligned = SPIN_LOCK_UNLOCKED;
@@ -565,6 +590,22 @@ static inline void copy_flags(unsigned long clone_flags, struct task_struct *p)
 	p->flags = new_flags;
 }
 
+static inline int fork_traceflag (unsigned clone_flags)
+{
+	if (clone_flags & CLONE_UNTRACED)
+		return 0;
+	else if (clone_flags & CLONE_VFORK) {
+		if (current->ptrace & PT_TRACE_VFORK)
+			return PTRACE_EVENT_VFORK;
+	} else if ((clone_flags & CSIGNAL) != SIGCHLD) {
+		if (current->ptrace & PT_TRACE_CLONE)
+			return PTRACE_EVENT_CLONE;
+	} else if (current->ptrace & PT_TRACE_FORK)
+		return PTRACE_EVENT_FORK;
+
+	return 0;
+}
+
 /*
  *  Ok, this is the main fork-routine. It copies the system process
  * information (task[nr]) and sets up the necessary registers. It also
@@ -580,11 +621,18 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 	int retval;
 	struct task_struct *p;
 	struct completion vfork;
+	int trace = 0;
 
 	if ((clone_flags & (CLONE_NEWNS|CLONE_FS)) == (CLONE_NEWNS|CLONE_FS))
 		return -EINVAL;
 
 	retval = -EPERM;
+
+	if (unlikely(current->ptrace)) {
+		trace = fork_traceflag (clone_flags);
+		if (trace)
+			clone_flags |= CLONE_PTRACE;
+	}
 
 	/* 
 	 * CLONE_PID is only allowed for the initial SMP swapper
@@ -594,6 +642,10 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 		if (current->pid)
 			goto fork_out;
 	}
+
+	retval = security_task_create(clone_flags);
+	if (retval)
+		goto fork_out;
 
 	retval = -ENOMEM;
 	p = alloc_task_struct();
@@ -629,6 +681,13 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 	if (p->binfmt && p->binfmt->module)
 		__MOD_INC_USE_COUNT(p->binfmt->module);
 
+#ifdef CONFIG_PREEMPT
+	/*
+	 * Continue with preemption disabled as part of the context
+	 * switch, so start with preempt_count set to 1.
+         */
+	p->preempt_count = 1;
+#endif
 	p->did_exec = 0;
 	p->swappable = 0;
 	p->state = TASK_UNINTERRUPTIBLE;
@@ -638,8 +697,7 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 	if (p->pid == 0 && current->pid != 0)
 		goto bad_fork_cleanup;
 
-	p->run_list.next = NULL;
-	p->run_list.prev = NULL;
+	INIT_LIST_HEAD(&p->run_list);
 
 	p->p_cptr = NULL;
 	init_waitqueue_head(&p->wait_chldexit);
@@ -665,23 +723,27 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 #ifdef CONFIG_SMP
 	{
 		int i;
-		p->cpus_runnable = ~0UL;
-		p->processor = current->processor;
+
 		/* ?? should we just memset this ?? */
 		for(i = 0; i < smp_num_cpus; i++)
-			p->per_cpu_utime[i] = p->per_cpu_stime[i] = 0;
+			p->per_cpu_utime[cpu_logical_map(i)] =
+				p->per_cpu_stime[cpu_logical_map(i)] = 0;
 		spin_lock_init(&p->sigmask_lock);
 	}
 #endif
+	p->array = NULL;
 	p->lock_depth = -1;		/* -1 = no lock */
 	p->start_time = jiffies;
+	p->security = NULL;
 
 	INIT_LIST_HEAD(&p->local_pages);
 
 	retval = -ENOMEM;
+	if (security_task_alloc(p))
+		goto bad_fork_cleanup;
 	/* copy all the process information */
 	if (copy_files(clone_flags, p))
-		goto bad_fork_cleanup;
+		goto bad_fork_cleanup_security;
 	if (copy_fs(clone_flags, p))
 		goto bad_fork_cleanup_files;
 	if (copy_sighand(clone_flags, p))
@@ -706,15 +768,27 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 	p->pdeath_signal = 0;
 
 	/*
-	 * "share" dynamic priority between parent and child, thus the
-	 * total amount of dynamic priorities in the system doesn't change,
-	 * more scheduling fairness. This is only important in the first
-	 * timeslice, on the long run the scheduling behaviour is unchanged.
+	 * Share the timeslice between parent and child, thus the
+	 * total amount of pending timeslices in the system doesnt change,
+	 * resulting in more scheduling fairness.
 	 */
-	p->counter = (current->counter + 1) >> 1;
-	current->counter >>= 1;
-	if (!current->counter)
-		current->need_resched = 1;
+	__cli();
+	if (!current->time_slice)
+		BUG();
+	p->time_slice = (current->time_slice + 1) >> 1;
+	current->time_slice >>= 1;
+	p->first_time_slice = 1;
+	if (!current->time_slice) {
+		/*
+		 * This case is rare, it happens when the parent has only
+		 * a single jiffy left from its timeslice. Taking the
+		 * runqueue lock is not a problem.
+		 */
+		current->time_slice = 1;
+		scheduler_tick(0,0);
+	}
+	p->sleep_timestamp = jiffies;
+	__sti();
 
 	/*
 	 * Ok, add it to the run-queues and make it
@@ -751,10 +825,25 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 	if (p->ptrace & PT_PTRACED)
 		send_sig(SIGSTOP, p, 1);
 
-	wake_up_process(p);		/* do this last */
+	/* Trace the event  */
+	TRACE_PROCESS(TRACE_EV_PROCESS_FORK, retval, 0);
+
+	wake_up_forked_process(p);	/* do this last */
 	++total_forks;
+
+	if (unlikely(trace)) {
+		current->ptrace_message = (unsigned long) p->pid;
+		ptrace_notify ((trace << 8) | SIGTRAP);
+	}
+
 	if (clone_flags & CLONE_VFORK)
 		wait_for_completion(&vfork);
+	else
+		/*
+		 * Let the child process run first, to avoid most of the
+		 * COW overhead when the child exec()s afterwards.
+		 */
+		current->need_resched = 1;
 
 fork_out:
 	return retval;
@@ -763,12 +852,16 @@ bad_fork_cleanup_namespace:
 	exit_namespace(p);
 bad_fork_cleanup_mm:
 	exit_mm(p);
+	if (p->active_mm)
+		mmdrop(p->active_mm);
 bad_fork_cleanup_sighand:
 	exit_sighand(p);
 bad_fork_cleanup_fs:
 	exit_fs(p); /* blocking */
 bad_fork_cleanup_files:
 	exit_files(p); /* blocking */
+bad_fork_cleanup_security:
+	security_task_free(p);
 bad_fork_cleanup:
 	put_exec_domain(p->exec_domain);
 	if (p->binfmt && p->binfmt->module)

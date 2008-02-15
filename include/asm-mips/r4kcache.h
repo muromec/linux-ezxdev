@@ -179,11 +179,32 @@ static inline void protected_writeback_dcache_line(unsigned long addr)
 static inline void blast_dcache16(void)
 {
 	unsigned long start = KSEG0;
-	unsigned long end = (start + dcache_size);
+	unsigned long end;
 
-	while(start < end) {
-		cache16_unroll32(start,Index_Writeback_Inv_D);
-		start += 0x200;
+	switch (mips_cpu.cputype) {
+	case CPU_RC32300:
+		/*
+		 * The IDT RC32300 has a 2KB dcache, but the way
+		 * is selected by address bit 12 as if the dcache
+		 * was 8KB.
+		 */
+		end = start + dcache_size/2;
+		while(start < end) {
+			/* blast first way */
+			cache16_unroll32(start, Index_Writeback_Inv_D);
+			/* blast second way */
+			cache16_unroll32(start | 0x1000,
+					 Index_Writeback_Inv_D);
+			start += 0x200;
+		}
+		break;
+	default:
+		end = start + dcache_size;
+		while(start < end) {
+			cache16_unroll32(start,Index_Writeback_Inv_D);
+			start += 0x200;
+		}
+		break;
 	}
 }
 

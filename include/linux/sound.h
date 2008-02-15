@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2005 Motorola, Inc.
+ */
+
+/*
+ * Revision History:
+ *                    Modification     Tracking
+ * Author                 Date          Number     Description of Changes
+ * ----------------   ------------    ----------   -------------------------
+ * Jennifer(w4806c)    05/11/2005     LIBgg09094    remove the build warning info
+ * Jin Lihong(w20076)  05/26/2005     LIBgg12346    Fix:Loud noise while VR(both SIVR SDVR) being launched from contact.
+ *
+ */
 
 /*
  * Minor numbers for the sound driver.
@@ -32,9 +45,18 @@ extern int register_sound_mixer(struct file_operations *fops, int dev);
 extern int register_sound_midi(struct file_operations *fops, int dev);
 extern int register_sound_dsp(struct file_operations *fops, int dev);
 extern int register_sound_synth(struct file_operations *fops, int dev);
+extern int register_sound_audio(struct file_operations *fops, int dev);
+extern int register_sound_dsp16(struct file_operations *fops, int dev);
+extern int register_sound_phone(struct file_operations *fops, int dev);
+extern int register_sound_fm(struct file_operations *fops, int dev);
 
 extern void unregister_sound_special(int unit);
 extern void unregister_sound_mixer(int unit);
 extern void unregister_sound_midi(int unit);
 extern void unregister_sound_dsp(int unit);
 extern void unregister_sound_synth(int unit);
+extern void unregister_sound_audio(int unit);
+extern void unregister_sound_dsp16(int unit);
+extern void unregister_sound_phone(int unit);
+extern void unregister_sound_fm(int unit);
+

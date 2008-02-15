@@ -1,8 +1,10 @@
 /*
  * linux/fs/fat/fatfs_syms.c
  *
+ * Copyright (C) 2005 Motorola Inc.
  * Exported kernel symbols for the low-level FAT-based fs support.
- *
+ * modify by ZhiFu Zhu 2005/04
+ *         -For EzX
  */
 
 #include <linux/module.h>
@@ -11,6 +13,13 @@
 #include <linux/mm.h>
 #include <linux/msdos_fs.h>
 #include <linux/fat_cvf.h>
+
+/* add by w20598 used to notify user-space if fat fs panic */
+DECLARE_COMPLETION(fatpanic_completion);
+unsigned short panicdev = 0;
+EXPORT_SYMBOL(fatpanic_completion);
+EXPORT_SYMBOL(panicdev);
+/* add end */
 
 EXPORT_SYMBOL(fat_new_dir);
 EXPORT_SYMBOL(fat_get_block);

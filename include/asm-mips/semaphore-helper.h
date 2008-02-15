@@ -25,18 +25,19 @@ static inline void wake_one_more(struct semaphore * sem)
 
 #ifdef CONFIG_CPU_HAS_LLSC
 
-static inline int waking_non_zero(struct semaphore *sem)
+static inline int
+waking_non_zero(struct semaphore *sem)
 {
 	int ret, tmp;
 
 	__asm__ __volatile__(
-	"1:\tll\t%1, %2\t\t\t# waking_non_zero\n\t"
+	"1:\tll\t%1, %2\n\t"
 	"blez\t%1, 2f\n\t"
 	"subu\t%0, %1, 1\n\t"
 	"sc\t%0, %2\n\t"
-	"beqz\t%0, 1b\n"
+	"beqz\t%0, 1b\n\t"
 	"2:"
-	: "=r" (ret), "=r" (tmp), "+m" (sem->waking)
+	: "=r" (ret), "=r" (tmp), "=m" (sem->waking)
 	: "0"(0));
 
 	return ret;
@@ -73,22 +74,22 @@ static inline int waking_non_zero(struct semaphore *sem)
  *	-EINTR	interrupted
  *
  * We must undo the sem->count down_interruptible decrement
- * simultaneously and atomically with the sem->waking adjustment,
+ * simultaneously and atomicly with the sem->waking adjustment,
  * otherwise we can race with wake_one_more.
  *
- * This is accomplished by doing a 64-bit lld/scd on the 2 32-bit words.
+ * This is accomplished by doing a 64-bit ll/sc on the 2 32-bit words.
  *
- * This is crazy.  Normally it's strictly forbidden to use 64-bit operations
+ * This is crazy.  Normally it stricly forbidden to use 64-bit operations
  * in the 32-bit MIPS kernel.  In this case it's however ok because if an
  * interrupt has destroyed the upper half of registers sc will fail.
- * Note also that this will not work for MIPS32 CPUs!
+ * Note also that this will not work for MIPS32 CPUS!
  *
  * Pseudocode:
  *
  * If(sem->waking > 0) {
  *	Decrement(sem->waking)
  *	Return(SUCCESS)
- * } else If(signal_pending(tsk)) {
+ * } else If(segnal_pending(tsk)) {
  *	Increment(sem->count)
  *	Return(-EINTR)
  * } else {
@@ -126,11 +127,12 @@ waking_non_zero_interruptible(struct semaphore *sem, struct task_struct *tsk)
 }
 
 /*
- * waking_non_zero_trylock is unused.  we do everything in
+ * waking_non_zero_trylock is unused.  we do everything in 
  * down_trylock and let non-ll/sc hosts bounce around.
  */
 
-static inline int waking_non_zero_trylock(struct semaphore *sem)
+static inline int
+waking_non_zero_trylock(struct semaphore *sem)
 {
 #if WAITQUEUE_DEBUG
 	CHECK_MAGIC(sem->__magic);

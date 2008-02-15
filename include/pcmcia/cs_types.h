@@ -36,10 +36,20 @@
 #include <sys/types.h>
 #endif
 
-#ifdef __arm__
-typedef u_int   ioaddr_t;
+#if defined(__arm__)
+typedef u_int ioaddr_t;
+typedef u_int memaddr_t;
+#elif defined(__mips__)
+  #ifdef CONFIG_64BIT_PHYS_ADDR
+    typedef unsigned long long ioaddr_t;
+    typedef unsigned long long memaddr_t;
+  #else
+    typedef unsigned long ioaddr_t;
+    typedef unsigned long memaddr_t;
+  #endif
 #else
 typedef u_short	ioaddr_t;
+typedef u_int memaddr_t;
 #endif
 
 typedef u_short	socket_t;

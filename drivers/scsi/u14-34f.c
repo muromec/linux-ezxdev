@@ -1906,6 +1906,7 @@ int u14_34f_release(struct Scsi_Host *shpnt) {
    return FALSE;
 }
 
+MODULE_LICENSE("Dual BSD/GPL");
 static Scsi_Host_Template driver_template = ULTRASTOR_14_34F;
 
 #include "scsi_module.c"

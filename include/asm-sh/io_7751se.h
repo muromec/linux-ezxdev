@@ -13,6 +13,7 @@
 #define _ASM_SH_IO_7751SE_H
 
 #include <asm/io_generic.h>
+#include <asm/machvec.h>
 
 extern unsigned char sh7751se_inb(unsigned long port);
 extern unsigned short sh7751se_inw(unsigned long port);
@@ -72,8 +73,8 @@ extern unsigned long sh7751se_isa_port2addr(unsigned long offset);
 # define __writel		sh7751se_writel
 
 # define __isa_port2addr	sh7751se_isa_port2addr
-# define __ioremap		generic_ioremap
-# define __iounmap		generic_iounmap
+# define __ioremap(a,s)		sh_mv.mv_ioremap((a), (s))
+# define __iounmap(a)		sh_mv.mv_iounmap((a))
 
 #endif
 

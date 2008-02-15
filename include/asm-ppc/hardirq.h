@@ -1,5 +1,5 @@
 /*
- * BK Id: %F% %I% %G% %U% %#%
+ * BK Id: SCCS/s.hardirq.h 1.19 10/09/02 10:47:02 paulus
  */
 #ifdef __KERNEL__
 #ifndef __ASM_HARDIRQ_H
@@ -34,10 +34,12 @@ typedef struct {
  * Are we in an interrupt context? Either doing bottom half
  * or hardware interrupt processing?
  */
-#define in_interrupt() ({ int __cpu = smp_processor_id(); \
-	(local_irq_count(__cpu) + local_bh_count(__cpu) != 0); })
+#define in_interrupt() (preempt_is_disabled() && \
+	({ unsigned long __cpu = smp_processor_id(); \
+	(local_irq_count(__cpu) + local_bh_count(__cpu) != 0); }))
 
-#define in_irq() (local_irq_count(smp_processor_id()) != 0)
+#define in_irq() (preempt_is_disabled() && \
+	(local_irq_count(smp_processor_id()) != 0))
 
 #ifndef CONFIG_SMP
 
@@ -49,13 +51,24 @@ typedef struct {
 
 #define synchronize_irq()	do { } while (0)
 
+#define release_irqlock(cpu)	do { } while (0)
+
 #else /* CONFIG_SMP */
 
 #include <asm/atomic.h>
 
 extern unsigned char global_irq_holder;
 extern unsigned volatile long global_irq_lock;
-extern atomic_t global_irq_count;
+
+static inline int irqs_running (void)
+{
+	int i;
+
+	for (i = 0; i < smp_num_cpus; i++)
+		if (local_irq_count(i))
+			return 1;
+		return 0;
+}
 
 static inline void release_irqlock(int cpu)
 {
@@ -71,7 +84,6 @@ static inline void hardirq_enter(int cpu)
 	unsigned int loops = 10000000;
 	
 	++local_irq_count(cpu);
-	atomic_inc(&global_irq_count);
 	while (test_bit(0,&global_irq_lock)) {
 		if (cpu == global_irq_holder) {
 			printk("uh oh, interrupt while we hold global irq lock! (CPU %d)\n", cpu);
@@ -91,13 +103,12 @@ static inline void hardirq_enter(int cpu)
 
 static inline void hardirq_exit(int cpu)
 {
-	atomic_dec(&global_irq_count);
 	--local_irq_count(cpu);
 }
 
 static inline int hardirq_trylock(int cpu)
 {
-	return !atomic_read(&global_irq_count) && !test_bit(0,&global_irq_lock);
+	return !test_bit(0,&global_irq_lock);
 }
 
 #define hardirq_endlock(cpu)	do { } while (0)

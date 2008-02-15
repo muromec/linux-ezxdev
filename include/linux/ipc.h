@@ -1,3 +1,8 @@
+/*
+ *
+ * 2005-Apr-04 Motorola  Add security patch 
+ */
+
 #ifndef _LINUX_IPC_H
 #define _LINUX_IPC_H
 
@@ -63,6 +68,7 @@ struct kern_ipc_perm
 	gid_t		cgid;
 	mode_t		mode; 
 	unsigned long	seq;
+	void		*security;
 };
 
 #endif /* __KERNEL__ */

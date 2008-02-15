@@ -39,6 +39,11 @@
  *					silently drop skb instead of failing with -EPERM.
  *		Detlev Wengorz	:	Copy protocol for fragments.
  */
+/*
+ *
+ *  2005-Apr-04 Motorola  Add security patch
+ */
+
 
 #include <asm/uaccess.h>
 #include <asm/system.h>
@@ -77,6 +82,7 @@
 #include <linux/netfilter_ipv4.h>
 #include <linux/mroute.h>
 #include <linux/netlink.h>
+#include <linux/security.h>
 
 /*
  *      Shall we try to damage output packets if routing dev changes?
@@ -883,6 +889,7 @@ int ip_fragment(struct sk_buff *skb, int (*output)(struct sk_buff*))
 		skb2->nf_debug = skb->nf_debug;
 #endif
 #endif
+		security_ip_fragment(skb2, skb);
 
 		/*
 		 *	Put this fragment into the sending queue.

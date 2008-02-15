@@ -151,7 +151,7 @@ static int watchdog_ioctl(struct inode *inode, struct file *file,
 			if (get_user(new_margin, (int *)arg))
 				return -EFAULT;
 			/* Arbitrary, can't find the card's limits */
-			if ((new_marg < 0) || (new_margin > 60))
+			if ((new_margin < 0) || (new_margin > 60))
 				return -EINVAL;
 			soft_margin = new_margin;
 			watchdog_ping();

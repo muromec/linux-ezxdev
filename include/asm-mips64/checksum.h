@@ -87,7 +87,7 @@ static inline unsigned short int csum_fold(unsigned int sum)
 
  	return sum;
 }
-
+ 
 /*
  *	This is a version of ip_compute_csum() optimized for IP headers,
  *	which always checksum on 4 octet boundaries.
@@ -163,12 +163,12 @@ static inline unsigned long csum_tcpudp_nofold(unsigned long saddr,
 	"daddu\t%0, $1\n\t"
 	"dsrl32\t%0, %0, 0\n\t"
 	".set\tat"
-	: "=&r" (sum)
+	: "=r" (sum)
 	: "0" (daddr), "r"(saddr),
 #ifdef __MIPSEL__
-	  "r" (((unsigned long)ntohs(len)<<16)+proto*256),
+	  "r" ((ntohs(len)<<16)+proto*256),
 #else
-	  "r" (((unsigned long)(proto)<<16)+len),
+	  "r" (((proto)<<16)+len),
 #endif
 	  "r" (sum));
 
@@ -202,7 +202,7 @@ static __inline__ unsigned short int csum_ipv6_magic(struct in6_addr *saddr,
 						     struct in6_addr *daddr,
 						     __u32 len,
 						     unsigned short proto,
-						     unsigned int sum)
+						     unsigned int sum) 
 {
 	__asm__(
 	".set\tnoreorder\t\t\t# csum_ipv6_magic\n\t"
@@ -256,7 +256,7 @@ static __inline__ unsigned short int csum_ipv6_magic(struct in6_addr *saddr,
 	"addu\t%0, $1\t\t\t# Add final carry\n\t"
 	".set\tnoat\n\t"
 	".set\tnoreorder"
-	: "=&r" (sum), "=&r" (proto)
+	: "=r" (sum), "=r" (proto)
 	: "r" (saddr), "r" (daddr),
 	  "0" (htonl(len)), "1" (htonl(proto)), "r" (sum));
 

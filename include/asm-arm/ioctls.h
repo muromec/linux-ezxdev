@@ -1,3 +1,9 @@
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ *  modified by a14194, for Motorola Ezx Platform 
+ */
+
 #ifndef __ASM_ARM_IOCTLS_H
 #define __ASM_ARM_IOCTLS_H
 
@@ -50,6 +56,30 @@
 #define TIOCGPTN	_IOR('T',0x30, unsigned int) /* Get Pty Number (of pty-mux device) */
 #define TIOCSPTLCK	_IOW('T',0x31, int)  /* Lock/unlock Pty */
 
+#define TIOCWAKEBTS			_IO('T',0x32) 		/* SET BTWAKE Pin */
+#define TIOCWAKEBTC			_IO('T',0x33)	  	/* Clear BTWAKE Pin */
+#define TIOCRESETBTS			_IO('T',0x34) 		/* SET BTRESET Pin */
+#define TIOCRESETBTC			_IO('T',0x35)  		/* Clear BTRESET Pin */
+#define TIOC_ENABLE_IFLOW		_IO('T',0x38)  		/* RTS_BTUART is controlled by hardware flow control and asserted */
+#define TIOC_DISABLE_IFLOW_RTS_LOW	_IO('T',0x39)  		/* RTS_BTUART is controlled by software flow control and deasserted */
+#define TIOC_HOST_WAKE_STATE		_IOR('T',0x40, int)  	/* The state of HOST_WAKE immediately*/
+#define TIOC_HOST_WAKE_WATCH		_IOR('T',0x41, int)  	/* The state of HOST_WAKE blocked*/
+#define TIOCRESETTF			_IO('T',0x42)	   	/* Reset Transmitter FIFO */
+#define TIOCRESETRF			_IO('T',0x43)   	/* Reset Receiver FIFO */
+#define TIOC_BT_VOLTAGE_ON		_IO('T', 0x44) 		/*BT Voltage on*/
+#define TIOC_BT_VOLTAGE_OFF		_IO('T', 0x45)     	/* BT Voltage off*/
+#define TIOCPKTMS			_IO('T', 0x46) 		/* Enable PTY modem signal */
+#define TIOCSERSETLSR			_IO('T', 0x47)     	/* Set BT PTY LSR */
+#define TIOCSPEEDCTL			_IO('T',0x48)		/* Control the speed with kernel timer */
+#define TIOCMOUTQ			_IO('T',0x49)		/* Get exact PTY master OUTQ */
+
+#define BT_UART_CTL_STOP 0
+#define BT_UART_CTL_16_K 1
+#define BT_UART_CTL_32_K 2
+#define BT_UART_CTL_44_1_K 3
+#define BT_UART_CTL_48_K 4
+
+
 #define FIONCLEX	0x5450  /* these numbers need to be adjusted. */
 #define FIOCLEX		0x5451
 #define FIOASYNC	0x5452
@@ -75,6 +105,7 @@
 #define TIOCPKT_START		 8
 #define TIOCPKT_NOSTOP		16
 #define TIOCPKT_DOSTOP		32
+#define TIOCPKT_MSC		64
 
 #define TIOCSER_TEMT	0x01	/* Transmitter physically empty */
 

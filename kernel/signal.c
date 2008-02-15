@@ -5,6 +5,11 @@
  *
  *  1997-11-02  Modified for POSIX.1b signals by Richard Henderson
  */
+/*
+ *
+ *  2005-Apr-04  Motorola  Add security patch
+ */
+
 
 #include <linux/config.h>
 #include <linux/slab.h>
@@ -13,12 +18,23 @@
 #include <linux/smp_lock.h>
 #include <linux/init.h>
 #include <linux/sched.h>
+#include <linux/security.h>
+
+#include <linux/trace.h>
 
 #include <asm/uaccess.h>
 
 /*
  * SLAB caches for signal bits.
  */
+
+#define DEBUG_SIG 0
+
+#if DEBUG_SIG
+#define SIG_SLAB_DEBUG	(SLAB_DEBUG_FREE | SLAB_RED_ZONE /* | SLAB_POISON */)
+#else
+#define SIG_SLAB_DEBUG	0
+#endif
 
 static kmem_cache_t *sigqueue_cachep;
 
@@ -31,7 +47,7 @@ void __init signals_init(void)
 		kmem_cache_create("sigqueue",
 				  sizeof(struct sigqueue),
 				  __alignof__(struct sigqueue),
-				  0, NULL, NULL);
+				  SIG_SLAB_DEBUG, NULL, NULL);
 	if (!sigqueue_cachep)
 		panic("signals_init(): cannot create sigqueue SLAB cache");
 }
@@ -257,6 +273,11 @@ dequeue_signal(sigset_t *mask, siginfo_t *info)
 {
 	int sig = 0;
 
+#if DEBUG_SIG
+printk("SIG dequeue (%s:%d): %d ", current->comm, current->pid,
+	signal_pending(current));
+#endif
+
 	sig = next_signal(current, mask);
 	if (sig) {
 		if (current->notifier) {
@@ -275,6 +296,10 @@ dequeue_signal(sigset_t *mask, siginfo_t *info)
 		   we need to xchg out the timer overrun values.  */
 	}
 	recalc_sigpending(current);
+
+#if DEBUG_SIG
+printk(" %d -> %d\n", signal_pending(current), sig);
+#endif
 
 	return sig;
 }
@@ -490,12 +515,9 @@ static inline void signal_wake_up(struct task_struct *t)
 	 * process of changing - but no harm is done by that
 	 * other than doing an extra (lightweight) IPI interrupt.
 	 */
-	spin_lock(&runqueue_lock);
-	if (task_has_cpu(t) && t->processor != smp_processor_id())
-		smp_send_reschedule(t->processor);
-	spin_unlock(&runqueue_lock);
-#endif /* CONFIG_SMP */
-
+	if ((t->state == TASK_RUNNING) && (t->cpu != cpu()))
+		kick_if_running(t);
+#endif
 	if (t->state & TASK_INTERRUPTIBLE) {
 		wake_up_process(t);
 		return;
@@ -518,12 +540,20 @@ send_sig_info(int sig, struct siginfo *info, struct task_struct *t)
 	unsigned long flags;
 	int ret;
 
+
+#if DEBUG_SIG
+printk("SIG queue (%s:%d): %d ", t->comm, t->pid, sig);
+#endif
+
 	ret = -EINVAL;
 	if (sig < 0 || sig > _NSIG)
 		goto out_nolock;
 	/* The somewhat baroque permissions check... */
 	ret = -EPERM;
 	if (bad_signal(sig, info, t))
+		goto out_nolock;
+	ret = security_task_kill(t, info, sig);
+	if (ret)
 		goto out_nolock;
 
 	/* The null signal is a permissions and process existence probe.
@@ -548,10 +578,15 @@ send_sig_info(int sig, struct siginfo *info, struct task_struct *t)
 	if (sig < SIGRTMIN && sigismember(&t->pending.signal, sig))
 		goto out;
 
+	TRACE_PROCESS(TRACE_EV_PROCESS_SIGNAL, sig, t->pid);
+
 	ret = deliver_signal(sig, info, t);
 out:
 	spin_unlock_irqrestore(&t->sigmask_lock, flags);
 out_nolock:
+#if DEBUG_SIG
+printk(" %d -> %d\n", signal_pending(t), ret);
+#endif
 
 	return ret;
 }
@@ -832,27 +867,26 @@ EXPORT_SYMBOL(unblock_all_signals);
 asmlinkage long
 sys_rt_sigprocmask(int how, sigset_t *set, sigset_t *oset, size_t sigsetsize)
 {
-	int error = -EINVAL;
 	sigset_t old_set, new_set;
 
 	/* XXX: Don't preclude handling different sized sigset_t's.  */
-	if (sigsetsize != sizeof(sigset_t))
-		goto out;
+	if (sigsetsize != sizeof(sigset_t)) {
+		return -EINVAL;
+	}
 
 	if (set) {
-		error = -EFAULT;
-		if (copy_from_user(&new_set, set, sizeof(*set)))
-			goto out;
+		if (copy_from_user(&new_set, set, sizeof(*set))) {
+			return -EFAULT;
+		}
 		sigdelsetmask(&new_set, sigmask(SIGKILL)|sigmask(SIGSTOP));
 
 		spin_lock_irq(&current->sigmask_lock);
 		old_set = current->blocked;
 
-		error = 0;
 		switch (how) {
 		default:
-			error = -EINVAL;
-			break;
+			spin_unlock_irq(&current->sigmask_lock);
+			return -EINVAL;	
 		case SIG_BLOCK:
 			sigorsets(&new_set, &old_set, &new_set);
 			break;
@@ -866,42 +900,38 @@ sys_rt_sigprocmask(int how, sigset_t *set, sigset_t *oset, size_t sigsetsize)
 		current->blocked = new_set;
 		recalc_sigpending(current);
 		spin_unlock_irq(&current->sigmask_lock);
-		if (error)
-			goto out;
-		if (oset)
-			goto set_old;
+		if (oset) {
+			if (copy_to_user(oset, &old_set, sizeof(*oset))) {
+				return -EFAULT;
+			}
+		}
 	} else if (oset) {
 		spin_lock_irq(&current->sigmask_lock);
 		old_set = current->blocked;
 		spin_unlock_irq(&current->sigmask_lock);
 
-	set_old:
-		error = -EFAULT;
-		if (copy_to_user(oset, &old_set, sizeof(*oset)))
-			goto out;
+		if (copy_to_user(oset, &old_set, sizeof(*oset))) {
+			return -EFAULT;
+		}
 	}
-	error = 0;
-out:
-	return error;
+	return 0;
 }
 
 long do_sigpending(void *set, unsigned long sigsetsize)
 {
-	long error = -EINVAL;
 	sigset_t pending;
 
 	if (sigsetsize > sizeof(sigset_t))
-		goto out;
+		return -EINVAL;
 
 	spin_lock_irq(&current->sigmask_lock);
 	sigandsets(&pending, &current->blocked, &current->pending.signal);
 	spin_unlock_irq(&current->sigmask_lock);
 
-	error = -EFAULT;
-	if (!copy_to_user(set, &pending, sigsetsize))
-		error = 0;
-out:
-	return error;
+	if (copy_to_user(set, &pending, sigsetsize)) {
+		return -EFAULT;
+	}
+	return 0;
 }	
 
 asmlinkage long
@@ -1252,7 +1282,7 @@ out:
 #endif /* __sparc__ */
 #endif
 
-#if !defined(__alpha__) && !defined(__ia64__)
+#if !defined(__alpha__) && !defined(__ia64__) && !defined(__arm__)
 /*
  * For backwards compatibility.  Functionality superseded by sigprocmask.
  */
@@ -1280,7 +1310,8 @@ sys_ssetmask(int newmask)
 }
 #endif /* !defined(__alpha__) */
 
-#if !defined(__alpha__) && !defined(__ia64__) && !defined(__mips__)
+#if !defined(__alpha__) && !defined(__ia64__) && !defined(__mips__) && \
+    !defined(__arm__)
 /*
  * For backwards compatibility.  Functionality superseded by sigaction.
  */
@@ -1297,4 +1328,4 @@ sys_signal(int sig, __sighandler_t handler)
 
 	return ret ? ret : (unsigned long)old_sa.sa.sa_handler;
 }
-#endif /* !alpha && !__ia64__ && !defined(__mips__) */
+#endif /* !alpha && !__ia64__ && !defined(__mips__) && !defined(__arm__) */

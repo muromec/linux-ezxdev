@@ -1,4 +1,4 @@
-// $Id: vmax301.c,v 1.24 2001/10/02 15:05:14 dwmw2 Exp $
+// $Id: vmax301.c,v 1.30 2004/07/12 22:38:29 dwmw2 Exp $
 /* ######################################################################
 
    Tempustech VMAX SBC301 MTD Driver.
@@ -24,6 +24,7 @@
 #include <asm/io.h>
 
 #include <linux/mtd/map.h>
+#include <linux/mtd/mtd.h>
 
 
 #define WINDOW_START 0xd8000
@@ -53,32 +54,12 @@ static inline void vmax301_page(struct map_info *map,
 		__vmax301_page(map, page);
 }
 
-static __u8 vmax301_read8(struct map_info *map, unsigned long ofs)
+static map_word vmax301_read8(struct map_info *map, unsigned long ofs)
 {
-	__u8 ret;
+	map_word ret;
 	spin_lock(&vmax301_spin);
 	vmax301_page(map, ofs);
-	ret = readb(map->map_priv_2 + (ofs & WINDOW_MASK));
-	spin_unlock(&vmax301_spin);
-	return ret;
-}
-
-static __u16 vmax301_read16(struct map_info *map, unsigned long ofs)
-{
-	__u16 ret;
-	spin_lock(&vmax301_spin);
-	vmax301_page(map, ofs);
-	ret = readw(map->map_priv_2 + (ofs & WINDOW_MASK));
-	spin_unlock(&vmax301_spin);
-	return ret;
-}
-
-static __u32 vmax301_read32(struct map_info *map, unsigned long ofs)
-{
-	__u32 ret;
-	spin_lock(&vmax301_spin);
-	vmax301_page(map, ofs);
-	ret =  readl(map->map_priv_2 + (ofs & WINDOW_MASK));
+	ret.x[0] = readb(map->map_priv_2 + (ofs & WINDOW_MASK));
 	spin_unlock(&vmax301_spin);
 	return ret;
 }
@@ -99,27 +80,11 @@ static void vmax301_copy_from(struct map_info *map, void *to, unsigned long from
 	}
 }
 
-static void vmax301_write8(struct map_info *map, __u8 d, unsigned long adr)
+static void vmax301_write8(struct map_info *map, map_word d, unsigned long adr)
 {
 	spin_lock(&vmax301_spin);
 	vmax301_page(map, adr);
-	writeb(d, map->map_priv_2 + (adr & WINDOW_MASK));
-	spin_unlock(&vmax301_spin);
-}
-
-static void vmax301_write16(struct map_info *map, __u16 d, unsigned long adr)
-{
-	spin_lock(&vmax301_spin);
-	vmax301_page(map, adr);
-	writew(d, map->map_priv_2 + (adr & WINDOW_MASK));
-	spin_unlock(&vmax301_spin);
-}
-
-static void vmax301_write32(struct map_info *map, __u32 d, unsigned long adr)
-{
-	spin_lock(&vmax301_spin);
-	vmax301_page(map, adr);
-	writel(d, map->map_priv_2 + (adr & WINDOW_MASK));
+	writeb(d.x[0], map->map_priv_2 + (adr & WINDOW_MASK));
 	spin_unlock(&vmax301_spin);
 }
 
@@ -142,34 +107,28 @@ static void vmax301_copy_to(struct map_info *map, unsigned long to, const void *
 
 static struct map_info vmax_map[2] = {
 	{
-		name: "VMAX301 Internal Flash",
-		size: 3*2*1024*1024,
-		buswidth: 1,
-		read8: vmax301_read8,
-		read16: vmax301_read16,
-		read32: vmax301_read32,
-		copy_from: vmax301_copy_from,
-		write8: vmax301_write8,
-		write16: vmax301_write16,
-		write32: vmax301_write32,
-		copy_to: vmax301_copy_to,
-		map_priv_1: WINDOW_START + WINDOW_LENGTH,
-		map_priv_2: 0xFFFFFFFF
+		.name = "VMAX301 Internal Flash",
+		.phys = NO_XIP,
+		.size = 3*2*1024*1024,
+		.bankwidth = 1,
+		.read = vmax301_read8,
+		.copy_from = vmax301_copy_from,
+		.write = vmax301_write8,
+		.copy_to = vmax301_copy_to,
+		.map_priv_1 = WINDOW_START + WINDOW_LENGTH,
+		.map_priv_2 = 0xFFFFFFFF
 	},
 	{
-		name: "VMAX301 Socket",
-		size: 0,
-		buswidth: 1,
-		read8: vmax301_read8,
-		read16: vmax301_read16,
-		read32: vmax301_read32,
-		copy_from: vmax301_copy_from,
-		write8: vmax301_write8,
-		write16: vmax301_write16,
-		write32: vmax301_write32,
-		copy_to: vmax301_copy_to,
-		map_priv_1: WINDOW_START + (3*WINDOW_LENGTH),
-		map_priv_2: 0xFFFFFFFF
+		.name = "VMAX301 Socket",
+		.phys = NO_XIP,
+		.size = 0,
+		.bankwidth = 1,
+		.read = vmax301_read8,
+		.copy_from = vmax301_copy_from,
+		.write = vmax301_write8,
+		.copy_to = vmax301_copy_to,
+		.map_priv_1 = WINDOW_START + (3*WINDOW_LENGTH),
+		.map_priv_2 = 0xFFFFFFFF
 	}
 };
 
@@ -206,8 +165,8 @@ int __init init_vmax301(void)
 	   address of the first half, because it's used more
 	   often. 
 	*/
-	vmax_map[0].map_priv_1 = iomapadr + WINDOW_START;
-	vmax_map[1].map_priv_1 = iomapadr + (3*WINDOW_START);
+	vmax_map[0].map_priv_2 = iomapadr + WINDOW_START;
+	vmax_map[1].map_priv_2 = iomapadr + (3*WINDOW_START);
 	
 	for (i=0; i<2; i++) {
 		vmax_mtd[i] = do_map_probe("cfi_probe", &vmax_map[i]);
@@ -218,7 +177,7 @@ int __init init_vmax301(void)
 		if (!vmax_mtd[i])
 			vmax_mtd[i] = do_map_probe("map_rom", &vmax_map[i]);
 		if (vmax_mtd[i]) {
-			vmax_mtd[i]->module = THIS_MODULE;
+			vmax_mtd[i]->owner = THIS_MODULE;
 			add_mtd_device(vmax_mtd[i]);
 		}
 	}

@@ -20,8 +20,8 @@
  *  Copyright (C) ARM Limited 1998. All rights reserved.
  */
 
-#ifndef __sizes_h
-#define __sizes_h                       1
+#ifndef __ASM_SIZES_H
+#define __ASM_SIZES_H
 
 /* handy sizes */
 #define SZ_1K                           0x00000400
@@ -47,6 +47,4 @@
 #define SZ_1G                           0x40000000
 #define SZ_2G                           0x80000000
 
-#endif
-
-/*         END */
+#endif /*  __ASM_SIZES_H */

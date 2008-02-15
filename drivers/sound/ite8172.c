@@ -51,6 +51,10 @@
  *  Revision history
  *    02.08.2001  Initial release
  *    06.22.2001  Added I2S support
+ *    03.20.2002  Added mutex locks around read/write methods, to prevent
+ *                simultaneous access on SMP or preemptible kernels. Also
+ *                removed the counter/pointer fragment aligning at the end
+ *                of read/write methods [stevel].
  */
 #include <linux/version.h>
 #include <linux/module.h>
@@ -82,6 +86,19 @@
 #define IT8172_DEBUG
 #undef IT8172_VERBOSE_DEBUG
 #define DBG(x) {}
+
+#define IT8172_MODULE_NAME "IT8172 audio"
+#define PFX IT8172_MODULE_NAME
+
+#ifdef IT8172_DEBUG
+#define dbg(format, arg...) printk(KERN_DEBUG PFX ": " format "\n" , ## arg)
+#else
+#define dbg(format, arg...) do {} while (0)
+#endif
+#define err(format, arg...) printk(KERN_ERR PFX ": " format "\n" , ## arg)
+#define info(format, arg...) printk(KERN_INFO PFX ": " format "\n" , ## arg)
+#define warn(format, arg...) printk(KERN_WARNING PFX ": " format "\n" , ## arg)
+
 
 #define IT8172_MODULE_NAME "IT8172 audio"
 #define PFX IT8172_MODULE_NAME
@@ -292,6 +309,7 @@ struct it8172_state {
 
 	spinlock_t lock;
 	struct semaphore open_sem;
+	struct semaphore sem;
 	mode_t open_mode;
 	wait_queue_head_t open_wait;
 
@@ -328,7 +346,7 @@ static LIST_HEAD(devs);
 
 /* --------------------------------------------------------------------- */
 
-static inline unsigned ld2(unsigned int x)
+extern inline unsigned ld2(unsigned int x)
 {
 	unsigned r = 0;
 	
@@ -407,35 +425,31 @@ get_compat_rate(unsigned* rate)
 	return sr;
 }
 
+/* hold a spin-lock or stop the ADC before calling */
 static void set_adc_rate(struct it8172_state *s, unsigned rate)
 {
-	unsigned long flags;
 	unsigned short sr;
     
 	sr = get_compat_rate(&rate);
 
-	spin_lock_irqsave(&s->lock, flags);
 	s->capcc &= ~CC_SR_MASK;
 	s->capcc |= sr;
 	outw(s->capcc, s->io+IT_AC_CAPCC);
-	spin_unlock_irqrestore(&s->lock, flags);
 
 	s->adcrate = rate;
 }
 
 
+/* hold a spin-lock or stop the DAC before calling */
 static void set_dac_rate(struct it8172_state *s, unsigned rate)
 {
-	unsigned long flags;
 	unsigned short sr;
     
 	sr = get_compat_rate(&rate);
 
-	spin_lock_irqsave(&s->lock, flags);
 	s->pcc &= ~CC_SR_MASK;
 	s->pcc |= sr;
 	outw(s->pcc, s->io+IT_AC_PCC);
-	spin_unlock_irqrestore(&s->lock, flags);
 
 	s->dacrate = rate;
 }
@@ -532,7 +546,7 @@ static void waitcodec(struct ac97_codec *codec)
 
 /* --------------------------------------------------------------------- */
 
-static inline void stop_adc(struct it8172_state *s)
+extern inline void stop_adc(struct it8172_state *s)
 {
 	struct dmabuf* db = &s->dma_adc;
 	unsigned long flags;
@@ -556,7 +570,7 @@ static inline void stop_adc(struct it8172_state *s)
 	spin_unlock_irqrestore(&s->lock, flags);
 }	
 
-static inline void stop_dac(struct it8172_state *s)
+extern inline void stop_dac(struct it8172_state *s)
 {
 	struct dmabuf* db = &s->dma_dac;
 	unsigned long flags;
@@ -655,7 +669,7 @@ static void start_adc(struct it8172_state *s)
 #define DMABUF_DEFAULTORDER (17-PAGE_SHIFT)
 #define DMABUF_MINORDER 1
 
-static inline void dealloc_dmabuf(struct it8172_state *s, struct dmabuf *db)
+extern inline void dealloc_dmabuf(struct it8172_state *s, struct dmabuf *db)
 {
 	struct page *page, *pend;
 
@@ -740,7 +754,7 @@ static int prog_dmabuf(struct it8172_state *s, struct dmabuf *db,
 	return 0;
 }
 
-static inline int prog_dmabuf_adc(struct it8172_state *s)
+extern inline int prog_dmabuf_adc(struct it8172_state *s)
 {
 	stop_adc(s);
 	return prog_dmabuf(s, &s->dma_adc, s->adcrate,
@@ -748,7 +762,7 @@ static inline int prog_dmabuf_adc(struct it8172_state *s)
 			   IT_AC_CAPCC);
 }
 
-static inline int prog_dmabuf_dac(struct it8172_state *s)
+extern inline int prog_dmabuf_dac(struct it8172_state *s)
 {
 	stop_dac(s);
 	return prog_dmabuf(s, &s->dma_dac, s->dacrate,
@@ -768,8 +782,6 @@ static void it8172_interrupt(int irq, void *dev_id, struct pt_regs *regs)
 	unsigned short vol, mute;
 	unsigned long newptr;
     
-	spin_lock(&s->lock);
-
 	isc = inb(s->io+IT_AC_ISC);
 
 	/* fastpath out, to ease interrupt sharing */
@@ -778,6 +790,8 @@ static void it8172_interrupt(int irq, void *dev_id, struct pt_regs *regs)
 		return;
 	}
     
+	spin_lock(&s->lock);
+
 	/* clear audio interrupts first */
 	outb(isc | ISC_VCI | ISC_CCI | ISC_PCI, s->io+IT_AC_ISC);
     
@@ -802,9 +816,13 @@ static void it8172_interrupt(int irq, void *dev_id, struct pt_regs *regs)
 	if (isc & ISC_CCI) {
 		if (adc->count > adc->dmasize - adc->fragsize) {
 			// Overrun. Stop ADC and log the error
+			spin_unlock(&s->lock);
 			stop_adc(s);
+			spin_lock(&s->lock);
 			adc->error++;
+#ifdef IT8172_VERBOSE_DEBUG
 			dbg("adc overrun");
+#endif
 		} else {
 			newptr = virt_to_bus(adc->nextIn) + 2*adc->fragsize;
 			if (newptr >= adc->dmaaddr + adc->dmasize)
@@ -848,8 +866,16 @@ static void it8172_interrupt(int irq, void *dev_id, struct pt_regs *regs)
 		if (waitqueue_active(&dac->wait))
 			wake_up_interruptible(&dac->wait);
 	
-		if (dac->count <= 0)
+		if (dac->count <= 0) {
+#ifdef IT8172_VERBOSE_DEBUG
+			dbg("dac underrun");
+#endif
+			spin_unlock(&s->lock);
 			stop_dac(s);
+			spin_lock(&s->lock);
+			dac->count = 0;
+			dac->nextIn = dac->nextOut;
+		}
 	}
     
 	spin_unlock(&s->lock);
@@ -1090,7 +1116,7 @@ static ssize_t it8172_read(struct file *file, char *buffer,
 	struct dmabuf *db = &s->dma_adc;
 	ssize_t ret;
 	unsigned long flags;
-	int cnt, remainder, avail;
+	int cnt, avail;
 
 	if (ppos != &file->f_pos)
 		return -ESPIPE;
@@ -1100,26 +1126,30 @@ static ssize_t it8172_read(struct file *file, char *buffer,
 		return -EFAULT;
 	ret = 0;
 
+	down(&s->sem);
+
 	while (count > 0) {
 		// wait for samples in capture buffer
 		do {
-			spin_lock_irqsave(&s->lock, flags);
 			if (db->stopped)
 				start_adc(s);
+			spin_lock_irqsave(&s->lock, flags);
 			avail = db->count;
 			spin_unlock_irqrestore(&s->lock, flags);
 			if (avail <= 0) {
 				if (file->f_flags & O_NONBLOCK) {
 					if (!ret)
 						ret = -EAGAIN;
-					return ret;
+					goto out;
 				}
+				up(&s->sem);
 				interruptible_sleep_on(&db->wait);
 				if (signal_pending(current)) {
 					if (!ret)
 						ret = -ERESTARTSYS;
-					return ret;
+					goto out;
 				}
+				down(&s->sem);
 			}
 		} while (avail <= 0);
 
@@ -1128,7 +1158,7 @@ static ssize_t it8172_read(struct file *file, char *buffer,
 					    avail : count, 1)) < 0) {
 			if (!ret)
 				ret = -EFAULT;
-			return ret;
+			goto out;
 		}
 
 		spin_lock_irqsave(&s->lock, flags);
@@ -1144,25 +1174,8 @@ static ssize_t it8172_read(struct file *file, char *buffer,
 		ret += cnt;
 	} // while (count > 0)
 
-	/*
-	 * See if the dma buffer count after this read call is
-	 * aligned on a fragsize boundary. If not, read from
-	 * buffer until we reach a boundary, and let's hope this
-	 * is just the last remainder of an audio record. If not
-	 * it means the user is not reading in fragsize chunks, in
-	 * which case it's his/her fault that there are audio gaps
-	 * in their record.
-	 */
-	spin_lock_irqsave(&s->lock, flags);
-	remainder = db->count % db->fragsize;
-	if (remainder) {
-		db->nextOut += remainder;
-		if (db->nextOut >= db->rawbuf + db->dmasize)
-			db->nextOut -= db->dmasize;
-		db->count -= remainder;
-	}
-	spin_unlock_irqrestore(&s->lock, flags);
-
+ out:
+	up(&s->sem);
 	return ret;
 }
 
@@ -1173,7 +1186,7 @@ static ssize_t it8172_write(struct file *file, const char *buffer,
 	struct dmabuf *db = &s->dma_dac;
 	ssize_t ret;
 	unsigned long flags;
-	int cnt, remainder, avail;
+	int cnt, avail;
 
 	if (ppos != &file->f_pos)
 		return -ESPIPE;
@@ -1182,7 +1195,9 @@ static ssize_t it8172_write(struct file *file, const char *buffer,
 	if (!access_ok(VERIFY_READ, buffer, count))
 		return -EFAULT;
 	ret = 0;
-    
+
+	down(&s->sem);
+	
 	while (count > 0) {
 		// wait for space in playback buffer
 		do {
@@ -1193,14 +1208,16 @@ static ssize_t it8172_write(struct file *file, const char *buffer,
 				if (file->f_flags & O_NONBLOCK) {
 					if (!ret)
 						ret = -EAGAIN;
-					return ret;
+					goto out;
 				}
+				up(&s->sem);
 				interruptible_sleep_on(&db->wait);
 				if (signal_pending(current)) {
 					if (!ret)
 						ret = -ERESTARTSYS;
-					return ret;
+					goto out;
 				}
+				down(&s->sem);
 			}
 		} while (avail <= 0);
 	
@@ -1210,45 +1227,25 @@ static ssize_t it8172_write(struct file *file, const char *buffer,
 					    avail : count, 0)) < 0) {
 			if (!ret)
 				ret = -EFAULT;
-			return ret;
+			goto out;
 		}
 
 		spin_lock_irqsave(&s->lock, flags);
 		db->count += cnt;
-		if (db->stopped)
-			start_dac(s);
-		spin_unlock_irqrestore(&s->lock, flags);
-	
 		db->nextIn += cnt;
 		if (db->nextIn >= db->rawbuf + db->dmasize)
 			db->nextIn -= db->dmasize;
+		spin_unlock_irqrestore(&s->lock, flags);
+		if (db->stopped)
+			start_dac(s);
 	
 		count -= cnt;
 		buffer += cnt;
 		ret += cnt;
 	} // while (count > 0)
 	
-	/*
-	 * See if the dma buffer count after this write call is
-	 * aligned on a fragsize boundary. If not, fill buffer
-	 * with silence to the next boundary, and let's hope this
-	 * is just the last remainder of an audio playback. If not
-	 * it means the user is not sending us fragsize chunks, in
-	 * which case it's his/her fault that there are audio gaps
-	 * in their playback.
-	 */
-	spin_lock_irqsave(&s->lock, flags);
-	remainder = db->count % db->fragsize;
-	if (remainder) {
-		int fill_cnt = db->fragsize - remainder;
-		memset(db->nextIn, 0, fill_cnt);
-		db->nextIn += fill_cnt;
-		if (db->nextIn >= db->rawbuf + db->dmasize)
-			db->nextIn -= db->dmasize;
-		db->count += fill_cnt;
-	}
-	spin_unlock_irqrestore(&s->lock, flags);
-
+ out:
+	up(&s->sem);
 	return ret;
 }
 
@@ -1295,31 +1292,37 @@ static int it8172_mmap(struct file *file, struct vm_area_struct *vma)
 	struct it8172_state *s = (struct it8172_state *)file->private_data;
 	struct dmabuf *db;
 	unsigned long size;
-
+	int ret = 0;
+	
 	lock_kernel();
+	down(&s->sem);
+	
 	if (vma->vm_flags & VM_WRITE)
 		db = &s->dma_dac;
 	else if (vma->vm_flags & VM_READ)
 		db = &s->dma_adc;
 	else {
-		unlock_kernel();
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 	if (vma->vm_pgoff != 0) {
-		unlock_kernel();
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 	size = vma->vm_end - vma->vm_start;
 	if (size > (PAGE_SIZE << db->buforder)) {
-		unlock_kernel();
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 	if (remap_page_range(vma->vm_start, virt_to_phys(db->rawbuf),
 			     size, vma->vm_page_prot)) {
-		unlock_kernel();
-		return -EAGAIN;
+		ret = -EAGAIN;
+		goto out;
 	}
+	vma->vm_flags &= ~VM_IO;
 	db->mapped = 1;
+ out:
+	up(&s->sem);
 	unlock_kernel();
 	return 0;
 }
@@ -1771,7 +1774,6 @@ static int it8172_open(struct inode *inode, struct file *file)
 {
 	int minor = MINOR(inode->i_rdev);
 	DECLARE_WAITQUEUE(wait, current);
-	unsigned long flags;
 	struct list_head *list;
 	struct it8172_state *s;
 	int ret;
@@ -1809,7 +1811,8 @@ static int it8172_open(struct inode *inode, struct file *file)
 		down(&s->open_sem);
 	}
 
-	spin_lock_irqsave(&s->lock, flags);
+	stop_dac(s);
+	stop_adc(s);
 
 	if (file->f_mode & FMODE_READ) {
 		s->dma_adc.ossfragshift = s->dma_adc.ossmaxfrags =
@@ -1819,10 +1822,8 @@ static int it8172_open(struct inode *inode, struct file *file)
 		if ((minor & 0xf) == SND_DEV_DSP16)
 			s->capcc |= CC_DF;
 		outw(s->capcc, s->io+IT_AC_CAPCC);
-		if ((ret = prog_dmabuf_adc(s))) {
-			spin_unlock_irqrestore(&s->lock, flags);
+		if ((ret = prog_dmabuf_adc(s)))
 			return ret;
-		}
 	}
 	if (file->f_mode & FMODE_WRITE) {
 		s->dma_dac.ossfragshift = s->dma_dac.ossmaxfrags =
@@ -1832,16 +1833,13 @@ static int it8172_open(struct inode *inode, struct file *file)
 		if ((minor & 0xf) == SND_DEV_DSP16)
 			s->pcc |= CC_DF;
 		outw(s->pcc, s->io+IT_AC_PCC);
-		if ((ret = prog_dmabuf_dac(s))) {
-			spin_unlock_irqrestore(&s->lock, flags);
+		if ((ret = prog_dmabuf_dac(s)))
 			return ret;
-		}
 	}
     
-	spin_unlock_irqrestore(&s->lock, flags);
-
 	s->open_mode |= (file->f_mode & (FMODE_READ | FMODE_WRITE));
 	up(&s->open_sem);
+	init_MUTEX(&s->sem);
 	return 0;
 }
 
@@ -2052,7 +2050,7 @@ static int __devinit it8172_probe(struct pci_dev *pcidev,
 	if (pci_enable_device(pcidev))
 		goto err_dev3;
 	pci_set_master(pcidev);
-
+	
 	/* get out of legacy mode */
 	pci_read_config_byte (pcidev, 0x40, &legacy);
 	pci_write_config_byte (pcidev, 0x40, legacy & ~1);
@@ -2078,7 +2076,7 @@ static int __devinit it8172_probe(struct pci_dev *pcidev,
 
 	/* cold reset the AC97 */
 	outw(CODECC_CR, s->io+IT_AC_CODECC);
-	udelay(1000);
+	it8172_delay(10);
 	outw(0, s->io+IT_AC_CODECC);
 	/* need to delay around 500msec(bleech) to give
 	   some CODECs enough time to wakeup */
@@ -2092,7 +2090,7 @@ static int __devinit it8172_probe(struct pci_dev *pcidev,
 	/* codec init */
 	if (!ac97_probe_codec(&s->codec))
 		goto err_dev3;
-
+	
 	/* add I2S as allowable recording source */
 	s->codec.record_sources |= SOUND_MASK_I2S;
 	
@@ -2198,7 +2196,7 @@ static int __init init_it8172(void)
 {
 	if (!pci_present())   /* No PCI bus in this machine! */
 		return -ENODEV;
-	info("version v0.5 time " __TIME__ " " __DATE__);
+	info("version v1.0 time " __TIME__ " " __DATE__);
 	return pci_module_init(&it8172_driver);
 }
 

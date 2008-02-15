@@ -1,0 +1,20 @@
+#
+# Character device configuration
+#
+mainmenu_option next_comment
+comment 'SPI support'
+
+tristate 'SPI support' CONFIG_SPI
+
+if [ "$CONFIG_SPI" != "n" ]; then
+
+   dep_tristate 'SPI bit-banging interfaces'  CONFIG_SPI_ALGOBIT $CONFIG_SPI
+
+# This is needed for automatic patch generation: sensors code starts here
+# This is needed for automatic patch generation: sensors code ends here
+
+   dep_tristate 'SPI device interface' CONFIG_SPI_CHARDEV $CONFIG_SPI
+   dep_tristate 'SPI /proc interface (required for hardware sensors)' CONFIG_SPI_PROC $CONFIG_SPI
+
+fi
+endmenu

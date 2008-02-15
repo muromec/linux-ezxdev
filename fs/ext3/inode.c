@@ -1659,6 +1659,8 @@ static void ext3_free_data(handle_t *handle, struct inode *inode,
 	}
 
 	for (p = first; p < last; p++) {
+		debug_lock_break(1); /* bkl is held */
+		conditional_schedule();
 		nr = le32_to_cpu(*p);
 		if (nr) {
 			/* accumulate blocks to free if they're contiguous */
@@ -1723,6 +1725,8 @@ static void ext3_free_branches(handle_t *handle, struct inode *inode,
 
 			/* Go read the buffer for the next level down */
 			bh = sb_bread(inode->i_sb, nr);
+			debug_lock_break(1);
+			conditional_schedule();
 
 			/*
 			 * A read failure? Report error and clear slot

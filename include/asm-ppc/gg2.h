@@ -1,5 +1,5 @@
 /*
- * BK Id: %F% %I% %G% %U% %#%
+ * BK Id: SCCS/s.gg2.h 1.8 12/05/01 16:59:50 geert
  */
 /*
  *  asm-ppc/gg2.h -- VLSI VAS96011/12 `Golden Gate 2' register definitions

@@ -280,6 +280,11 @@ struct tx3927_ccfg_reg {
 #define TX3927_PCIC_TC_OF16E	0x00000020
 #define TX3927_PCIC_TC_IF8E	0x00000010
 #define TX3927_PCIC_TC_OF8E	0x00000008
+#define TX3927_PCIC_TC_OFCAD	0x00080000
+
+/* bits for TBL */
+#define TX3927_PCIC_TBL_IFIFO 0x00000f00
+#define TX3927_PCIC_TBL_0FIFO 0x00000007  
 
 /* bits for IOBA/MBA */
 /* see PCI_BASE_ADDRESS_XXX in linux/pci.h */

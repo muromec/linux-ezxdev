@@ -37,4 +37,8 @@ obj-y		+= $(obj-$(MACHINE))
 include $(TOPDIR)/Rules.make
 
 %.c: %.map
+ifneq ($(shell uname), Linux)
+	touch $@
+else
 	loadkeys --mktable $< > $@
+endif

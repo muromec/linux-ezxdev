@@ -2,9 +2,18 @@
  * include/linux/serial.h
  *
  * Copyright (C) 1992 by Theodore Ts'o.
+ * Copyright (C) 2003 Motorola, Inc.
  * 
  * Redistribution of this file is permitted under the terms of the GNU 
  * Public License (GPL)
+ */
+/*
+ * Revision History:
+ *                    Modification     Tracking
+ * Author                 Date          Number     Description of Changes
+ * ----------------   ------------    ----------   -------------------------
+ * Lin Weiqiang(w17202) 12/23/2003    LIBdd63300    port A760 drivers to E680
+ *
  */
 
 #ifndef _LINUX_SERIAL_H
@@ -75,7 +84,10 @@ struct serial_struct {
 #define PORT_16654	11
 #define PORT_16850	12
 #define PORT_RSA	13	/* RSA-DV II/S card */
-#define PORT_MAX	13
+#define PORT_PXA	14
+#define PORT_OMAP	15
+#define PORT_IXP1200	16
+#define PORT_MAX	16
 
 #define SERIAL_IO_PORT	0
 #define SERIAL_IO_HUB6	1
@@ -181,6 +193,18 @@ extern void unregister_serial(int line);
 /* Allow complicated architectures to specify rs_table[] at run time */
 extern int early_serial_setup(struct serial_struct *req);
 
+#define ICL_UART 1
+
+#if ICL_UART
+/* Liu Changhui */
+/* Export to allow MUX to use this */
+extern struct tty_driver *serial_for_mux_driver;
+extern struct tty_struct *serial_for_mux_tty;
+extern void (*serial_mux_dispatcher)(struct tty_struct *tty);
+extern void (*serial_mux_sender)(void);
+extern struct list_head *tq_serial_for_mux;
+/* Liu Changhui */
+#endif
 /* tty port reserved for the HCDP serial console port */
 #define HCDP_SERIAL_CONSOLE_PORT	4
 

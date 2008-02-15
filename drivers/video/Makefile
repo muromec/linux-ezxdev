@@ -1,6 +1,12 @@
+# linux/drivers/video/Makefile
+# Copyright (C) 2004 - Motorola
+#
 # Makefile for the Linux video drivers.
 # 5 Aug 1999, James Simmons, <mailto:jsimmons@edgeglobal.com>
 # Rewritten to use lists instead of if-statements.
+#
+# 2004/06/28  Susan
+#    Add EZX FB; Update to CEE3.1;
 
 O_TARGET := video.o
 
@@ -15,7 +21,7 @@ export-objs    := fbmem.o fbcmap.o fbcon.o fbmon.o modedb.o \
 		  fbcon-iplan2p8.o fbcon-vga-planes.o fbcon-cfb16.o \
 		  fbcon-cfb2.o fbcon-cfb24.o fbcon-cfb32.o fbcon-cfb4.o \
 		  fbcon-cfb8.o fbcon-mac.o fbcon-mfb.o \
-		  cyber2000fb.o sa1100fb.o fbcon-hga.o fbgen.o
+		  cyber2000fb.o sa1100fb.o fbcon-hga.o fbgen.o   hd66776fb.o
 
 # Each configuration option enables a list of files.
 
@@ -34,11 +40,14 @@ obj-$(CONFIG_FONT_PEARL_8x8)      += font_pearl_8x8.o
 obj-$(CONFIG_FONT_ACORN_8x8)      += font_acorn_8x8.o
 
 # Add fbmon.o back into obj-$(CONFIG_FB) in 2.5.x
-obj-$(CONFIG_FB)                  += fbmem.o fbcmap.o modedb.o fbcon.o fonts.o
+obj-$(CONFIG_FB)                  += fbmem.o fbcmap.o modedb.o misc.o fbcon.o fonts.o
 # Only include macmodes.o if we have FB support and are PPC
 ifeq ($(CONFIG_FB),y)
 obj-$(CONFIG_PPC)                 += macmodes.o
 endif
+
+obj-$(CONFIG_FB_PXA_18BPP)         += fbcon-cfb24.o
+obj-$(CONFIG_FB_PXA_19BPP)         += fbcon-cfb24.o
 
 obj-$(CONFIG_FB_ACORN)            += acornfb.o
 obj-$(CONFIG_FB_AMIGA)            += amifb.o
@@ -48,6 +57,7 @@ obj-$(CONFIG_FB_APOLLO)           += dnfb.o
 obj-$(CONFIG_FB_Q40)              += q40fb.o
 obj-$(CONFIG_FB_ATARI)            += atafb.o
 obj-$(CONFIG_FB_ATY128)           += aty128fb.o
+obj-$(CONFIG_FB_X220)		  += x220fb.o fbgen.o
 obj-$(CONFIG_FB_RADEON)		  += radeonfb.o
 obj-$(CONFIG_FB_NEOMAGIC)         += neofb.o
 obj-$(CONFIG_FB_IGA)              += igafb.o
@@ -55,6 +65,7 @@ obj-$(CONFIG_FB_CONTROL)          += controlfb.o
 obj-$(CONFIG_FB_PLATINUM)         += platinumfb.o
 obj-$(CONFIG_FB_VALKYRIE)         += valkyriefb.o
 obj-$(CONFIG_FB_CT65550)          += chipsfb.o
+obj-$(CONFIG_FB_CLPS711X)         += clps711xfb.o
 obj-$(CONFIG_FB_CYBER)            += cyberfb.o
 obj-$(CONFIG_FB_CYBER2000)        += cyber2000fb.o
 obj-$(CONFIG_FB_SGIVW)            += sgivwfb.o
@@ -85,7 +96,16 @@ obj-$(CONFIG_FB_PMAG_BA)          += pmag-ba-fb.o
 obj-$(CONFIG_FB_PMAGB_B)          += pmagb-b-fb.o
 obj-$(CONFIG_FB_MAXINE)           += maxinefb.o
 obj-$(CONFIG_FB_TX3912)           += tx3912fb.o
+obj-$(CONFIG_FB_MQ200)		  += mq200fb.o	
+obj-$(CONFIG_FB_RPX)              += rpxfb.o
 obj-$(CONFIG_FB_AU1100)		  += au1100fb.o fbgen.o
+obj-$(CONFIG_FB_IBMLCDC)          += ibmlcdfb.o ibmlcds.o fbgen.o
+obj-$(CONFIG_FB_HD66776)	  += hd66776fb.o fbgen.o
+
+subdir-$(CONFIG_FB_DBMX21)        += mx21ads
+ifeq ($(CONFIG_FB_DBMX21),y)
+obj-y                             += mx21ads/mx21fb.o
+endif
 
 subdir-$(CONFIG_STI_CONSOLE)      += sti
 ifeq ($(CONFIG_STI_CONSOLE),y)
@@ -117,15 +137,32 @@ ifeq ($(CONFIG_FB_ATY),y)
 obj-y				  += aty/atyfb.o
 endif
 
+subdir-$(CONFIG_FB_OMAP)	  += omap
+ifeq ($(CONFIG_FB_OMAP),y)
+obj-y				  += omap/omapfb.o
+endif
+
+subdir-$(CONFIG_ARCH_EZXBASE)	  += ezx_lcd
+ifeq ($(CONFIG_ARCH_EZXBASE),y)
+obj-y				  += ezx_lcd/ezx_lcd.o
+endif
+
 obj-$(CONFIG_FB_SUN3)             += sun3fb.o
 obj-$(CONFIG_FB_BWTWO)            += bwtwofb.o
 obj-$(CONFIG_FB_HGA)              += hgafb.o  
 obj-$(CONFIG_FB_SA1100)           += sa1100fb.o
+
+ifeq ($(CONFIG_PXA_CERF_PDA),y)
+obj-$(CONFIG_FB_PXA)              += lcdctrl.o lcdctrl_cerf.o
+endif
 obj-$(CONFIG_FB_VIRTUAL)          += vfb.o  
 obj-$(CONFIG_FB_HIT)              += hitfb.o fbgen.o
 obj-$(CONFIG_FB_E1355)            += epson1355fb.o fbgen.o
+obj-$(CONFIG_FB_E1356)		  += epson1356fb.o
+obj-$(CONFIG_FB_IT8181)		  += it8181fb.o fbgen.o
 obj-$(CONFIG_FB_PVR2)             += pvr2fb.o
 obj-$(CONFIG_FB_VOODOO1)          += sstfb.o
+obj-$(CONFIG_FB_ANAKIN)           += anakinfb.o
 
 # Generic Low Level Drivers
 

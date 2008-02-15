@@ -225,6 +225,45 @@ found_middle:
 #define find_first_zero_bit(addr, size) \
         find_next_zero_bit((addr), (size), 0)
 
+/**
+ * __ffs - find first bit in word.
+ * @word: The word to search
+ *
+ * Undefined if no bit exists, so code should check against 0 first.
+ */
+static __inline__ unsigned long __ffs(unsigned long word)
+{
+	unsigned long result;
+
+	__asm__("1:\n\t"
+		"shlr	%1\n\t"
+		"bf/s	1b\n\t"
+		" add	#1, %0"
+		: "=r" (result), "=r" (word)
+		: "0" (~0L), "1" (word)
+		: "t");
+	return result;
+}
+
+/*
+ * Every architecture must define this function. It's the fastest
+ * way of searching a 140-bit bitmap where the first 100 bits are
+ * unlikely to be set. It's guaranteed that at least one of the 140
+ * bits is cleared.
+ */
+static inline int _sched_find_first_bit(unsigned long *b)
+{
+        if (unlikely(b[0]))
+                return __ffs(b[0]);
+        if (unlikely(b[1]))
+                return __ffs(b[1]) + 32;
+        if (unlikely(b[2]))
+                return __ffs(b[2]) + 64;
+        if (b[3])
+                return __ffs(b[3]) + 96;
+        return __ffs(b[4]) + 128;
+}
+
 /*
  * ffs: find first bit set. This is defined the same way as
  * the libc and compiler builtin ffs routines, therefore

@@ -1,5 +1,5 @@
 /*
- * BK Id: SCCS/s.heathrow.h 1.12 03/19/02 15:53:56 benh
+ * BK Id: SCCS/s.heathrow.h 1.13 12/03/01 10:00:01 trini
  */
 /*
  * heathrow.h: definitions for using the "Heathrow" I/O controller chip.

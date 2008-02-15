@@ -11,6 +11,9 @@
 #define __ASM_PROC_SYSTEM_H
 
 #include <linux/config.h>
+#ifdef CONFIG_ILATENCY
+#include <linux/ilatency.h>
+#endif
 
 #define set_cr(x)					\
 	__asm__ __volatile__(				\
@@ -36,39 +39,35 @@
 extern unsigned long cr_no_alignment;	/* defined in entry-armv.S */
 extern unsigned long cr_alignment;	/* defined in entry-armv.S */
 
-#ifdef __ARM_ARCH_4__
+#if __LINUX_ARM_ARCH__ >= 4
 #define vectors_base()	((cr_alignment & CR_V) ? 0xffff0000 : 0)
 #else
 #define vectors_base()	(0)
 #endif
 
-/*
- * A couple of speedups for the ARM
- */
+#ifdef CONFIG_ILATENCY
+
+#define local_irq_disable()    	intr_cli(__BASE_FILE__,__LINE__);
+#define local_irq_enable()    	intr_sti(__BASE_FILE__,__LINE__,0);
+#define local_irq_restore(flags) intr_restore_flags(__BASE_FILE__,__LINE__, flags);
+
+extern void __intr_sti(void);
+extern void __intr_cli(void);
+extern void __intr_restore_flags(unsigned long);
 
 /*
  * Save the current interrupt enable state & disable IRQs
  */
-#define __save_flags_cli(x)					\
-	({							\
-		unsigned long temp;				\
-	__asm__ __volatile__(					\
-	"mrs	%0, cpsr		@ save_flags_cli\n"	\
-"	orr	%1, %0, #128\n"					\
-"	msr	cpsr_c, %1"					\
-	: "=r" (x), "=r" (temp)					\
-	:							\
-	: "memory");						\
-	})
+#define local_irq_save(x) local_save_flags(x);__intr_cli()
 	
 /*
  * Enable IRQs
  */
-#define __sti()							\
+#define __intr_sti()						\
 	({							\
 		unsigned long temp;				\
 	__asm__ __volatile__(					\
-	"mrs	%0, cpsr		@ sti\n"		\
+	"mrs	%0, cpsr		@ local_irq_enable\n"	\
 "	bic	%0, %0, #128\n"					\
 "	msr	cpsr_c, %0"					\
 	: "=r" (temp)						\
@@ -79,17 +78,85 @@ extern unsigned long cr_alignment;	/* defined in entry-armv.S */
 /*
  * Disable IRQs
  */
-#define __cli()							\
+#define __intr_cli()						\
 	({							\
 		unsigned long temp;				\
 	__asm__ __volatile__(					\
-	"mrs	%0, cpsr		@ cli\n"		\
+	"mrs	%0, cpsr		@ local_irq_disable\n"	\
 "	orr	%0, %0, #128\n"					\
 "	msr	cpsr_c, %0"					\
 	: "=r" (temp)						\
 	:							\
 	: "memory");						\
 	})
+
+/*
+ * restore saved IRQ & FIQ state
+ */
+#define __intr_restore_flags(x)					\
+	__asm__ __volatile__(					\
+	"msr	cpsr_c, %0		@ local_irq_restore\n"	\
+	:							\
+	: "r" (x)						\
+	: "memory")
+
+#else /* CONFIG_ILATENCY */ 
+
+/*
+ * Save the current interrupt enable state & disable IRQs
+ */
+#define local_irq_save(x)					\
+	({							\
+		unsigned long temp;				\
+	__asm__ __volatile__(					\
+	"mrs	%0, cpsr		@ local_irq_save\n"	\
+"	orr	%1, %0, #128\n"					\
+"	msr	cpsr_c, %1"					\
+	: "=r" (x), "=r" (temp)					\
+	:							\
+	: "memory");						\
+	})
+	
+/*
+ * Enable IRQs
+ */
+#define local_irq_enable()					\
+	({							\
+		unsigned long temp;				\
+	__asm__ __volatile__(					\
+	"mrs	%0, cpsr		@ local_irq_enable\n"	\
+"	bic	%0, %0, #128\n"					\
+"	msr	cpsr_c, %0"					\
+	: "=r" (temp)						\
+	:							\
+	: "memory");						\
+	})
+
+/*
+ * Disable IRQs
+ */
+#define local_irq_disable()					\
+	({							\
+		unsigned long temp;				\
+	__asm__ __volatile__(					\
+	"mrs	%0, cpsr		@ local_irq_disable\n"	\
+"	orr	%0, %0, #128\n"					\
+"	msr	cpsr_c, %0"					\
+	: "=r" (temp)						\
+	:							\
+	: "memory");						\
+	})
+/*
+ * restore saved IRQ & FIQ state
+ */
+#define local_irq_restore(x)					\
+	__asm__ __volatile__(					\
+	"msr	cpsr_c, %0		@ local_irq_restore\n"	\
+	:							\
+	: "r" (x)						\
+	: "memory")
+
+#endif /* CONFIG_ILATENCY */
 
 /*
  * Enable FIQs
@@ -122,24 +189,16 @@ extern unsigned long cr_alignment;	/* defined in entry-armv.S */
 	})
 
 /*
- * save current IRQ & FIQ state
+ * Save the current interrupt enable state.
  */
-#define __save_flags(x)						\
+#define local_save_flags(x)					\
+	({							\
 	__asm__ __volatile__(					\
-	"mrs	%0, cpsr		@ save_flags\n"		\
+	"mrs	%0, cpsr		@ local_save_flags\n"	\
 	  : "=r" (x)						\
 	  :							\
-	  : "memory")
-
-/*
- * restore saved IRQ & FIQ state
- */
-#define __restore_flags(x)					\
-	__asm__ __volatile__(					\
-	"msr	cpsr_c, %0		@ restore_flags\n"	\
-	:							\
-	: "r" (x)						\
-	: "memory")
+	  : "memory");						\
+	})
 
 #if defined(CONFIG_CPU_SA1100) || defined(CONFIG_CPU_SA110)
 /*
@@ -168,31 +227,31 @@ static inline unsigned long __xchg(unsigned long x, volatile void *ptr, int size
 	switch (size) {
 #ifdef swp_is_buggy
 		case 1:
-			__save_flags_cli(flags);
+			local_irq_save(flags);
 			ret = *(volatile unsigned char *)ptr;
 			*(volatile unsigned char *)ptr = x;
-			__restore_flags(flags);
+			local_irq_restore(flags);
 			break;
 
 		case 4:
-			__save_flags_cli(flags);
+			local_irq_save(flags);
 			ret = *(volatile unsigned long *)ptr;
 			*(volatile unsigned long *)ptr = x;
-			__restore_flags(flags);
+			local_irq_restore(flags);
 			break;
 #else
 		case 1:	__asm__ __volatile__ ("swpb %0, %1, [%2]"
-					: "=r" (ret)
+					: "=&r" (ret)
 					: "r" (x), "r" (ptr)
 					: "memory");
 			break;
 		case 4:	__asm__ __volatile__ ("swp %0, %1, [%2]"
-					: "=r" (ret)
+					: "=&r" (ret)
 					: "r" (x), "r" (ptr)
 					: "memory");
 			break;
 #endif
-		default: __bad_xchg(ptr, size);
+		default: __bad_xchg(ptr, size), ret = 0;
 	}
 
 	return ret;

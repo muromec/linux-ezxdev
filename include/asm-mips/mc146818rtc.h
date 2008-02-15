@@ -6,15 +6,35 @@
  * Machine dependent access functions for RTC registers.
  *
  * Copyright (C) 1996, 1997, 1998, 2000 Ralf Baechle
- * Copyright (C) 2002  Maciej W. Rozycki
  */
 #ifndef _ASM_MC146818RTC_H
 #define _ASM_MC146818RTC_H
 
 #include <linux/config.h>
-
 #include <asm/io.h>
 
+#ifndef RTC_PORT
+#if defined(CONFIG_MIPS_ITE8172) || defined(CONFIG_MIPS_IVR)
+#define RTC_PORT(x)	(0x14014800 + (x))
+#elif defined(CONFIG_MIPS_PB1500) || defined(CONFIG_MIPS_PB1100)
+#define RTC_PORT(x)	(0xAC000000 + (x))
+#else
+#define RTC_PORT(x)	(0x70 + (x))
+#endif
+#endif
+
+/*
+ * The yet supported machines all access the RTC index register via
+ * an ISA port access but the way to access the date register differs ...
+ */
+#define CMOS_READ(addr) ({ \
+rtc_ops->rtc_read_data(addr); \
+})
+#define CMOS_WRITE(val, addr) ({ \
+rtc_ops->rtc_write_data(val, addr); \
+})
+#define RTC_ALWAYS_BCD \
+rtc_ops->rtc_bcd_mode()
 
 /*
  * This structure defines how to access various features of
@@ -29,46 +49,17 @@ struct rtc_ops {
 
 extern struct rtc_ops *rtc_ops;
 
-/*
- * Most supported machines access the RTC index register via an ISA
- * port access but the way to access the date register differs ...
- * The DECstation directly maps the RTC memory in the CPU's address
- * space with the chipset generating necessary index write/data access
- * cycles automagically.
- */
-#define CMOS_READ(addr) ({ \
-rtc_ops->rtc_read_data(addr); \
-})
-#define CMOS_WRITE(val, addr) ({ \
-rtc_ops->rtc_write_data(val, addr); \
-})
-#define RTC_ALWAYS_BCD \
-rtc_ops->rtc_bcd_mode()
-
-
 #ifdef CONFIG_DECSTATION
-
-#include <asm/dec/rtc-dec.h>
-
+#define RTC_IRQ 0
 #elif defined(CONFIG_MIPS_ITE8172) || defined(CONFIG_MIPS_IVR)
-
 #include <asm/it8172/it8172_int.h>
-
-#define RTC_PORT(x)	(0x14014800 + (x))
-#define RTC_IOMAPPED	0
-#define RTC_IRQ		IT8172_RTC_IRQ
-
+#define RTC_IRQ	IT8172_RTC_IRQ
 #elif defined(CONFIG_MIPS_PB1500) || defined(CONFIG_MIPS_PB1100)
-
-#define RTC_PORT(x)	(0x0c000000 + (x))
-#define RTC_IOMAPPED	0
-#define RTC_IRQ		0
-
+#undef RTC_IRQ
 #else
-
-#define RTC_PORT(x)	(0x70 + (x))
-#define RTC_IRQ		8
-
+#define RTC_IRQ	8
 #endif
+
+#define RTC_DEC_YEAR	0x3f	/* Where we store the real year on DECs.  */
 
 #endif /* _ASM_MC146818RTC_H */

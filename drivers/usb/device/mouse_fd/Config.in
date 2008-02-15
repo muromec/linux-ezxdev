@@ -1,0 +1,24 @@
+#
+# Generic Mouse Function Driver
+#
+# Copyright (C) 2001 Lineo, Inc.
+# Copyright (C) 2001 Hewlett-Packard Co.
+
+mainmenu_option next_comment
+
+comment "Mouse Function"
+
+dep_tristate '  Generic Mouse Function' CONFIG_USBD_MOUSE $CONFIG_USBD
+
+if [ ! "$CONFIG_USBD_MOUSE" = "n" ]; then
+
+	hex     '     Overide VendorID (hex value)' CONFIG_USBD_MOUSE_VENDORID "0000"
+	hex     '     Overide ProductID (hex value)' CONFIG_USBD_MOUSE_PRODUCTID "0000"
+
+	int     '    INT Endpoint (0-15)' CONFIG_USBD_MOUSE_INT_ENDPOINT "3"
+	int     '    INT PacketSize (8, 16)' CONFIG_USBD_MOUSE_INT_PKTSIZE "16"
+fi
+
+
+endmenu
+

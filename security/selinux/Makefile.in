@@ -1,0 +1,16 @@
+
+# Beginnings of a kbuild-2.5 makefile --- offer@sgi.com
+
+KBUILD_INCLUDE_PATHS=security/selinux/include
+
+objlink(CONFIG_SECURITY_SELINUX selinux-obj.o \
+	avc.o psid.o \
+	hooks.o \
+	syscalls.o ss/ss.o)
+
+extra_cflags_all(-Isecurity/selinux/include)
+
+link_subdirs(ss)
+
+select(CONFIG_Y CONFIG_SECURITY_SELINUX selinux-obj.o)
+

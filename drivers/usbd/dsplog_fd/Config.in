@@ -1,0 +1,15 @@
+#
+# Motorola DSP LOG USB Device subsystem.
+#
+# Copyright (C) 2004 Motorola.
+
+mainmenu_option next_comment
+comment "Motorola DSP Log Function"
+
+dep_tristate '  Motorola DSP Log Function' CONFIG_USBD_DSP_LOG  $CONFIG_USBD
+if [ "$CONFIG_USBD_DSP_LOG" = "y" -o "$CONFIG_USBD_DSP_LOG" = "m" ]; then
+   hex     ' VendorID (hex value)' CONFIG_USBD_DSP_LOG_VENDORID "22b8"
+   hex     ' ProductID (hex value)' CONFIG_USBD_DSP_LOG_PRODUCTID "6009"
+   hex     ' bcdDevice (binary-coded decimal)'  CONFIG_USBD_DSP_LOG_BCDDEVICE "0001"
+fi
+endmenu

@@ -84,6 +84,10 @@
   Oskar Schirmer    : oskar@scara.com
                     : HiCO.SH4 (superh) support added (irq#1, cs89x0_media=)
 
+  MontaVista        : April 28, 2004. MontaVista Software, Inc. <source@mvista.com>
+		    : Added support for MAC address input (ALLOW_MAC_ADDR_INP) if EEPROM fails
+		    : Added support for MX2ADS (CONFIG_ARCH_MX2ADS):
+
 */
 
 /* Always include 'config.h' first in case the user wants to turn on
@@ -98,7 +102,11 @@
  * Note that even if DMA is turned off we still support the 'dma' and  'use_dma'
  * module options so we don't break any startup scripts.
  */
+#ifdef CONFIG_BEECH   /* IBM 405LP/Beech does not have external DMA */
+#define ALLOW_DMA	0
+#else
 #define ALLOW_DMA	1
+#endif
 
 /*
  * Set this to zero to remove all the debug statements via
@@ -129,6 +137,12 @@
 #include <asm/system.h>
 #include <asm/bitops.h>
 #include <asm/io.h>
+#ifdef CONFIG_ARCH_MX2ADS
+#ifdef ALLOW_DMA    /*no DMA to the ethernet on MX2ADS*/
+#undef ALLOW_DMA
+#define ALLOW_MAC_ADDR_INP 1 /*let's input a MAC address on MX2ADS*/
+#endif
+#endif
 #if ALLOW_DMA
 #include <asm/dma.h>
 #endif
@@ -139,10 +153,15 @@
 #include <linux/etherdevice.h>
 #include <linux/skbuff.h>
 
+#ifdef CONFIG_ARCH_MX2ADS
+#include <asm/arch/gpio.h>
+#include <asm/arch/irqs.h>
+#endif
+
 #include "cs89x0.h"
 
 static char version[] __initdata =
-"cs89x0.c: v2.4.3-pre1 Russell Nelson <nelson@crynwr.com>, Andrew Morton <andrewm@uow.edu.au>\n";
+"cs89x0.c: v2.4.3-pre1 Russell Nelson <nelson@crynwr.com>, Andrew Morton <andrewm@uow.edu.au>, Modified by Ralph Blach for the Earl\n";
 
 /* First, a few definitions that the brave might change.
    A zero-terminated list of I/O addresses to be probed. Some special flags..
@@ -163,6 +182,23 @@ static unsigned int cs8900_irq_map[] = {12,0,0,0};
 static unsigned int netcard_portlist[] __initdata =
    { 0x0300, 0};
 static unsigned int cs8900_irq_map[] = {1,0,0,0};
+#elif defined (CONFIG_BEECH)
+static unsigned int netcard_portlist[] __initdata =
+{ 0 /* filled in with mapped virtual addr later */, 0};
+static unsigned int cs8900_irq_map[] = {UIC_IRQ_EIR4};
+
+/*
+ * Undo PCMCIA definition and replace with zero for no offset from the 
+ * ioremapped address.
+ */
+
+#undef _IO_BASE
+#define _IO_BASE 0
+
+#elif defined(CONFIG_ARCH_MX2ADS)
+static unsigned int netcard_portlist[] __initdata = { MX2ADS_PER_IOBASE, 0 };
+static char mx2ads_eth_int_init_state = 0;
+static struct net_device *global_dev;
 #else
 static unsigned int netcard_portlist[] __initdata =
    { 0x300, 0x320, 0x340, 0x360, 0x200, 0x220, 0x240, 0x260, 0x280, 0x2a0, 0x2c0, 0x2e0, 0};
@@ -268,6 +304,102 @@ static int __init media_fn(char *str)
 __setup("cs89x0_media=", media_fn);
 #endif
 
+#ifdef ALLOW_MAC_ADDR_INP
+
+static u16 MacAddr[3] = {0x0123,0x4567,0x89AB};  /*just some number if everything else fails*/
+
+#define MAC_ADDR_LEN (ETH_ALEN*3)-1
+
+static unsigned char cAHexToInt(char p)
+{
+	if(p>='0'&&p<='9')
+		return (unsigned char)(p-0x30);
+	else if(p>='a'&&p<='f')
+		return (unsigned char)(p-0x57);
+	else if(p>='A'&&p<='F')
+		return (unsigned char)(p-0x37);
+	else
+		return 0xff;
+}
+
+static int MAC_Convert(char * input_MAC)
+{
+
+
+	char tmp_MAC_addr_str[MAC_ADDR_LEN+1];
+	int i,j;
+	unsigned char tmp_byte;
+	unsigned char tmp_MAC_addr[ETH_ALEN];
+
+	if(input_MAC==0) return (0);
+
+	i = strlen(input_MAC);
+	if(i!=MAC_ADDR_LEN) return (-1);
+
+	strcpy(tmp_MAC_addr_str,input_MAC);
+	tmp_MAC_addr_str[MAC_ADDR_LEN]=':';
+
+	j=0;
+	for(i=0;i<(MAC_ADDR_LEN+1);i++)
+	{
+		tmp_byte=cAHexToInt(tmp_MAC_addr_str[i]);
+		if(tmp_byte==0xff) return -1;
+		tmp_MAC_addr[j]=tmp_byte*16;
+
+		i++;
+
+		tmp_byte=cAHexToInt(tmp_MAC_addr_str[i]);
+		if(tmp_byte==0xff) return -1;
+		tmp_MAC_addr[j]+=tmp_byte;
+
+		i++;
+
+		if(tmp_MAC_addr_str[i]!=':') return -1;
+		j++;
+	}
+	memcpy(MacAddr,tmp_MAC_addr,6);
+	return (0);
+
+}
+
+static int mac_ready = 0;
+static int __init mac_fn( char* new_mac )
+{
+    if( mac_ready ) {
+	return 1;
+    }
+    mac_ready = ( MAC_Convert( new_mac ) == -1 ? 0 : 1 );
+    return mac_ready;
+}
+__setup("MAC=", mac_fn );
+
+#endif
+
+#ifdef CONFIG_ARCH_MX2ADS
+
+static int  set_MX2ADS_eth_int(void)
+{
+	if (!mx2ads_eth_int_init_state)
+	{
+		if (mx2_register_gpio(PORT_E, 11, GPIO|INPUT)<0)
+		{
+			printk(KERN_ERR "%s unable to register GPIO PORT E Pin 11\n",__FILE__);
+			return -1;
+		}
+		mx2_gpio_config_intr(PORT_E, 11, POSITIVE_EDGE,net_interrupt);
+
+		mx2_gpio_unmask_intr(PORT_E, 11);
+		mx2ads_eth_int_init_state=1;
+	}
+	return 0;
+}
+
+static void    clr_MX2ADS_eth_int(void)
+{
+
+		mx2_gpio_clear_intr(PORT_E, 11);
+}
+#endif
 
 /* Check for a network adaptor of this type, and return '0' iff one exists.
    If dev->base_addr == 0, probe all likely locations.
@@ -292,11 +424,22 @@ int __init cs89x0_probe(struct net_device *dev)
 	else if (base_addr != 0)	/* Don't probe at all. */
 		return -ENXIO;
 
+#ifdef CONFIG_BEECH
+	netcard_portlist[0] = 
+		(int) ioremap(BEECH_ETHERNET_PADDR, BEECH_ETHERNET_SIZE)
+		+ 0x301;
+#endif
+
 	for (i = 0; netcard_portlist[i]; i++) {
 		if (cs89x0_probe1(dev, netcard_portlist[i]) == 0)
 			return 0;
 	}
 	printk(KERN_WARNING "cs89x0: no cs8900 or cs8920 detected.  Be sure to disable PnP with SETUP\n");
+
+#ifdef CONFIG_BEECH
+	iounmap((void *)netcard_portlist[0]);
+#endif
+
 	return -ENODEV;
 }
 
@@ -423,6 +566,9 @@ cs89x0_probe1(struct net_device *dev, int ioaddr)
 	outw(0x0114, ioaddr + ADD_PORT);
 	outw(0x0040, ioaddr + DATA_PORT);
 #endif
+#ifdef CONFIG_ARCH_MX2ADS
+	outw(PP_ChipID, ioaddr + ADD_PORT);
+#endif
 
 	/* if they give us an odd I/O address, then do ONE write to
            the address port, to get it back to address zero, where we
@@ -476,7 +622,17 @@ printk("PP_addr=0x%x\n", inw(ioaddr + ADD_PORT));
 	       lp->chip_revision,
 	       dev->base_addr);
 
+#ifdef CONFIG_BEECH
+	/*
+	 * Leave firmware settings alone, except for forcing the required fixed
+         * IRQ pin setting (in the event the firmware does not set this
+         * up). Beech does not currently provide a means of retrieving MAC
+         * address, etc. known only to f/w.  
+         */
+	writereg(dev, PP_CS8900_ISAINT, 0);
+#else
 	reset_chip(dev);
+#endif
    
         /* Here we read the current configuration of the chip. If there
 	   is no Extended EEPROM then the idea is to not disturb the chip
@@ -519,6 +675,15 @@ printk("PP_addr=0x%x\n", inw(ioaddr + ADD_PORT));
 
         if ((readreg(dev, PP_SelfST) & (EEPROM_OK | EEPROM_PRESENT)) == 
 	      (EEPROM_OK|EEPROM_PRESENT)) {
+		printk( "[Cirrus EEPROM] ");
+#ifdef CONFIG_BEECH
+	}
+	/* HACK: Beech needs to do this configuration even though it
+	 * doesn't have a Cirrus EEPROM */
+	{
+		printk( "[Beech] ");
+#endif
+
 	        /* Load the MAC. */
 		for (i=0; i < ETH_ALEN/2; i++) {
 	                unsigned int Addr;
@@ -563,8 +728,6 @@ printk("PP_addr=0x%x\n", inw(ioaddr + ADD_PORT));
 		/* IRQ. Other chips already probe, see below. */
 		if (lp->chip_type == CS8900) 
 			lp->isa_config = readreg(dev, PP_CS8900_ISAINT) & INT_NO_MASK;
-	   
-		printk( "[Cirrus EEPROM] ");
 	}
 
         printk("\n");
@@ -604,6 +767,7 @@ printk("PP_addr=0x%x\n", inw(ioaddr + ADD_PORT));
                         dev->dev_addr[i*2] = eeprom_buff[i];
                         dev->dev_addr[i*2+1] = eeprom_buff[i] >> 8;
                 }
+
 		if (net_debug > 1)
 			printk(KERN_DEBUG "%s: new adapter_cnf: 0x%x\n",
 				dev->name, lp->adapter_cnf);
@@ -620,6 +784,20 @@ printk("PP_addr=0x%x\n", inw(ioaddr + ADD_PORT));
 		else if (lp->force & FORCE_AUI)	{lp->adapter_cnf |= A_CNF_MEDIA_AUI; }
 		else if (lp->force & FORCE_BNC)	{lp->adapter_cnf |= A_CNF_MEDIA_10B_2; }
         }
+
+#ifdef ALLOW_MAC_ADDR_INP
+		if( !mac_ready ) {
+			printk(KERN_WARNING "cs89x0.c: MAC address error!\n");
+		} else {
+			for (i=0; i < ETH_ALEN/2; i++) {
+				dev->dev_addr[i*2]   = MacAddr[i];
+				dev->dev_addr[i*2+1] = MacAddr[i] >> 8;
+			}
+		}
+#endif
+#ifdef CONFIG_ARCH_MX2ADS
+		lp->adapter_cnf = A_CNF_MEDIA_10B_T | A_CNF_10B_T;
+#endif
 
 	if (net_debug > 1)
 		printk(KERN_DEBUG "%s: after force 0x%x, adapter_cnf=0x%x\n",
@@ -639,6 +817,7 @@ printk("PP_addr=0x%x\n", inw(ioaddr + ADD_PORT));
 
 	lp->irq_map = 0xffff;
 
+#ifndef  CONFIG_ARCH_MX2ADS
 	/* If this is a CS8900 then no pnp soft */
 	if (lp->chip_type != CS8900 &&
 	    /* Check if the ISA IRQ has been set  */
@@ -654,7 +833,6 @@ printk("PP_addr=0x%x\n", inw(ioaddr + ADD_PORT));
 				printk("\ncs89x0: invalid ISA interrupt number %d\n", i);
 			else
 				i = cs8900_irq_map[i];
-			
 			lp->irq_map = CS8900_IRQ_MAP; /* fixed IRQ map for CS8900 */
 		} else {
 			int irq_map_buff[IRQ_MAP_LEN/2];
@@ -670,6 +848,9 @@ printk("PP_addr=0x%x\n", inw(ioaddr + ADD_PORT));
 			dev->irq = i;
 	}
 
+#elif defined CONFIG_ARCH_MX2ADS
+	dev->irq = INT_GPIO;
+#endif
 	printk(" IRQ %d", dev->irq);
 
 #if ALLOW_DMA
@@ -1077,6 +1258,7 @@ detect_bnc(struct net_device *dev)
 }
 
 
+#ifndef CONFIG_ARCH_MX2ADS
 static void
 write_irq(struct net_device *dev, int chip_type, int irq)
 {
@@ -1095,6 +1277,7 @@ write_irq(struct net_device *dev, int chip_type, int irq)
 		writereg(dev, PP_CS8920_ISAINT, irq);
 	}
 }
+#endif
 
 /* Open/initialize the board.  This is called (in the current kernel)
    sometime after booting when the 'ifconfig' program is run.
@@ -1114,6 +1297,7 @@ net_open(struct net_device *dev)
 	int i;
 	int ret;
 
+#ifndef CONFIG_ARCH_MX2ADS
 #ifndef CONFIG_SH_HICOSH4 /* uses irq#1, so this wont work */
 	if (dev->irq < 2) {
 		/* Allow interrupts to be generated by the chip */
@@ -1207,6 +1391,23 @@ net_open(struct net_device *dev)
 		}
 	}
 #endif	/* ALLOW_DMA */
+
+#else /* CONFIG_ARCH_MX2ADS */
+	global_dev=dev;
+	if ((ret=set_MX2ADS_eth_int())<0) /* enable interrupt sensing on the GPIO input */
+		goto bad_out;
+
+	/* Set up the IRQ - must be done, or else doesn't work */
+	if (lp->chip_type == CS8900)
+	{
+		writereg(dev, PP_CS8900_ISAINT, 0);
+	}
+	else
+	{
+		writereg(dev, PP_CS8920_ISAINT, 0);
+	}
+
+#endif
 
 	/* set the Ethernet address */
 	for (i=0; i < ETH_ALEN/2; i++)
@@ -1381,6 +1582,8 @@ static int net_send_packet(struct sk_buff *skb, struct net_device *dev)
 		return 1;
 	}
 	/* Write the contents of the packet */
+	lp->stats.tx_bytes += skb->len; /*fix for tx bytes counting. Do not remove this*/
+	lp->stats.tx_packets++;
 	outsw(dev->base_addr + TX_FRAME_PORT,skb->data,(skb->len+1) >>1);
 	spin_unlock_irq(&lp->lock);
 	dev->trans_start = jiffies;
@@ -1409,9 +1612,16 @@ static void net_interrupt(int irq, void *dev_id, struct pt_regs * regs)
 	struct net_local *lp;
 	int ioaddr, status;
  
+#ifdef CONFIG_ARCH_MX2ADS
+	dev = global_dev;
+#endif
+
 	ioaddr = dev->base_addr;
 	lp = (struct net_local *)dev->priv;
 
+#ifdef CONFIG_ARCH_MX2ADS
+	clr_MX2ADS_eth_int();
+#endif
 	/* we MUST read all the events out of the ISQ, otherwise we'll never
            get interrupted again.  As a consequence, we can't have any limit
            on the number of times we loop in the interrupt handler.  The
@@ -1427,7 +1637,6 @@ static void net_interrupt(int irq, void *dev_id, struct pt_regs * regs)
 			net_rx(dev);
 			break;
 		case ISQ_TRANSMITTER_EVENT:
-			lp->stats.tx_packets++;
 			netif_wake_queue(dev);	/* Inform upper layers. */
 			if ((status & (	TX_OK |
 					TX_LOST_CRS |
@@ -1571,7 +1780,9 @@ net_close(struct net_device *dev)
 	writereg(dev, PP_BufCFG, 0);
 	writereg(dev, PP_BusCTL, 0);
 
+#ifndef CONFIG_ARCH_MX2ADS
 	free_irq(dev->irq, dev);
+#endif
 
 #if ALLOW_DMA
 	if (lp->use_dma && lp->dma) {
@@ -1670,6 +1881,9 @@ static int duplex=-1;
 static int use_dma;			/* These generate unused var warnings if ALLOW_DMA = 0 */
 static int dma;
 static int dmasize=16;			/* or 64 */
+#ifdef ALLOW_MAC_ADDR_INP
+static char * MAC=0;
+#endif
 
 MODULE_PARM(io, "i");
 MODULE_PARM(irq, "i");
@@ -1679,14 +1893,26 @@ MODULE_PARM(duplex, "i");
 MODULE_PARM(dma , "i");
 MODULE_PARM(dmasize , "i");
 MODULE_PARM(use_dma , "i");
+#ifdef ALLOW_MAC_ADDR_INP
+MODULE_PARM(MAC, "s");
+#endif
+#ifdef CONFIG_ARCH_MX2ADS
+MODULE_PARM_DESC(io, "(ignored)");
+MODULE_PARM_DESC(irq, "(ignored)");
+#else
 MODULE_PARM_DESC(io, "cs89x0 I/O base address");
 MODULE_PARM_DESC(irq, "cs89x0 IRQ number");
+#endif
 #if DEBUGGING
 MODULE_PARM_DESC(debug, "cs89x0 debug level (0-6)");
 #else
 MODULE_PARM_DESC(debug, "(ignored)");
 #endif
+#ifdef defined CONFIG_ARCH_MX2ADS
+MODULE_PARM_DESC(media, "(ignored)");
+#else
 MODULE_PARM_DESC(media, "Set cs89x0 adapter(s) media type(s) (rj45,bnc,aui)");
+#endif
 /* No other value than -1 for duplex seems to be currently interpreted */
 MODULE_PARM_DESC(duplex, "(ignored)");
 #if ALLOW_DMA
@@ -1697,6 +1923,9 @@ MODULE_PARM_DESC(use_dma , "cs89x0 using DMA (0-1)");
 MODULE_PARM_DESC(dma , "(ignored)");
 MODULE_PARM_DESC(dmasize , "(ignored)");
 MODULE_PARM_DESC(use_dma , "(ignored)");
+#endif
+#ifdef ALLOW_MAC_ADDR_INP
+MODULE_PARM_DESC(MAC , "cs89x0 MAC address (xx:xx:xx:xx:xx:xx), used if EEPROM fails");
 #endif
 
 MODULE_AUTHOR("Mike Cruse, Russwll Nelson <nelson@crynwr.com>, Andrew Morton <andrewm@uow.edu.au>");
@@ -1743,8 +1972,14 @@ init_module(void)
 	debug = 0;
 #endif
 
+#ifdef ALLOW_MAC_ADDR_INP
+	if( MAC ) mac_fn( MAC );
+#endif
+
+#ifndef CONFIG_ARCH_MX2ADS
 	dev_cs89x0.irq = irq;
 	dev_cs89x0.base_addr = io;
+#endif
 
         dev_cs89x0.init = cs89x0_probe;
         dev_cs89x0.priv = kmalloc(sizeof(struct net_local), GFP_KERNEL);
@@ -1814,6 +2049,12 @@ cleanup_module(void)
                 kfree(dev_cs89x0.priv);
                 dev_cs89x0.priv = NULL;	/* gets re-allocated by cs89x0_probe1 */
                 /* If we don't do this, we can't re-insmod it later. */
+#ifdef CONFIG_ARCH_MX2ADS
+	if (mx2ads_eth_int_init_state)
+	{
+		mx1_unregister_gpio(PORT_E, 11);
+	}
+#endif
                 release_region(dev_cs89x0.base_addr, NETCARD_IO_EXTENT);
         }
 }

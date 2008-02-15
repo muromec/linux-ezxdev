@@ -16,7 +16,7 @@
 
 #include <asm/vr4181/irq.h>
 
-#ifndef __ASSEMBLY__
+#ifndef _LANGUAGE_ASSEMBLY
 #define __preg8		(volatile unsigned char*)
 #define __preg16	(volatile unsigned short*)
 #define __preg32	(volatile unsigned int*)

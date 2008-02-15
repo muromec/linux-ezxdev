@@ -9,7 +9,6 @@
  */
 #include <linux/linkage.h>
 #include <asm/assembler.h>
-#include <asm/hardware.h>
 
 ENTRY(__raw_writesl)
 		teq	r2, #0		@ do we have to check for the zero len?
@@ -29,25 +28,25 @@ ENTRY(__raw_writesl)
 		bgt	4f
 		blt	5f
 
-3:		mov	ip, r3, lsr #16
+3:		mov	ip, r3, pull #16
 		ldr	r3, [r1], #4
-		orr	ip, ip, r3, lsl #16
+		orr	ip, ip, r3, push #16
 		str	ip, [r0]
 		subs	r2, r2, #1
 		bne	3b
 		mov	pc, lr
 
-4:		mov	ip, r3, lsr #24
+4:		mov	ip, r3, pull #24
 		ldr	r3, [r1], #4
-		orr	ip, ip, r3, lsl #8
+		orr	ip, ip, r3, push #8
 		str	ip, [r0]
 		subs	r2, r2, #1
 		bne	4b
 		mov	pc, lr
 
-5:		mov	ip, r3, lsr #8
+5:		mov	ip, r3, pull #8
 		ldr	r3, [r1], #4
-		orr	ip, ip, r3, lsl #24
+		orr	ip, ip, r3, push #24
 		str	ip, [r0]
 		subs	r2, r2, #1
 		bne	5b

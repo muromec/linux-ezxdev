@@ -32,7 +32,7 @@
 #define JMR3927_PCIIO	0x15000000
 #define JMR3927_PCIIO_SIZE	0x01000000	/* 16M */
 
-#define JMR3927_SDRAM_SIZE	0x02000000	/* 32M */
+#define JMR3927_SDRAM_SIZE	0x01e00000      /* 31M */  
 #define JMR3927_PORT_BASE	KSEG1
 
 /* select indirect initiator access per errata */
@@ -296,6 +296,7 @@ extern inline int jmr3927_have_isac(void)
 #define JMR3927_IMCLK	(JMR3927_CORECLK / 4)	/* 33.17MHz */
 
 #define jmr3927_tmrptr		tx3927_tmrptr(0)	/* TMR0 */
+#define jmr3927_tmrptr1		tx3927_tmrptr(1)	/* TMR1 */
 
 
 /*

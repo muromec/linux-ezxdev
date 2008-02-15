@@ -3,6 +3,11 @@
 # 18 Apr 1998, Michael Elizabeth Chastain, <mailto:mec@shout.net>
 # Rewritten to use lists instead of if-statements.
 
+#
+# Copyright (C) 2005 Motorola Inc.
+#
+# modified by w20076, for EZX platform
+#
 
 # All of the (potential) objects that export symbols.
 # This list comes from 'grep -l EXPORT_SYMBOL *.[hc]'.
@@ -10,7 +15,9 @@
 export-objs	:=  ad1848.o audio_syms.o midi_syms.o mpu401.o \
 		    msnd.o opl3.o sb_common.o sequencer_syms.o \
 		    sound_core.o sound_syms.o uart401.o	\
-		    nm256_audio.o ac97.o ac97_codec.o aci.o
+		    nm256_audio.o ac97.o ac97_codec.o aci.o \
+		    sa1100-audio.o pxa-audio.o pxa-ac97.o sh_siof.o shm3se_audio.o \
+		    omap-audio.o omap730-audio.o
 
 # Each configuration option enables a list of files.
 
@@ -19,10 +26,10 @@ obj-$(CONFIG_SOUND_OSS)		+= sound.o
 obj-$(CONFIG_SOUND_CS4232)	+= cs4232.o ad1848.o 
 
 # Please leave it as is, cause the link order is significant !
-
+obj-$(CONFIG_SOUND_SH_73180SE)  +=  shm3se_audio.o
+obj-$(CONFIG_SOUND_SH_SIOF)	+= sh_siof.o
 obj-$(CONFIG_SOUND_HAL2)	+= hal2.o
 obj-$(CONFIG_SOUND_AEDSP16)	+= aedsp16.o
-obj-$(CONFIG_SOUND_ALI5455)	+= ali5455.o ac97_codec.o
 obj-$(CONFIG_SOUND_PSS)		+= pss.o ad1848.o mpu401.o
 obj-$(CONFIG_SOUND_TRIX)	+= trix.o ad1848.o sb_lib.o uart401.o
 obj-$(CONFIG_SOUND_OPL3SA1)	+= opl3sa.o ad1848.o uart401.o
@@ -66,19 +73,37 @@ obj-$(CONFIG_SOUND_CMPCI)	+= cmpci.o
 obj-$(CONFIG_SOUND_ES1370)	+= es1370.o
 obj-$(CONFIG_SOUND_ES1371)	+= es1371.o ac97_codec.o
 obj-$(CONFIG_SOUND_VRC5477)	+= nec_vrc5477.o ac97_codec.o
+obj-$(CONFIG_SOUND_VRC4173)	+= nec_vrc4173.o ac97_codec.o
 obj-$(CONFIG_SOUND_AU1000)      += au1000.o ac97_codec.o  
 obj-$(CONFIG_SOUND_ESSSOLO1)	+= esssolo1.o
 obj-$(CONFIG_SOUND_FUSION)	+= cs46xx.o ac97_codec.o
 obj-$(CONFIG_SOUND_MAESTRO)	+= maestro.o
 obj-$(CONFIG_SOUND_MAESTRO3)	+= maestro3.o ac97_codec.o
-obj-$(CONFIG_SOUND_FORTE)	+= forte.o ac97_codec.o
 obj-$(CONFIG_SOUND_TRIDENT)	+= trident.o ac97_codec.o
-obj-$(CONFIG_SOUND_HARMONY)	+= harmony.o
+obj-$(CONFIG_SOUND_OMAP)	+= omap-audio.o
+obj-$(CONFIG_SOUND_SA1100)	+= sa1100-audio.o
+obj-$(CONFIG_SOUND_UDA1341)	+= uda1341.o
+obj-$(CONFIG_SOUND_ASSABET_UDA1341) += assabet-uda1341.o
+obj-$(CONFIG_SOUND_PANGOLIN_UDA1341) += pangolin-uda1341.o
+obj-$(CONFIG_SOUND_H3600_UDA1341) += h3600-uda1341.o
+obj-$(CONFIG_SOUND_SA1111_UDA1341) += sa1111-uda1341.o
+obj-$(CONFIG_SOUND_OMAP_UDA1341)	+= omap1510-uda1341.o 
+obj-$(CONFIG_SOUND_OMAP_AIC23)	+= omap1510-aic23.o 
+obj-$(CONFIG_SOUND_OMAP_TSC2101) += omap1610-tsc2101.o
+obj-$(CONFIG_SOUND_OMAP730_SYREN) += omap730-syren.o omap730-audio.o
+obj-$(CONFIG_SOUND_SA1100SSP)	+= sa1100ssp.o
+obj-$(CONFIG_SOUND_PXA_AC97)+= pxa-ac97.o pxa-audio.o ac97_codec.o
 obj-$(CONFIG_SOUND_EMU10K1)	+= ac97_codec.o
 obj-$(CONFIG_SOUND_BCM_CS4297A)	+= swarm_cs4297a.o
 obj-$(CONFIG_SOUND_RME96XX)     += rme96xx.o
 obj-$(CONFIG_SOUND_BT878)	+= btaudio.o
 obj-$(CONFIG_SOUND_IT8172)	+= ite8172.o ac97_codec.o
+obj-$(CONFIG_SOUND_CSI3K)	+= ibmcsi3k.o
+obj-$(CONFIG_SOUND_CSITI)	+= ibmcsiti.o
+obj-$(CONFIG_SOUND_MX2ADS)	+= mx2ads-wm8731.o
+
+subdir-$(CONFIG_SOUND_EZX_BASE) += ezxbase
+obj-$(CONFIG_SOUND_EZX_BASE) += ezxbase/ezxbase_snd_drvs.o
 
 ifeq ($(CONFIG_MIDI_EMU10K1),y)
   obj-$(CONFIG_SOUND_EMU10K1)	+= sound.o
@@ -101,6 +126,8 @@ ifeq ($(CONFIG_DMASOUND),y)
   obj-y += dmasound/dmasound.o
 endif
 
+#w20691 added midi for hardware midi feature
+#subdir-$(CONFIG_SOUND_MIDI) += midi
 
 # Declare multi-part drivers.
 

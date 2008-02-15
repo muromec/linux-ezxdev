@@ -6,4 +6,8 @@
 #define MREMAP_MAYMOVE	1
 #define MREMAP_FIXED	2
 
+extern int vm_enough_memory(long pages, int charge);
+extern void vm_unacct_memory(long pages);
+extern void vm_unacct_vma(struct vm_area_struct *vma);
+
 #endif /* _LINUX_MMAN_H */

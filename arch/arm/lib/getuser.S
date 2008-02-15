@@ -42,14 +42,18 @@ __get_user_1:
 
 	.global	__get_user_2
 __get_user_2:
-	bic	r2, sp, #0x1f00
-	bic	r2, r2, #0x00ff
-	ldr	r2, [r2, #TSK_ADDR_LIMIT]
-	sub	r2, r2, #2
-	cmp	r0, r2
+	bic	ip, sp, #0x1f00
+	bic	ip, ip, #0x00ff
+	ldr	ip, [ip, #TSK_ADDR_LIMIT]
+	sub	ip, ip, #2
+	cmp	r0, ip
 2:	ldrlsbt	r1, [r0], #1
-3:	ldrlsbt	r2, [r0]
-	orrls	r1, r1, r2, lsl #8
+3:	ldrlsbt	ip, [r0]
+#ifndef __ARMEB__
+	orrls	r1, r1, ip, lsl #8
+#else
+	orrls	r1, ip, r1, lsl #8
+#endif
 	movls	r0, #0
 	movls	pc, lr
 	b	__get_user_bad

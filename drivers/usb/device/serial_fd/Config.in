@@ -1,0 +1,29 @@
+#
+# Generic Serial Function Driver
+#
+# Copyright (C) 2001 Lineo, Inc.
+# Copyright (C) 2001 Hewlett-Packard Co.
+
+mainmenu_option next_comment
+comment "Serial Function"
+
+dep_tristate '  Generic Serial Function' CONFIG_USBD_SERIAL $CONFIG_USBD
+if [ "$CONFIG_USBD_SERIAL" = "y" -o "$CONFIG_USBD_SERIAL" = "m" ]; then
+   hex     ' Overide VendorID (hex value)' CONFIG_USBD_SERIAL_VENDORID "0000"
+   hex     ' Overide ProductID (hex value)' CONFIG_USBD_SERIAL_PRODUCTID "0000"
+   bool    '    CDC Mode' CONFIG_USBD_SERIAL_CDC
+   int     '    OUT Endpoint (0-15)' CONFIG_USBD_SERIAL_OUT_ENDPOINT "1"
+   int     '   IN  PacketSize (16, 32, 64)' CONFIG_USBD_SERIAL_IN_PKTSIZE "64"
+   int     '    IN  Endpoint (0-15)' CONFIG_USBD_SERIAL_IN_ENDPOINT "2"
+   int     '   OUT PacketSize (16, 32, 64)' CONFIG_USBD_SERIAL_OUT_PKTSIZE "64"
+   if [ ! "$CONFIG_ARCH_SA1100" = "y" -a ! "$CONFIG_ARCH_L7200" = "y" ]; then
+      int  '    INT Endpoint (0-15)' CONFIG_USBD_SERIAL_INT_ENDPOINT "3"
+      int  '   INT PacketSize (8, 16)' CONFIG_USBD_SERIAL_INT_PKTSIZE "16"
+   fi
+   bool    '    Enable Safe (Encapsulated)' CONFIG_USBD_SERIAL_SAFE
+   if [ "$CONFIG_USBD_SERIAL_SAFE" = "y" ]; then
+      bool '      Safe defaults to On' CONFIG_USBD_SERIAL_SAFE_DEFAULT
+      bool '      Safe Padded defaults to On' CONFIG_USBD_SERIAL_SAFE_PADDED
+   fi
+fi
+endmenu

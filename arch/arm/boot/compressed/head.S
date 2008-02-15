@@ -1,7 +1,7 @@
 /*
  *  linux/arch/arm/boot/compressed/head.S
  *
- *  Copyright (C) 1996-1999 Russell King
+ *  Copyright (C) 1996-2002 Russell King
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -19,6 +19,13 @@
  */
 #ifdef DEBUG
 #if defined(CONFIG_DEBUG_DC21285_PORT)
+		.macro	loadsp, rb
+		mov	\rb, #0x42000000
+		.endm
+		.macro	writeb, rb
+		str	\rb, [r3, #0x160]
+		.endm
+#elif defined(CONFIG_FOOTBRIDGE)
 		.macro	loadsp,	rb
 		mov	\rb, #0x7c000000
 		.endm
@@ -144,33 +151,97 @@ not_angel:
 		 */
 
 		.text
-1:		adr	r2, LC0
-		ldmia	r2, {r2, r3, r4, r5, sp}
+		adr	r0, LC0
+		ldmia	r0, {r1, r2, r3, r4, r5, r6, ip, sp}
+		subs	r0, r0, r1		@ calculate the delta offset
 
-		mov	r0, #0
+						@ if delta is zero, we are
+		beq	not_relocated		@ running at the address we
+						@ were linked at.
+
+		/*
+		 * We're running at a different address.  We need to fix
+		 * up various pointers:
+		 *   r5 - zImage base address
+		 *   r6 - GOT start
+		 *   ip - GOT end
+		 */
+		add	r5, r5, r0
+		add	r6, r6, r0
+		add	ip, ip, r0
+
+#ifndef CONFIG_ZBOOT_ROM
+		/*
+		 * If we're running fully PIC === CONFIG_ZBOOT_ROM = n,
+		 * we need to fix up pointers into the BSS region.
+		 *   r2 - BSS start
+		 *   r3 - BSS end
+		 *   sp - stack pointer
+		 */
+		add	r2, r2, r0
+		add	r3, r3, r0
+		add	sp, sp, r0
+
+		/*
+		 * Relocate all entries in the GOT table.
+		 */
+1:		ldr	r1, [r6, #0]		@ relocate entries in the GOT
+		add	r1, r1, r0		@ table.  This fixes up the
+		str	r1, [r6], #4		@ C references.
+		cmp	r6, ip
+		blo	1b
+#else
+
+		/*
+		 * Relocate entries in the GOT table.  We only relocate
+		 * the entries that are outside the (relocated) BSS region.
+		 */
+1:		ldr	r1, [r6, #0]		@ relocate entries in the GOT
+		cmp	r1, r2			@ entry < bss_start ||
+		cmphs	r3, r1			@ _end < entry
+		addlo	r1, r1, r0		@ table.  This fixes up the
+		str	r1, [r6], #4		@ C references.
+		cmp	r6, ip
+		blo	1b
+#endif
+
+not_relocated:	mov	r0, #0
 1:		str	r0, [r2], #4		@ clear bss
 		str	r0, [r2], #4
 		str	r0, [r2], #4
 		str	r0, [r2], #4
 		cmp	r2, r3
-		blt	1b
+		blo	1b
 
-		mrc	p15, 0, r6, c0, c0	@ get processor ID
+		/*
+		 * The C runtime environment should now be setup
+		 * sufficiently.  Turn the cache on, set up some
+		 * pointers, and start decompressing.
+		 */
 		bl	cache_on
 
 		mov	r1, sp			@ malloc space above stack
 		add	r2, sp, #0x10000	@ 64k max
 
-		teq	r4, r5			@ will we overwrite ourselves?
-		moveq	r5, r2			@ decompress after image
-		movne	r5, r4			@ decompress to final location
+/*
+ * Check to see if we will overwrite ourselves.
+ *   r4 = final kernel address
+ *   r5 = start of this image
+ *   r2 = end of malloc space (and therefore this image)
+ * We basically want:
+ *   r4 >= r2 -> OK
+ *   r4 + image length <= r5 -> OK
+ */
+		cmp	r4, r2
+		bhs	wont_overwrite
+		add	r0, r4, #4096*1024	@ 4MB largest kernel size
+		cmp	r0, r5
+		bls	wont_overwrite
 
+		mov	r5, r2			@ decompress after malloc space
 		mov	r0, r5
 		mov	r3, r7
-		bl	SYMBOL_NAME(decompress_kernel)
-
-		teq	r4, r5			@ do we need to relocate
-		beq	call_kernel		@ the kernel?
+		bl	decompress_kernel
 
 		add	r0, r0, #127
 		bic	r0, r0, #127		@ align the kernel length
@@ -185,23 +256,39 @@ not_angel:
  */
 		add	r1, r5, r0		@ end of decompressed kernel
 		adr	r2, reloc_start
-		adr	r3, reloc_end
+		ldr	r3, LC1
+		add	r3, r2, r3
 1:		ldmia	r2!, {r8 - r13}		@ copy relocation code
 		stmia	r1!, {r8 - r13}
 		ldmia	r2!, {r8 - r13}
 		stmia	r1!, {r8 - r13}
 		cmp	r2, r3
-		blt	1b
+		blo	1b
 
 		bl	cache_clean_flush
 		add	pc, r5, r0		@ call relocation code
 
+/*
+ * We're not in danger of overwriting ourselves.  Do this the simple way.
+ *
+ * r4     = kernel execution address
+ * r7     = architecture ID
+ */
+wont_overwrite:	mov	r0, r4
+		mov	r3, r7
+		bl	decompress_kernel
+		b	call_kernel
+
 		.type	LC0, #object
-LC0:		.word	__bss_start
-		.word	_end
-		.word	_load_addr
-		.word	_start
-		.word	user_stack+4096
+LC0:		.word	LC0			@ r1
+		.word	__bss_start		@ r2
+		.word	_end			@ r3
+		.word	_load_addr		@ r4
+		.word	_start			@ r5
+		.word	_got_start		@ r6
+		.word	_got_end		@ ip
+		.word	user_stack+4096		@ sp
+LC1:		.word	reloc_end - reloc_start
 		.size	LC0, . - LC0
 
 /*
@@ -218,22 +305,15 @@ LC0:		.word	__bss_start
  *  r7 = architecture number
  *  r8 = run-time address of "start"
  * On exit,
- *  r0, r1, r2, r3, r8, r9 corrupted
+ *  r1, r2, r3, r8, r9, r12 corrupted
  * This routine must preserve:
  *  r4, r5, r6, r7
  */
 		.align	5
-cache_on:	ldr	r1, proc_sa110_type
-		eor	r1, r1, r6
-		movs	r1, r1, lsr #5		@ catch SA110 and SA1100
-		beq	1f
-		ldr     r1, proc_sa1110_type
-		eor	r1, r1, r6
-		movs	r1, r1, lsr #4
-@		movne	pc, lr
-		bne	cache_off
-1:
-		sub	r3, r4, #16384		@ Page directory size
+cache_on:	mov	r3, #8			@ cache_on function
+		b	call_cache_fn
+
+__setup_mmu:	sub	r3, r4, #16384		@ Page directory size
 		bic	r3, r3, #0xff		@ Align the pointer
 		bic	r3, r3, #0x3f00
 /*
@@ -248,9 +328,13 @@ cache_on:	ldr	r1, proc_sa110_type
 		orr	r1, r1, #3 << 10
 		add	r2, r3, #16384
 1:		cmp	r1, r8			@ if virt > start of RAM
-		orrge	r1, r1, #0x0c		@ set cacheable, bufferable
+#ifdef CONFIG_XSCALE_CACHE_ERRATA
+		orrhs	r1, r1, #0x08           @ set cacheable, not bufferable
+#else
+		orrhs	r1, r1, #0x0c		@ set cacheable, bufferable
+#endif
 		cmp	r1, r9			@ if virt > end of RAM
-		bicge	r1, r1, #0x0c		@ clear cacheable, bufferable
+		bichs	r1, r1, #0x0c		@ clear cacheable, bufferable
 		str	r1, [r0], #4		@ 1:1 mapping
 		add	r1, r1, #1048576
 		teq	r0, r2
@@ -261,7 +345,11 @@ cache_on:	ldr	r1, proc_sa110_type
  * so there is no map overlap problem for up to 1 MB compressed kernel.
  * If the execution is in RAM then we would only be duplicating the above.
  */
+#ifdef CONFIG_XSCALE_CACHE_ERRATA
+		mov	r1, #0x1a
+#else
 		mov	r1, #0x1e
+#endif
 		orr	r1, r1, #3 << 10
 		mov	r2, pc, lsr #20
 		orr	r1, r1, r2, lsl #20
@@ -269,24 +357,48 @@ cache_on:	ldr	r1, proc_sa110_type
 		str	r1, [r0], #4
 		add	r1, r1, #1048576
 		str	r1, [r0]
+		mov	pc, lr
 
+__armv4_cache_on:
+		mov	r12, lr
+		bl	__setup_mmu
 		mov	r0, #0
 		mcr	p15, 0, r0, c7, c10, 4	@ drain write buffer
-		mcr	p15, 0, r0, c8, c7	@ flush I,D TLBs
-		mcr	p15, 0, r3, c2, c0	@ load page table pointer
-		mov	r0, #-1
-		mcr	p15, 0, r0, c3, c0	@ load domain access register
-		mrc	p15, 0, r0, c1, c0
-		orr	r0, r0, #0x1000		@ I-cache enable
+		mcr	p15, 0, r0, c8, c7, 0	@ flush I,D TLBs
+		mrc	p15, 0, r0, c1, c0, 0	@ read control reg
+		orr	r0, r0, #0x5000		@ I-cache enable, RR cache replacement
+		orr	r0, r0, #0x0030
+		bl	__common_cache_on
+		mov	r0, #0
+		mcr	p15, 0, r0, c8, c7, 0	@ flush I,D TLBs
+		mov	pc, r12
+
+__arm6_cache_on:
+		mov	r12, lr
+		bl	__setup_mmu
+		mov	r0, #0
+		mcr	p15, 0, r0, c7, c0, 0	@ invalidate whole cache v3
+		mcr	p15, 0, r0, c5, c0, 0	@ invalidate whole TLB v3
+		mov	r0, #0x30
+		bl	__common_cache_on
+		mov	r0, #0
+		mcr	p15, 0, r0, c5, c0, 0	@ invalidate whole TLB v3
+		mov	pc, r12
+
+__common_cache_on:
 #ifndef DEBUG
-		orr	r0, r0, #0x003d		@ Write buffer, mmu
+		orr	r0, r0, #0x000d		@ Write buffer, mmu
 #endif
-		mcr	p15, 0, r0, c1, c0
+		mov	r1, #-1
+		mcr	p15, 0, r3, c2, c0, 0	@ load page table pointer
+		mcr	p15, 0, r1, c3, c0, 0	@ load domain access control
+		mcr	p15, 0, r0, c1, c0, 0	@ load control register
 		mov	pc, lr
 
 /*
- * This code is relocatable.  It is relocated by the above code to the end
- * of the kernel and executed there.  During this time, we have no stacks.
+ * All code following this line is relocatable.  It is relocated by
+ * the above code to the end of the decompressed kernel image and
+ * executed there.  During this time, we have no stacks.
  *
  * r0     = decompressed kernel length
  * r1-r3  = unused
@@ -307,7 +419,7 @@ reloc_start:	add	r8, r5, r0
 		.endr
 
 		cmp	r5, r8
-		blt	1b
+		blo	1b
 		debug_reloc_end
 
 call_kernel:	bl	cache_clean_flush
@@ -317,47 +429,139 @@ call_kernel:	bl	cache_clean_flush
 		mov	pc, r4			@ call kernel
 
 /*
- * Here follow the relocatable cache support functions for
- * the various processors.
+ * Here follow the relocatable cache support functions for the
+ * various processors.  This is a generic hook for locating an
+ * entry and jumping to an instruction at the specified offset
+ * from the start of the block.  Please note this is all position
+ * independent code.
+ *
+ *  r1  = corrupted
+ *  r2  = corrupted
+ *  r3  = block offset
+ *  r6  = corrupted
+ *  r12 = corrupted
  */
 
-		.type	proc_sa110_type,#object
-proc_sa110_type:
-		.word	0x4401a100
-		.size	proc_sa110_type, . - proc_sa110_type
+call_cache_fn:	adr	r12, proc_types
+		mrc	p15, 0, r6, c0, c0	@ get processor ID
+1:		ldr	r1, [r12, #0]		@ get value
+		ldr	r2, [r12, #4]		@ get mask
+		eor	r1, r1, r6		@ (real ^ match)
+		tst	r1, r2			@       & mask
+		addeq	pc, r12, r3		@ call cache function
+		add	r12, r12, #4*5
+		b	1b
 
-		.type	proc_sa1110_type,#object
-proc_sa1110_type:
-		.word	0x6901b110
-		.size	proc_sa1110_type, . - proc_sa1110_type
+/*
+ * Table for cache operations.  This is basically:
+ *   - CPU ID match
+ *   - CPU ID mask
+ *   - 'cache on' method instruction
+ *   - 'cache off' method instruction
+ *   - 'cache flush' method instruction
+ *
+ * We match an entry using: ((real_id ^ match) & mask) == 0
+ *
+ * Writethrough caches generally only need 'on' and 'off'
+ * methods.  Writeback caches _must_ have the flush method
+ * defined.
+ */
+		.type	proc_types,#object
+proc_types:
+		.word	0x41560600		@ ARM6/610
+		.word	0xffffffe0
+		b	__arm6_cache_off	@ works, but slow
+		b	__arm6_cache_off
+		mov	pc, lr
+@		b	__arm6_cache_on		@ untested
+@		b	__arm6_cache_off
+@		b	__armv3_cache_flush
+
+		.word	0x00000000		@ old ARM ID
+		.word	0x0000f000
+		mov	pc, lr
+		mov	pc, lr
+		mov	pc, lr
+
+		.word	0x41007000		@ ARM7/710
+		.word	0xfff8fe00
+		b	__arm7_cache_off
+		b	__arm7_cache_off
+		mov	pc, lr
+
+		.word	0x41807200		@ ARM720T (writethrough)
+		.word	0xffffff00
+		b	__armv4_cache_on
+		b	__armv4_cache_off
+		mov	pc, lr
+
+		.word	0x00007000		@ ARM7 IDs
+		.word	0x0000f000
+		mov	pc, lr
+		mov	pc, lr
+		mov	pc, lr
+
+		@ Everything from here on will be the new ID system.
+
+		.word	0x4401a100		@ sa110 / sa1100
+		.word	0xffffffe0
+		b	__armv4_cache_on
+		b	__armv4_cache_off
+		b	__armv4_cache_flush
+
+		.word	0x6901b110		@ sa1110
+		.word	0xfffffff0
+		b	__armv4_cache_on
+		b	__armv4_cache_off
+		b	__armv4_cache_flush
+
+		.word	0x6901c120		@ ixp1200
+		.word	0xfffffff0
+		b	__armv4_cache_on
+		b	__armv4_cache_off
+		b	__armv4_cache_flush
+
+		@ These match on the architecture ID
+
+		.word	0x00020000		@ ARMv4T
+		.word	0x000f0000
+		b	__armv4_cache_on
+		b	__armv4_cache_off
+		b	__armv4_cache_flush
+
+		.word	0x00050000		@ ARMv5TE
+		.word	0x000f0000
+		b	__armv4_cache_on
+		b	__armv4_cache_off
+		b	__armv4_cache_flush
+
+		.word	0x00060000		@ ARMv5TEJ
+		.word	0x000f0000
+		b	__armv4_cache_on
+		b	__armv4_cache_off
+		b	__armv4_cache_flush
+
+		.word	0			@ unrecognised type
+		.word	0
+		mov	pc, lr
+		mov	pc, lr
+		mov	pc, lr
+
+		.size	proc_types, . - proc_types
 
 /*
  * Turn off the Cache and MMU.  ARMv3 does not support
  * reading the control register, but ARMv4 does.
  *
  * On entry,  r6 = processor ID
- * On exit,   r0, r1 corrupted
+ * On exit,   r0, r1, r2, r3, r12 corrupted
  * This routine must preserve: r4, r6, r7
  */
 		.align	5
-cache_off:
-#ifdef CONFIG_CPU_ARM610
-		eor	r1, r6, #0x41000000
-		eor	r1, r1, #0x00560000
-		bic	r1, r1, #0x0000001f
-		teq	r1, #0x00000600
-		mov	r0, #0x00000060		@ ARM6 control reg.
-		beq	__armv3_cache_off
-#endif
-#ifdef CONFIG_CPU_ARM710
-		eor	r1, r6, #0x41000000
-		bic	r1, r1, #0x00070000
-		bic	r1, r1, #0x000000ff
-		teq	r1, #0x00007000		@ ARM7
-		teqne	r1, #0x00007100		@ ARM710
-		mov	r0, #0x00000070		@ ARM7 control reg.
-		beq	__armv3_cache_off
-#endif
+cache_off:	mov	r3, #12			@ cache_off function
+		b	call_cache_fn
+
+__armv4_cache_off:
 		mrc	p15, 0, r0, c1, c0
 		bic	r0, r0, #0x000d
 		mcr	p15, 0, r0, c1, c0	@ turn MMU and cache off
@@ -366,11 +570,19 @@ cache_off:
 		mcr	p15, 0, r0, c8, c7	@ invalidate whole TLB v4
 		mov	pc, lr
 
+__arm6_cache_off:
+		mov	r0, #0x00000030		@ ARM6 control reg.
+		b	__armv3_cache_off
+
+__arm7_cache_off:
+		mov	r0, #0x00000070		@ ARM7 control reg.
+		b	__armv3_cache_off
+
 __armv3_cache_off:
-		mcr	p15, 0, r0, c1, c0	@ turn MMU and cache off
+		mcr	p15, 0, r0, c1, c0, 0	@ turn MMU and cache off
 		mov	r0, #0
-		mcr	p15, 0, r0, c7, c0	@ invalidate whole cache v3
-		mcr	p15, 0, r0, c5, c0	@ invalidate whole TLB v3
+		mcr	p15, 0, r0, c7, c0, 0	@ invalidate whole cache v3
+		mcr	p15, 0, r0, c5, c0, 0	@ invalidate whole TLB v3
 		mov	pc, lr
 
 /*
@@ -379,29 +591,46 @@ __armv3_cache_off:
  * On entry,
  *  r6 = processor ID
  * On exit,
- *  r1, r2, r12 corrupted
+ *  r1, r2, r3, r11, r12 corrupted
  * This routine must preserve:
- *  r4, r6, r7
+ *  r0, r4, r5, r6, r7
  */
 		.align	5
 cache_clean_flush:
-		ldr	r1, proc_sa110_type
-		eor	r1, r1, r6
-		movs	r1, r1, lsr #5		@ catch SA110 and SA1100
-		beq	1f
-		ldr	r1, proc_sa1110_type
-		eor	r1, r1, r6
-		movs	r1, r1, lsr #4
-		movne	pc, lr
-1:
-		bic	r1, pc, #31
-		add	r2, r1, #32768
-1:		ldr	r12, [r1], #32		@ s/w flush D cache
+		mov	r3, #16
+		b	call_cache_fn
+
+__armv4_cache_flush:
+		mov	r2, #64*1024		@ default: 32K dcache size (*2)
+		mov	r11, #32		@ default: 32 byte line size
+		mrc	p15, 0, r3, c0, c0, 1	@ read cache type
+		teq	r3, r6			@ cache ID register present?
+		beq	no_cache_id
+		mov	r1, r3, lsr #18
+		and	r1, r1, #7
+		mov	r2, #1024
+		mov	r2, r2, lsl r1		@ base dcache size *2
+		tst	r3, #1 << 14		@ test M bit
+		addne	r2, r2, r2, lsr #1	@ +1/2 size if M == 1
+		mov	r3, r3, lsr #12
+		and	r3, r3, #3
+		mov	r11, #8
+		mov	r11, r11, lsl r3	@ cache line size in bytes
+no_cache_id:
+		bic	r1, pc, #63		@ align to longest cache line
+		add	r2, r1, r2
+1:		ldr	r3, [r1], r11		@ s/w flush D cache
 		teq	r1, r2
 		bne	1b
 
-		mcr	p15, 0, r1, c7, c7, 0	@ flush I cache
+		mcr	p15, 0, r1, c7, c5, 0	@ flush I cache
+		mcr	p15, 0, r1, c7, c6, 0	@ flush D cache
 		mcr	p15, 0, r1, c7, c10, 4	@ drain WB
+		mov	pc, lr
+
+__armv3_cache_flush:
+		mov	r1, #0
+		mcr	p15, 0, r0, c7, c0, 0	@ invalidate whole cache v3
 		mov	pc, lr
 
 /*
@@ -479,5 +708,5 @@ memdump:	mov	r12, r0
 reloc_end:
 
 		.align
-		.section	".stack"
+		.section ".stack", "w"
 user_stack:	.space	4096

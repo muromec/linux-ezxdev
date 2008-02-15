@@ -1,0 +1,248 @@
+Intrusion Detection System support (EXPERIMENTAL)
+CONFIG_LIDS
+  LIDS - Linux Intrusion Detection System can let you protect your linux
+  kernel. 
+  
+  In order to use LIDS, you need to download the lidstools first from 
+  http://www.lids.org/
+   
+  Please read help provided with each option carefully. At the end of
+  each option we indicate what answer will increase security.
+  Be aware that security always has side effects, and some programs could
+  break.   
+
+  If you have any questions about LIDS, mail to the authors :
+                   Huagang Xie ( xie@www.lids.org)
+                   Philippe.biondi (philippe.biondi@webmotion.net)
+                   Steve Bremer (steve@clublinux.org) 		   
+
+  or visit lids home ,
+                http://www.lids.org/
+  
+  And you can get help from the LIDS Mailing list at
+		http://www.lids.org/maillist.html
+  and the FAQ by Steve Bremer at
+		http://www.clublinux.org/lids/
+
+  If your want to make LIDS as module, say "M" here , or if you want to build it into
+  the kernel, say "Y" here. otherwise, say "N".
+
+Hang up console when raising a security alert
+CONFIG_LIDS_SA_EXEC_UP
+  Saying yes will generate a security alert for each unprotected program 
+  that is executed before LIDS is sealed (with lidsadm -I).
+  This can help a lot to check whether your boot sequence is secured.
+  This can also warn you if a weakness has been exploited and an
+  unprotected program has been added to the boot process.
+
+  Saying yes increases security.
+
+Do not execute unprotected programs before sealing
+CONFIG_LIDS_NO_EXEC_UP
+  This option makes LIDS refuse the execution of the unprotected programs
+  before it is sealed. Be aware that you can prevent the system from 
+  booting with an incomplete lids.conf.
+
+  Saying yes increases security. 
+
+  Warning: Selecting this may cause your system to fail to boot, you must 
+	   create proper ACLs to protect all the programs running before 
+	   sealing. So, if you got problem with booting, disable this option, 
+           recompile and boot again.
+
+Enable init children lock feature
+CONFIG_LIDS_INIT_CHILDREN_LOCK
+  Saying yes here will compile the necessary code for the 
+  init children lock feature. You can then activate the feature with
+  lidsadm (+LOCK_INIT_CHILDREN). It will prevent anybody from killing 
+  processes whose parent is init and which are running when you issue
+  the command. 
+  
+  This mean that no one can stop them (denial of service) or even
+  reload them with a new configuration file (restart or kill -HUP).
+
+  Saying yes and using it increases security.
+
+
+Logging behaviour
+CONFIG_LIDS_NO_FLOOD_LOG
+  If you say Yes here, LIDS will try not to flood logs with the
+  same message repeated a lot of times.
+
+  Saying yes will increase security.
+
+Number of similiar log events to allow within a given interval(Experimental)
+CONFIG_LIDS_FLOOD_EVENT_THRESHOLD
+  This is the maximum number of similiar events that LIDS will
+  log within the interval defined in:
+     CONFIG_LIDS_FLOOD_EVENT_INTERVAL
+
+  This is to compensate for the problem of multiple different
+  LIDS alerts for "exec() before LIDS sealing" as well as
+  for other cases.
+
+Threshold interval period for the maximum number of LIDS events(Experimental)
+CONFIG_LIDS_FLOOD_EVENT_INTERVAL
+  This is the interval in which we count the number of similiar
+  events that may be flooding the LIDS logs.
+
+Port Scanner Detector in kernel(NEW)
+CONFIG_LIDS_PORT_SCAN_DETECTOR
+  If you say Yes here, LIDS will also build a port scanner detector in
+  kernel. When somebody uses a port scanner to scan your host, LIDS will
+  report it to you by logging the necessary message. It can detect many 
+  scanners, including nmap, satan, sscan with many methods including half
+  open scanning. 
+
+  When you disable raw socket (disable sniffer) by LIDS, it can replace 
+  the user space portscan detector, for it does not use any socket at all. 
+
+  Saying yes will increase security.
+
+Time between two logs
+CONFIG_LIDS_TIMEOUT_AFTER_FLOOD
+  This is the minimum time (in seconds) allowed between two different
+  security alerts. When a security alert occurs, no more alerts will be
+  logged before expiration of this timeout. (Except the first alert, with
+  a flood warning).
+
+Allow switching normal/security mode
+CONFIG_LIDS_ALLOW_SWITCH
+  If you say Yes here, you will enable the possibility to switch
+  LIDS on and off.
+
+  Note: You must set a password with 'lidsadm -P'
+  
+  Saying no increases security.
+
+Restrict mode switching to specified terminal types
+CONFIG_LIDS_RESTRICT_MODE_SWITCH
+  If you enable this option, mode switching will be only allowed
+  from specified terminal types.
+
+Allow mode switching from Linux Console
+CONFIG_LIDS_MODE_SWITCH_CONSOLE
+  Allow mode switching from a Linux Console.
+
+Allow mode switching from serial Console
+CONFIG_LIDS_MODE_SWITCH_SERIAL
+  Allow mode switching from a serial Console.
+
+Allow mode switching from a PTY
+CONFIG_LIDS_MODE_SWITCH_PTY
+  Allow mode switching from a PTY. 
+
+Number of attempts to submit password
+CONFIG_LIDS_MAX_TRY
+  Here you put the number of tries you will allow before disabling the
+  switch capability for a while.
+
+  The lower it is, the more secure the system will be.
+
+Time to wait after a fail
+CONFIG_LIDS_TTW_FAIL
+  Here you put the time (in seconds) the switch capability will be
+  disabled when the authorised number of fails is reached.
+
+  The higher it is, the more secure the system will be.
+
+Allow remote users to switch LIDS on/off
+CONFIG_LIDS_REMOTE_SWITCH
+  Say Yes here if you want to allow users which are not logged
+  on through the console to be able switch LIDS on and off. 
+
+  If you have access to the console, you might disable this
+  option, so that a remote user can not disable LIDS, even
+  with the password.
+
+  Saying no is more secure.
+
+Allow any program to switch LIDS on/off
+CONFIG_LIDS_ALLOW_ANY_PROG_SWITCH
+  If you say Yes here, you will allow programs others than
+  /sbin/lidsadm to feed /proc/sys/lids/locks.
+  
+  Notes : * It is strongly recommended to leave this option
+            unmarked ! Don't say yes !
+          * I don't know what it could be useful for :)
+
+  Say no.
+  
+Allow reloading config file when switched off
+CONFIG_LIDS_RELOAD_CONF
+  Saying Yes here will compile the necessary code to reload the config
+  file. Each time you pass +RELOAD_CONF argument to lidsadm, LIDS reloads 
+  /etc/lids.conf and re-reads dev/inode numbers of special programs
+  (/sbin/lidsadm and every program you allow to do something LIDS
+  forbids)
+
+  If an error occurs during the reload phase, the kernel does not panic
+  as it does at startup, because it considers you see the error 
+  immediately and correct it.
+
+Send security alerts through network
+CONFIG_LIDS_SA_THROUGH_NET
+  Say yes here if you want to send LIDS security alerts to
+  a remote machine through the network, directly from the 
+  kernel, without the help of any potentially corrupted
+  user space program (especially mailer programs)
+  You can send them via mail or via UDP datagrams to a 
+  remote syslog, http POST, or anything else you can imagine.
+
+  A pseudo scripting language a la expect is provided to
+  use some communication protocols (as the mail one).
+
+  Below is a summary of the important parameters for the
+  connection. See their respective help section for more
+  help.
+
+  You must provide
+     - the IP of the remote machine
+     - the TCP/UDP port for the connection
+
+  If you choose to use the provided mailer script
+     - Name of the source machine
+     - Name of the sender
+     - Mail address of the receiver
+     - Subject of the mail
+
+  If you choose to use your own script 
+  (or the remote syslog one, provided) :
+     - Socket type (TCP/UDP)
+     - Path of the script
+     
+Hide klids kernel thread
+CONFIG_LIDS_HIDE_KLIDS
+  If you say yes here, the klids kernel thread won't appear in
+  /proc (thus neither in ps nor in top, nor in anything else)
+  and its network connection won't appear in netstat.
+
+  Moreover, klids network errors (can't connect, etc.) will
+  be silently ignored instead of being logged in syslog.
+
+Number of connection tries before giving up
+CONFIG_LIDS_NET_MAX_TRIES
+  How many times klids will try to send the security alert, if
+  it can't connect (you forgot a firewall ? :) ), or if there 
+  is a protocol error (remote sendmail doesn't accept your mail ?).
+  After this number of tries, the message is deleted, even
+  if it was not send (we can imagine that, for some unknown 
+  reason (protocol error, defectious IP stack on the road,..)
+  the message can't be send and block the remaining of the
+  queue). 
+  
+  If you don't want to loose any messages, put a big number
+  of tries here, and give a reasonnable sleep period.
+  
+Sleep time after a failed connection
+CONFIG_LIDS_NET_TIMEOUT
+  When klids fails to send the security alert, how many seconds
+  will it sleep before retrying ?
+
+Message queue size
+CONFIG_LIDS_MSGQUEUE_SIZE
+  The security alerts are stored in a message queue. Give 
+  the number of messages that could be queued before loosing
+  new messages here.
+
+Use generic mailer pseudo-script

@@ -2,6 +2,12 @@
  * linux/fs/inode.c
  *
  * (C) 1997 Linus Torvalds
+ * (C) Copyright 2005 Motorola Inc.
+ *
+ *  modified by Jiang jun  <a21079@motorola.com>  2005/01
+ *              - For Jffs2  
+ *  modified by Ni Jili    <w20586@motorola.com>  2005/04
+ *              - For security
  */
 
 #include <linux/config.h>
@@ -17,6 +23,7 @@
 #include <linux/swapctl.h>
 #include <linux/prefetch.h>
 #include <linux/locks.h>
+#include <linux/security.h>
 
 /*
  * New inode.c implementation.
@@ -75,12 +82,32 @@ struct inodes_stat_t inodes_stat;
 
 static kmem_cache_t * inode_cachep;
 
-#define alloc_inode() \
-	 ((struct inode *) kmem_cache_alloc(inode_cachep, SLAB_KERNEL))
+
+static inline struct inode *alloc_inode(int gfp_mask) 
+{
+	struct inode *inode;
+
+	inode = ((struct inode *) kmem_cache_alloc(inode_cachep, SLAB_KERNEL));
+	if (!inode)
+		return NULL;
+	inode->i_security = NULL;
+	
+	if (security_inode_alloc(inode)) {
+		kmem_cache_free(inode_cachep, (inode));
+		return NULL;
+	}
+	return inode;
+}
+
 static void destroy_inode(struct inode *inode) 
 {
 	if (inode_has_buffers(inode))
 		BUG();
+        security_inode_free(inode);
+/* Reinitialise the waitqueue head because __wait_on_freeing_inode() --ss
+	   may have left stale entries on it which it can't remove (since  --ss
+	   it knows we're freeing the inode right now  -- ss*/
+	init_waitqueue_head(&inode->i_wait); //ss
 	kmem_cache_free(inode_cachep, (inode));
 }
 
@@ -155,7 +182,8 @@ void __mark_inode_dirty(struct inode *inode, int flags)
 	if ((inode->i_state & flags) != flags) {
 		inode->i_state |= flags;
 		/* Only add valid (ie hashed) inodes to the dirty list */
-		if (!(inode->i_state & I_LOCK) && !list_empty(&inode->i_hash)) {
+		if (!(inode->i_state & (I_LOCK|I_FREEING|I_CLEAR)) &&
+		    !list_empty(&inode->i_hash)) {  //ss
 			list_del(&inode->i_list);
 			list_add(&inode->i_list, &sb->s_dirty);
 		}
@@ -183,7 +211,32 @@ static inline void wait_on_inode(struct inode *inode)
 	if (inode->i_state & I_LOCK)
 		__wait_on_inode(inode);
 }
+/*
+ * If we try to find an inode in the inode hash while it is being deleted, we
+ * have to wait until the filesystem completes its deletion before reporting
+ * that it isn't found.  This is because iget will immediately call
+ * ->read_inode, and we want to be sure that evidence of the deletion is found
+ * by ->read_inode.
+ *
+ * Unlike the 2.6 version, this call call cannot return early, since inodes
+ * do not share wait queue. Therefore, we don't call remove_wait_queue(); it
+ * would be dangerous to do so since the inode may have already been freed, 
+ * and it's unnecessary, since the inode is definitely going to get freed.
+ *
+ * This is called with inode_lock held.
+ */
+static void __wait_on_freeing_inode(struct inode *inode)
+{
+        DECLARE_WAITQUEUE(wait, current);
 
+        add_wait_queue(&inode->i_wait, &wait);
+        set_current_state(TASK_UNINTERRUPTIBLE);
+        spin_unlock(&inode_lock);
+        schedule();
+        //ss -- remove_wait_queue(&inode->i_wait, &wait);
+
+        spin_lock(&inode_lock);
+}
 
 static inline void write_inode(struct inode *inode, int sync)
 {
@@ -212,7 +265,8 @@ static inline void __sync_one(struct inode *inode, int sync)
 	list_del(&inode->i_list);
 	list_add(&inode->i_list, &inode->i_sb->s_locked_inodes);
 
-	if (inode->i_state & I_LOCK)
+	//ss -- if (inode->i_state & I_LOCK)
+	if (inode->i_state & (I_LOCK|I_FREEING))
 		BUG();
 
 	/* Set I_LOCK, reset I_DIRTY */
@@ -545,6 +599,13 @@ static void dispose_list(struct list_head * head)
 		if (inode->i_data.nrpages)
 			truncate_inode_pages(&inode->i_data, 0);
 		clear_inode(inode);
+		
+		spin_lock(&inode_lock); //ss
+		list_del(&inode->i_hash); //ss
+		INIT_LIST_HEAD(&inode->i_hash); //ss
+		spin_unlock(&inode_lock); //ss
+		wake_up(&inode->i_wait); //ss
+		
 		destroy_inode(inode);
 		inodes_stat.nr_inodes--;
 	}
@@ -567,6 +628,12 @@ static int invalidate_list(struct list_head *head, struct super_block * sb, stru
 		if (tmp == head)
 			break;
 		inode = list_entry(tmp, struct inode, i_list);
+
+		debug_lock_break(2); /* bkl is also held */
+		atomic_inc(&inode->i_count);
+		break_spin_lock_and_resched(&inode_lock);
+		atomic_dec(&inode->i_count);
+
 		if (inode->i_sb != sb)
 			continue;
 		invalidate_inode_buffers(inode);
@@ -653,6 +720,14 @@ int invalidate_device(kdev_t dev, int do_sync)
  *
  * We don't expect to have to call this very often.
  *
+ * We leave the inode in the inode hash table until *after* 
+ * the filesystem's ->delete_inode (in dispose_list) completes.
+ * This ensures that an iget (such as nfsd might instigate) will 
+ * always find up-to-date information either in the hash or on disk.
+ *
+ * I_FREEING is set so that no-one will take a new reference
+ * to the inode while it is being deleted.
+ *
  * N.B. The spinlock is released during the call to
  *      dispose_list.
  */
@@ -668,8 +743,11 @@ void prune_icache(int goal)
 	int count;
 	struct inode * inode;
 
+	DEFINE_LOCK_COUNT();
+
 	spin_lock(&inode_lock);
 
+free_unused:
 	count = 0;
 	entry = inode_unused.prev;
 	while (entry != &inode_unused)
@@ -685,13 +763,21 @@ void prune_icache(int goal)
 		if (atomic_read(&inode->i_count))
 			continue;
 		list_del(tmp);
-		list_del(&inode->i_hash);
-		INIT_LIST_HEAD(&inode->i_hash);
+		//ss --  list_del(&inode->i_hash);
+		//ss -- INIT_LIST_HEAD(&inode->i_hash);
 		list_add(tmp, freeable);
 		inode->i_state |= I_FREEING;
 		count++;
 		if (!--goal)
 			break;
+		if (TEST_LOCK_COUNT(32)) {
+			RESET_LOCK_COUNT();
+			debug_lock_break(1);
+			if (conditional_schedule_needed()) {
+				break_spin_lock(&inode_lock);
+				goto free_unused;
+			}
+		}
 	}
 	inodes_stat.nr_unused -= count;
 	spin_unlock(&inode_lock);
@@ -739,6 +825,7 @@ static struct inode * find_inode(struct super_block * sb, unsigned long ino, str
 	struct list_head *tmp;
 	struct inode * inode;
 
+repeat:  //ss
 	tmp = head;
 	for (;;) {
 		tmp = tmp->next;
@@ -752,6 +839,10 @@ static struct inode * find_inode(struct super_block * sb, unsigned long ino, str
 			continue;
 		if (find_actor && !find_actor(inode, ino, opaque))
 			continue;
+		if (inode->i_state & (I_FREEING|I_CLEAR)) { //ss
+			__wait_on_freeing_inode(inode); //ss
+			goto repeat; //ss
+		} //ss
 		break;
 	}
 	return inode;
@@ -777,6 +868,7 @@ static void clean_inode(struct inode *inode)
 	atomic_set(&inode->i_writecount, 0);
 	inode->i_size = 0;
 	inode->i_blocks = 0;
+	inode->i_bytes = 0;
 	inode->i_generation = 0;
 	memset(&inode->i_dquot, 0, sizeof(inode->i_dquot));
 	inode->i_pipe = NULL;
@@ -808,7 +900,7 @@ struct inode * get_empty_inode(void)
 
 	spin_lock_prefetch(&inode_lock);
 	
-	inode = alloc_inode();
+	inode = alloc_inode(SLAB_KERNEL);
 	if (inode)
 	{
 		spin_lock(&inode_lock);
@@ -827,17 +919,57 @@ struct inode * get_empty_inode(void)
 	return inode;
 }
 
+static inline void _unlock_new_inode(struct inode *inode)
+{
+	/*
+	 * This is special!  We do not need the spinlock
+	 * when clearing I_LOCK, because we're guaranteed
+	 * that nobody else tries to do anything about the
+	 * state of the inode when it is locked, as we
+	 * just created it (so there can be no old holders
+	 * that haven't tested I_LOCK).
+	 */
+	inode->i_state &= ~(I_LOCK|I_NEW);
+	wake_up(&inode->i_wait);
+}
+
+
+/*
+ * Broken out of create_new_inode for clarity, Calls the read_inode
+ * function, unlocks the populated inode, and wakes up anyone
+ * waiting for it to be available.
+ */
+
+static inline void populate_inode(
+	struct super_block *sb,
+	struct inode * inode,
+	void *opaque)
+{
+	/* reiserfs specific hack right here.  We don't
+	** want this to last, and are looking for VFS changes
+	** that will allow us to get rid of it.
+	** -- mason@suse.com 
+	*/
+	if (sb->s_op->read_inode2) {
+		sb->s_op->read_inode2(inode, opaque) ;
+	} else {
+		sb->s_op->read_inode(inode);
+	}
+
+	_unlock_new_inode(inode);
+}
+
 /*
  * This is called without the inode lock held.. Be careful.
  *
  * We no longer cache the sb_flags in i_flags - see fs.h
  *	-- rmk@arm.uk.linux.org
  */
-static struct inode * get_new_inode(struct super_block *sb, unsigned long ino, struct list_head *head, find_inode_t find_actor, void *opaque)
+static struct inode * get_new_inode(struct super_block *sb, unsigned long ino, struct list_head *head, find_inode_t find_actor, void *opaque, int gfp_mask)
 {
 	struct inode * inode;
 
-	inode = alloc_inode();
+	inode = alloc_inode(gfp_mask);
 	if (inode) {
 		struct inode * old;
 
@@ -854,33 +986,14 @@ static struct inode * get_new_inode(struct super_block *sb, unsigned long ino, s
 			inode->i_ino = ino;
 			inode->i_flags = 0;
 			atomic_set(&inode->i_count, 1);
-			inode->i_state = I_LOCK;
+			inode->i_state = I_LOCK|I_NEW;
 			spin_unlock(&inode_lock);
 
 			clean_inode(inode);
 
-			/* reiserfs specific hack right here.  We don't
-			** want this to last, and are looking for VFS changes
-			** that will allow us to get rid of it.
-			** -- mason@suse.com 
-			*/
-			if (sb->s_op->read_inode2) {
-				sb->s_op->read_inode2(inode, opaque) ;
-			} else {
-				sb->s_op->read_inode(inode);
-			}
-
-			/*
-			 * This is special!  We do not need the spinlock
-			 * when clearing I_LOCK, because we're guaranteed
-			 * that nobody else tries to do anything about the
-			 * state of the inode when it is locked, as we
-			 * just created it (so there can be no old holders
-			 * that haven't tested I_LOCK).
+			/* Return the locked inode with I_NEW set, the
+			 * caller is responsible for filling in the contents
 			 */
-			inode->i_state &= ~I_LOCK;
-			wake_up(&inode->i_wait);
-
 			return inode;
 		}
 
@@ -944,6 +1057,37 @@ retry:
 	
 }
 
+/**
+ *	ilookup - search for an inode in the inode cache
+ *	@sb:         super block of file system to search
+ *	@ino:        inode number to search for
+ *
+ *	If the inode is in the cache, the inode is returned with an
+ *	incremented reference count.
+ *
+ *	Otherwise, %NULL is returned.
+ *
+ *	This is almost certainly not the function you are looking for.
+ *	If you think you need to use this, consult an expert first.
+ */
+struct inode *ilookup(struct super_block *sb, unsigned long ino)
+{
+	struct list_head * head = inode_hashtable + hash(sb,ino);
+	struct inode * inode;
+
+	spin_lock(&inode_lock);
+	inode = find_inode(sb, ino, head, NULL, NULL);
+	if (inode) {
+		__iget(inode);
+		spin_unlock(&inode_lock);
+		wait_on_inode(inode);
+		return inode;
+	}
+	spin_unlock(&inode_lock);
+
+	return inode;
+}
+
 struct inode *igrab(struct inode *inode)
 {
 	spin_lock(&inode_lock);
@@ -958,6 +1102,34 @@ struct inode *igrab(struct inode *inode)
 		inode = NULL;
 	spin_unlock(&inode_lock);
 	return inode;
+}
+
+/*
+ * This is iget4 without the read_inode portion of get_new_inode
+ * the filesystem gets back a new locked and hashed inode and gets
+ * to fill it in before unlocking it via unlock_new_inode().
+ */
+struct inode *icreate(struct super_block *sb, unsigned long ino, int gfp_mask)
+{
+	struct list_head * head = inode_hashtable + hash(sb,ino);
+	struct inode * inode;
+
+	spin_lock(&inode_lock);
+	inode = find_inode(sb, ino, head, NULL, NULL);
+	if (inode) {
+		__iget(inode);
+		spin_unlock(&inode_lock);
+		wait_on_inode(inode);
+		return inode;
+	}
+	spin_unlock(&inode_lock);
+
+	return get_new_inode(sb, ino, head, NULL, NULL, gfp_mask);
+}
+
+void unlock_new_inode(struct inode *inode)
+{
+	_unlock_new_inode(inode);
 }
 
 
@@ -980,7 +1152,11 @@ struct inode *iget4(struct super_block *sb, unsigned long ino, find_inode_t find
 	 * get_new_inode() will do the right thing, re-trying the search
 	 * in case it had to block at any point.
 	 */
-	return get_new_inode(sb, ino, head, find_actor, opaque);
+	inode = get_new_inode(sb, ino, head, find_actor, opaque, SLAB_KERNEL);
+	if (inode && (inode->i_state & I_NEW))
+		populate_inode(sb, inode, opaque);
+
+	return inode;
 }
 
 /**
@@ -1042,8 +1218,8 @@ void iput(struct inode *inode)
 			return;
 
 		if (!inode->i_nlink) {
-			list_del(&inode->i_hash);
-			INIT_LIST_HEAD(&inode->i_hash);
+			//ss -- list_del(&inode->i_hash);
+			//ss -- INIT_LIST_HEAD(&inode->i_hash);
 			list_del(&inode->i_list);
 			INIT_LIST_HEAD(&inode->i_list);
 			inode->i_state|=I_FREEING;
@@ -1053,6 +1229,8 @@ void iput(struct inode *inode)
 			if (inode->i_data.nrpages)
 				truncate_inode_pages(&inode->i_data, 0);
 
+			security_inode_delete(inode);
+
 			if (op && op->delete_inode) {
 				void (*delete)(struct inode *) = op->delete_inode;
 				if (!is_bad_inode(inode))
@@ -1061,6 +1239,14 @@ void iput(struct inode *inode)
 				delete(inode);
 			} else
 				clear_inode(inode);
+
+			/* For patch from Davidwoodhouse -- for 2.6 jffs2 upgrade */
+			spin_lock(&inode_lock); //ss
+			list_del(&inode->i_hash); //ss
+			INIT_LIST_HEAD(&inode->i_hash); //ss
+			spin_unlock(&inode_lock); //ss
+			wake_up(&inode->i_wait); //ss
+			
 			if (inode->i_state != I_CLEAR)
 				BUG();
 		} else {
@@ -1084,7 +1270,7 @@ void iput(struct inode *inode)
 			spin_unlock(&inode_lock);
 			if (inode->i_data.nrpages)
 				truncate_inode_pages(&inode->i_data, 0);
-			clear_inode(inode);
+			clear_inode(inode);			
 		}
 		destroy_inode(inode);
 	}

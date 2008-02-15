@@ -18,7 +18,7 @@ typedef unsigned long elf_freg_t[3];
 #define ELF_NGREG (sizeof (struct pt_regs) / sizeof(elf_greg_t))
 typedef elf_greg_t elf_gregset_t[ELF_NGREG];
 
-typedef struct { void *null; } elf_fpregset_t;
+typedef struct user_fp elf_fpregset_t;
 
 /*
  * This is used to ensure we don't load something for the wrong architecture.
@@ -53,7 +53,6 @@ typedef struct { void *null; } elf_fpregset_t;
 /* This yields a mask that user programs can use to figure out what
    instruction set this cpu supports. */
 
-extern unsigned int elf_hwcap;
 #define ELF_HWCAP	(elf_hwcap)
 
 /* This yields a string that ld.so will use to load implementation
@@ -71,5 +70,23 @@ extern unsigned int elf_hwcap;
 #define ELF_PLATFORM_SIZE 8
 extern char elf_platform[];
 #define ELF_PLATFORM	(elf_platform)
+
+#ifdef CONFIG_XSCALE_WMMX
+#include <linux/sched.h>
+
+typedef int elf_xfpregset_t[38];
+#define ELF_CORE_COPY_XFPREGS(tsk,xfpu) elf_core_copy_xfpregs(tsk,xfpu)
+static inline int elf_core_copy_xfpregs(struct task_struct *tsk, elf_xfpregset_t *xfpu)
+{
+  char *base = (char *) tsk->thread.fpstate.concan.save;
+  extern void wmmx_task_disable(struct task_struct *);
+  wmmx_task_disable (tsk);
+
+  if (((long)base) & 4)
+    base += 4;
+  memcpy (xfpu, base, 16 * 8 + 6 * 4);
+  return 1;
+}
+#endif
 
 #endif

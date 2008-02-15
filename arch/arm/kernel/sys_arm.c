@@ -25,6 +25,8 @@
 #include <linux/file.h>
 #include <linux/utsname.h>
 
+#include <linux/trace.h>
+
 #include <asm/uaccess.h>
 #include <asm/ipc.h>
 
@@ -167,6 +169,8 @@ asmlinkage int sys_ipc (uint call, int first, int second, int third, void *ptr, 
 	version = call >> 16; /* hack for backward compatibility */
 	call &= 0xffff;
 
+	TRACE_IPC(TRACE_EV_IPC_CALL, call, first);
+	
 	switch (call) {
 	case SEMOP:
 		return sys_semop (first, (struct sembuf *)ptr, second);

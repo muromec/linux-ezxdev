@@ -112,6 +112,9 @@
 #define TST_UFLO	0x4000
 #define TST_BUFF	0x8000
 
+#define ISALED0		0x0004
+#define ISALED0_LNKST	0x8000
+
 struct dev_priv {
     struct net_device_stats stats;
     unsigned long	rxbuffer[RX_BUFFERS];
@@ -123,6 +126,7 @@ struct dev_priv {
     unsigned long	rxhdr;
     unsigned long	txhdr;
     spinlock_t		chip_lock;
+    struct timer_list	timer;
 };
 
 extern int	am79c961_probe (struct net_device *dev);

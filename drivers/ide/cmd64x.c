@@ -1080,7 +1080,7 @@ unsigned int cmd64x_pci_init (struct pci_dev *dev, const char *name)
 	}
 #endif /* DISPLAY_CMD64X_TIMINGS && CONFIG_PROC_FS */
 
-	return 0;
+	return dev->irq;
 }
 
 unsigned int __init pci_init_cmd64x (struct pci_dev *dev, const char *name)

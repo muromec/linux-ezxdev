@@ -1,0 +1,16 @@
+#
+# Motorola Network Monitor  device layer for USB Device subsystem.
+#
+# Copyright (C) 2004 Motorola.
+
+mainmenu_option next_comment
+comment "Motorola Network Monitor USB Function"
+
+dep_tristate '  Motorola Network Monitor USB Function' CONFIG_USBD_NM $CONFIG_USBD
+if [ "$CONFIG_USBD_NM" = "y" -o "$CONFIG_USBD_NM" = "m" ]; then
+   hex     ' Overide VendorID (hex value)' CONFIG_USBD_NM_VENDORID "22b8"
+   hex     ' Overide ProductID (hex value)' CONFIG_USBD_NM_PRODUCTID "1004"
+   hex     ' Overide bcdDevice (binary-coded decimal)' CONFIG_USBD_NM_BCDDEVICE "0002"
+fi
+
+endmenu

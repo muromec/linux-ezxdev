@@ -15,6 +15,11 @@
  *		as published by the Free Software Foundation; either version
  *		2 of the License, or (at your option) any later version.
  */
+/*
+ *
+ *   2005-Apr-04 Motorola   Add security patch 
+ */
+
 #ifndef _TCP_H
 #define _TCP_H
 
@@ -28,6 +33,7 @@
 #include <linux/tcp.h>
 #include <linux/slab.h>
 #include <linux/cache.h>
+#include <linux/security.h>
 #include <net/checksum.h>
 #include <net/sock.h>
 
@@ -519,13 +525,34 @@ struct open_request {
 		struct tcp_v6_open_req v6_req;
 #endif
 	} af;
+#ifdef CONFIG_SECURITY_NETWORK
+	/* LSM security field */
+	void			*security;
+#endif
 };
 
 /* SLAB cache for open requests. */
 extern kmem_cache_t *tcp_openreq_cachep;
 
-#define tcp_openreq_alloc()		kmem_cache_alloc(tcp_openreq_cachep, SLAB_ATOMIC)
-#define tcp_openreq_fastfree(req)	kmem_cache_free(tcp_openreq_cachep, req)
+static inline struct open_request *tcp_openreq_alloc(void)
+{
+	struct open_request *req =
+		kmem_cache_alloc(tcp_openreq_cachep, SLAB_ATOMIC);
+
+	if (req != NULL) {
+		if (security_open_request_alloc(req)) {
+			kmem_cache_free(tcp_openreq_cachep, req);
+			return NULL;
+		}
+	}
+	return req;
+}
+
+static inline void tcp_openreq_fastfree(struct open_request *req)
+{
+	security_open_request_free(req);
+	kmem_cache_free(tcp_openreq_cachep, req);
+}
 
 static inline void tcp_openreq_free(struct open_request *req)
 {

@@ -3,17 +3,16 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 1994 - 2002 by Ralf Baechle
- * Copyright (C) 1999, 2000, 2001 Silicon Graphics, Inc.
- * Copyright (C) 2002  Maciej W. Rozycki
+ * Copyright (C) 1994, 95, 96, 97, 98, 99, 2000 by Ralf Baechle at alii
+ * Copyright (C) 2001, 2002 by Ralf Baechle
+ * Copyright (C) 1999 Silicon Graphics, Inc.
  */
-#ifndef _ASM_PGTABLE_BITS_H
-#define _ASM_PGTABLE_BITS_H
+#ifndef _ASM_CACHINGMODES_H
+#define _ASM_CACHINGMODES_H
 
 #include <linux/config.h>
 
-/*
- * Note that we shift the lower 32bits of each EntryLo[01] entry
+/* Note that we shift the lower 32bits of each EntryLo[01] entry
  * 6 bits to the left. That way we can convert the PFN into the
  * physical address by a single 'and' operation and gain 6 additional
  * bits for storing information which isn't present in a normal
@@ -39,7 +38,7 @@
 #define _PAGE_ACCESSED              (1<<3)  /* implemented in software */
 #define _PAGE_MODIFIED              (1<<4)  /* implemented in software */
 
-#if defined(CONFIG_CPU_R3000) || defined(CONFIG_CPU_TX39XX)
+#if defined(CONFIG_CPU_R3000) || defined(CONFIG_CPU_TX39XX) ||  defined(CONFIG_CPU_LX45XXX)
 
 #define _PAGE_GLOBAL                (1<<8)
 #define _PAGE_VALID                 (1<<9)
@@ -64,10 +63,10 @@
 /* No penalty for being coherent on the SB1, so just
    use it for "noncoherent" spaces, too.  Shouldn't hurt. */
 
-#define _CACHE_UNCACHED             (2<<9)
-#define _CACHE_CACHABLE_COW         (5<<9)
-#define _CACHE_CACHABLE_NONCOHERENT (5<<9)
-#define _CACHE_UNCACHED_ACCELERATED (7<<9)
+#define _CACHE_UNCACHED             (2<<9)  
+#define _CACHE_CACHABLE_COW         (5<<9)  
+#define _CACHE_CACHABLE_NONCOHERENT (5<<9)  
+#define _CACHE_UNCACHED_ACCELERATED (7<<9)  
 
 #else
 
@@ -75,9 +74,9 @@
 #define _CACHE_CACHABLE_WA          (1<<9)  /* R4600 only              */
 #define _CACHE_UNCACHED             (2<<9)  /* R4[0246]00              */
 #define _CACHE_CACHABLE_NONCOHERENT (3<<9)  /* R4[0246]00              */
-#define _CACHE_CACHABLE_CE          (4<<9)  /* R4[04]00MC only         */
-#define _CACHE_CACHABLE_COW         (5<<9)  /* R4[04]00MC only         */
-#define _CACHE_CACHABLE_CUW         (6<<9)  /* R4[04]00MC only         */
+#define _CACHE_CACHABLE_CE          (4<<9)  /* R4[04]00 only           */
+#define _CACHE_CACHABLE_COW         (5<<9)  /* R4[04]00 only           */
+#define _CACHE_CACHABLE_CUW         (6<<9)  /* R4[04]00 only           */
 #define _CACHE_UNCACHED_ACCELERATED (7<<9)  /* R10000 only             */
 
 #endif
@@ -90,12 +89,10 @@
 
 #ifdef CONFIG_MIPS_UNCACHED
 #define PAGE_CACHABLE_DEFAULT	_CACHE_UNCACHED
-#elif defined(CONFIG_NONCOHERENT_IO)
-#define PAGE_CACHABLE_DEFAULT	_CACHE_CACHABLE_NONCOHERENT
-#else
+#elif CONFIG_CPU_SB1
 #define PAGE_CACHABLE_DEFAULT	_CACHE_CACHABLE_COW
+#else
+#define PAGE_CACHABLE_DEFAULT	_CACHE_CACHABLE_NONCOHERENT
 #endif
 
-#define CONF_CM_DEFAULT		(PAGE_CACHABLE_DEFAULT >> 9)
-
-#endif /* _ASM_PGTABLE_BITS_H */
+#endif /* _ASM_CACHINGMODES_H */

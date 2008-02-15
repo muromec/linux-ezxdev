@@ -1,5 +1,5 @@
 /*
- * $Id: pmc551.c,v 1.20 2002/03/05 13:47:08 dwmw2 Exp $
+ * $Id: pmc551.c,v 1.28 2004/08/09 13:19:44 dwmw2 Exp $
  *
  * PMC551 PCI Mezzanine Ram Device
  *
@@ -82,6 +82,7 @@
  *       * Comb the init routine.  It's still a bit cludgy on a few things.
  */
 
+#include <linux/version.h>
 #include <linux/config.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -98,8 +99,6 @@
 #include <linux/ioctl.h>
 #include <asm/io.h>
 #include <asm/system.h>
-#include <asm/segment.h>
-#include <stdarg.h>
 #include <linux/pci.h>
 
 #ifndef CONFIG_PCI
@@ -109,12 +108,6 @@
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/pmc551.h>
 #include <linux/mtd/compatmac.h>
-
-#if LINUX_VERSION_CODE > 0x20300
-#define PCI_BASE_ADDRESS(dev) (dev->resource[0].start)
-#else
-#define PCI_BASE_ADDRESS(dev) (dev->base_address[0])
-#endif
 
 static struct mtd_info *pmc551list;
 
@@ -176,9 +169,7 @@ out:
 	printk(KERN_DEBUG "pmc551_erase() done\n");
 #endif
 
-        if (instr->callback) {
-                (*(instr->callback))(instr);
-	}
+        mtd_erase_callback(instr);
         return 0;
 }
 
@@ -216,7 +207,7 @@ static int pmc551_point (struct mtd_info *mtd, loff_t from, size_t len, size_t *
 }
 
 
-static void pmc551_unpoint (struct mtd_info *mtd, u_char *addr)
+static void pmc551_unpoint (struct mtd_info *mtd, u_char *addr, loff_t from, size_t len)
 {
 #ifdef CONFIG_MTD_PMC551_DEBUG
 	printk(KERN_DEBUG "pmc551_unpoint()\n");
@@ -565,7 +556,7 @@ static u32 fixup_pmc551 (struct pci_dev *dev)
 	       (size<1024)?size:(size<1048576)?size>>10:size>>20,
                (size<1024)?'B':(size<1048576)?'K':'M',
 	       size, ((dcmd&(0x1<<3)) == 0)?"non-":"",
-               PCI_BASE_ADDRESS(dev)&PCI_BASE_ADDRESS_MEM_MASK );
+               (dev->resource[0].start)&PCI_BASE_ADDRESS_MEM_MASK );
 
         /*
          * Check to see the state of the memory
@@ -683,11 +674,6 @@ int __init init_pmc551(void)
 
         printk(KERN_INFO PMC551_VERSION);
 
-        if(!pci_present()) {
-                printk(KERN_NOTICE "pmc551: PCI not enabled.\n");
-                return -ENODEV;
-        }
-
         /*
          * PCU-bus chipset probe.
          */
@@ -700,7 +686,7 @@ int __init init_pmc551(void)
                 }
 
                 printk(KERN_NOTICE "pmc551: Found PCI V370PDC at 0x%lX\n",
-				    PCI_BASE_ADDRESS(PCI_Device));
+				    PCI_Device->resource[0].start);
 
                 /*
                  * The PMC551 device acts VERY weird if you don't init it
@@ -754,7 +740,7 @@ int __init init_pmc551(void)
 			printk(KERN_NOTICE "pmc551: Using specified aperture size %dM\n", asize>>20);
 			priv->asize = asize;
 		}
-                priv->start = ioremap((PCI_BASE_ADDRESS(PCI_Device)
+                priv->start = ioremap(((PCI_Device->resource[0].start)
                                        & PCI_BASE_ADDRESS_MEM_MASK),
                                       priv->asize);
 		
@@ -789,10 +775,10 @@ int __init init_pmc551(void)
                 mtd->write 	= pmc551_write;
                 mtd->point 	= pmc551_point;
                 mtd->unpoint 	= pmc551_unpoint;
-                mtd->module 	= THIS_MODULE;
                 mtd->type 	= MTD_RAM;
                 mtd->name 	= "PMC551 RAM board";
                 mtd->erasesize 	= 0x10000;
+		mtd->owner = THIS_MODULE;
 
                 if (add_mtd_device(mtd)) {
                         printk(KERN_NOTICE "pmc551: Failed to register new device\n");

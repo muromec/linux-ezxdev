@@ -247,17 +247,15 @@ waveartist_cmd(wavnc_info *devc,
 		printk("\n");
 	}
 
-	if (inb(io_base + STATR) & CMD_RF) {
-		int old_data;
-
-		/* flush the port
-		 */
+	/*
+	 * flush any stale command data from the port.
+	 */
+	while (inb(io_base + STATR) & CMD_RF) {
+		unsigned int old_data;
 
 		old_data = inw(io_base + CMDR);
-
-		if (debug_flg & DEBUG_CMD)
-			printk("flushed %04X...", old_data);
-
+		printk("waveartist: flushing stale command data: 0x%04x pc=%p\n",
+		       old_data, __builtin_return_address(0));
 		udelay(10);
 	}
 
@@ -287,16 +285,19 @@ waveartist_cmd(wavnc_info *devc,
 			resp[i] = inw(io_base + CMDR);
 	}
 
-	if (debug_flg & DEBUG_CMD) {
-		if (!timed_out) {
-			printk("waveartist_cmd: resp=");
+	if (debug_flg & DEBUG_CMD && !timed_out) {
+		printk("waveartist_cmd: resp=");
 
-			for (i = 0; i < nr_resp; i++)
-				printk("%04X ", resp[i]);
+		for (i = 0; i < nr_resp; i++)
+			printk("%04X ", resp[i]);
+		printk("\n");
+	}
 
-			printk("\n");
-		} else
-			printk("waveartist_cmd: timed out\n");
+	if (timed_out) {
+		printk(KERN_ERR "waveartist_cmd: command timed out:");
+		for (i = 0; i < nr_cmd; i++)
+			printk(" %04x", cmd[i]);
+		printk("\n");
 	}
 
 	return timed_out ? 1 : 0;
@@ -495,7 +496,6 @@ waveartist_start_input(int dev, unsigned long buf, int __count, int intrflag)
 	    audio_devs[dev]->flags & DMA_AUTOMODE &&
 	    intrflag &&
 	    count == devc->xfer_count) {
-		devc->audio_mode |= PCM_ENABLE_INPUT;
 		return;	/*
 			 * Auto DMA mode on. No need to react
 			 */
@@ -570,9 +570,6 @@ waveartist_prepare_for_input(int dev, int bsize, int bcount)
 	wavnc_info	*devc = (wavnc_info *) audio_devs[dev]->devc;
 	wavnc_port_info	*portc = (wavnc_port_info *) audio_devs[dev]->portc;
 	unsigned int	speed, bits;
-
-	if (devc->audio_mode)
-		return 0;
 
 	speed = waveartist_get_speed(portc);
 	bits  = waveartist_get_bits(portc);

@@ -890,8 +890,8 @@ struct reiserfs_de_head
 #define DEH_Statdata 0			/* not used now */
 #define DEH_Visible 2
 
-/* 64 bit systems (and the S/390) need to be aligned explicitly -jdm */
-#if BITS_PER_LONG == 64 || defined(__s390__) || defined(__hppa__)
+/* 64 bit systems (and S/390,HPPA,MIPS) need to be aligned explicitly -jdm */
+#if BITS_PER_LONG == 64 || defined(__s390__) || defined(__hppa__) || defined(__mips__)
 #   define ADDR_UNALIGNED_BITS  (3)
 #endif
 

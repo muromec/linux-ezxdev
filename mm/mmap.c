@@ -1,8 +1,19 @@
 /*
- *	linux/mm/mmap.c
+ * mm/mmap.c
  *
  * Written by obz.
+ *
+ * Address space accounting code	<alan@redhat.com>
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by w15879, for EZX platform
+ *
+ * 2005-Apr-04 Add security patch, Ni Jili
+ */
+
+
 #include <linux/slab.h>
 #include <linux/shm.h>
 #include <linux/mman.h>
@@ -14,6 +25,7 @@
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/personality.h>
+#include <linux/security.h>
 
 #include <asm/uaccess.h>
 #include <asm/pgalloc.h>
@@ -44,53 +56,96 @@ pgprot_t protection_map[16] = {
 	__S000, __S001, __S010, __S011, __S100, __S101, __S110, __S111
 };
 
-int sysctl_overcommit_memory;
 int max_map_count = DEFAULT_MAX_MAP_COUNT;
 
-/* Check that a process has enough memory to allocate a
- * new virtual mapping.
+int sysctl_overcommit_memory = 0;	/* default is heuristic overcommit */
+int sysctl_overcommit_ratio = 90;	/* default is 90% */
+atomic_t vm_committed_space = ATOMIC_INIT(0);
+  
+/*
+ * Check that a process has enough memory to allocate a new virtual
+ * mapping. 1 means there is enough memory for the allocation to
+ * succeed and 0 implies there is not.
+ *
+ * Mode 2 is a strict overcommit policy set via vm.overcommit_memory.
+ * See Documentation/vm/overcommit-acounting
+ *
+ * Strict overcommit modes added 2002 Feb 26 by Alan Cox.
+ * Additional code 2002 Jul 20 by Robert Love.
  */
-int vm_enough_memory(long pages)
+int vm_enough_memory(long pages, int charge)
 {
-	/* Stupid algorithm to decide if we have enough memory: while
-	 * simple, it hopefully works in most obvious cases.. Easy to
-	 * fool it, but this should catch most mistakes.
-	 */
-	/* 23/11/98 NJC: Somewhat less stupid version of algorithm,
-	 * which tries to do "TheRightThing".  Instead of using half of
-	 * (buffers+cache), use the minimum values.  Allow an extra 2%
-	 * of num_physpages for safety margin.
-	 */
+	unsigned long free, allowed;
+	struct sysinfo i;
 
-	unsigned long free;
-	
-        /* Sometimes we want to use more memory than we have. */
-	if (sysctl_overcommit_memory)
-	    return 1;
+	if (charge)
+		atomic_add(pages, &vm_committed_space);
 
-	/* The page cache contains buffer pages these days.. */
-	free = atomic_read(&page_cache_size);
-	free += nr_free_pages();
-	free += nr_swap_pages;
+        /*
+	 * Sometimes we want to use more memory than we have
+	 */
+	if (sysctl_overcommit_memory == 1)
+		return 1;
+
+	if (sysctl_overcommit_memory == 0) {
+		free = atomic_read(&page_cache_size);
+		free += nr_free_pages();
+		free += nr_swap_pages;
+
+		/*
+		 * This double-counts: the nrpages are both in the
+		 * page-cache and in the swapper space. At the same time,
+		 * this compensates for the swap-space over-allocation
+		 * (ie "nr_swap_pages" being too small).
+		 */
+		free += swapper_space.nrpages;
+
+		/*
+		 * The code below doesn't account for free space in the
+		 * inode and dentry slab cache, slab cache fragmentation,
+		 * inodes and dentries which will become freeable under
+		 * VM load, etc. Lets just hope all these (complex)
+		 * factors balance out...
+		 */
+		free += (dentry_stat.nr_unused * sizeof(struct dentry)) >>
+			PAGE_SHIFT;
+		free += (inodes_stat.nr_unused * sizeof(struct inode)) >>
+			PAGE_SHIFT;
+
+		if (free > pages)
+			return 1;
+		if (charge)
+			atomic_sub(pages, &vm_committed_space);
+		return 0;
+	}
 
 	/*
-	 * This double-counts: the nrpages are both in the page-cache
-	 * and in the swapper space. At the same time, this compensates
-	 * for the swap-space over-allocation (ie "nr_swap_pages" being
-	 * too small.
+	 * FIXME: need to add arch hooks to get the bits we need
+	 * without this higher overhead crap
 	 */
-	free += swapper_space.nrpages;
+	si_meminfo(&i);
+	allowed = i.totalram * sysctl_overcommit_ratio / 100;
+	allowed += total_swap_pages;
 
-	/*
-	 * The code below doesn't account for free space in the inode
-	 * and dentry slab cache, slab cache fragmentation, inodes and
-	 * dentries which will become freeable under VM load, etc.
-	 * Lets just hope all these (complex) factors balance out...
-	 */
-	free += (dentry_stat.nr_unused * sizeof(struct dentry)) >> PAGE_SHIFT;
-	free += (inodes_stat.nr_unused * sizeof(struct inode)) >> PAGE_SHIFT;
+	if (atomic_read(&vm_committed_space) < allowed)
+		return 1;
 
-	return free > pages;
+	if (charge)
+		atomic_sub(pages, &vm_committed_space);
+
+	return 0;
+}
+
+void inline vm_unacct_memory(long pages)
+{	
+	atomic_sub(pages, &vm_committed_space);
+}
+
+void vm_unacct_vma(struct vm_area_struct *vma)
+{
+	int len = vma->vm_end - vma->vm_start;
+	if (vma->vm_flags & VM_ACCOUNT)
+		vm_unacct_memory(len >> PAGE_SHIFT);
 }
 
 /* Remove one vm structure from the inode's i_mapping address space. */
@@ -161,7 +216,7 @@ asmlinkage unsigned long sys_brk(unsigned long brk)
 
 	/* Always allow shrinking brk. */
 	if (brk <= mm->brk) {
-		if (!do_munmap(mm, newbrk, oldbrk-newbrk))
+		if (!do_munmap(mm, newbrk, oldbrk-newbrk, 1))
 			goto set_brk;
 		goto out;
 	}
@@ -175,8 +230,11 @@ asmlinkage unsigned long sys_brk(unsigned long brk)
 	if (find_vma_intersection(mm, oldbrk, newbrk+PAGE_SIZE))
 		goto out;
 
-	/* Check if we have enough memory.. */
-	if (!vm_enough_memory((newbrk-oldbrk) >> PAGE_SHIFT))
+	/*
+	 * Check if we have enough memory..
+	 * FIXME: this seems to be checked in do_brk ...
+	 */
+	if (!vm_enough_memory((newbrk-oldbrk) >> PAGE_SHIFT, 0))
 		goto out;
 
 	/* Ok, looks good - let it rip. */
@@ -390,8 +448,9 @@ static int vma_merge(struct mm_struct * mm, struct vm_area_struct * prev,
 	return 0;
 }
 
-unsigned long do_mmap_pgoff(struct file * file, unsigned long addr, unsigned long len,
-	unsigned long prot, unsigned long flags, unsigned long pgoff)
+unsigned long do_mmap_pgoff(struct file * file, unsigned long addr,
+			unsigned long len, unsigned long prot,
+			unsigned long flags, unsigned long pgoff)
 {
 	struct mm_struct * mm = current->mm;
 	struct vm_area_struct * vma, * prev;
@@ -399,14 +458,26 @@ unsigned long do_mmap_pgoff(struct file * file, unsigned long addr, unsigned lon
 	int correct_wcount = 0;
 	int error;
 	rb_node_t ** rb_link, * rb_parent;
+	unsigned long charged = 0;
 
-	if (file && (!file->f_op || !file->f_op->mmap))
-		return -ENODEV;
+	if (file) {
+		if (!file->f_op || !file->f_op->mmap)
+			return -ENODEV;
 
-	if ((len = PAGE_ALIGN(len)) == 0)
+		if ((prot & PROT_EXEC) && (file->f_vfsmnt->mnt_flags & MNT_NOEXEC))
+			return -EPERM;
+	}
+
+	if (!len)
 		return addr;
 
 	if (len > TASK_SIZE)
+		return -EINVAL;
+
+	/* This cannot be zero now */
+	len = PAGE_ALIGN(len);
+
+	if (len > TASK_SIZE || len == 0)
 		return -EINVAL;
 
 	/* offset overflow? */
@@ -478,11 +549,15 @@ unsigned long do_mmap_pgoff(struct file * file, unsigned long addr, unsigned lon
 		}
 	}
 
+	error = security_file_mmap(file, prot, flags);
+	if (error)
+		return error;
+		
 	/* Clear old maps */
 munmap_back:
 	vma = find_vma_prepare(mm, addr, &prev, &rb_link, &rb_parent);
 	if (vma && vma->vm_start < addr + len) {
-		if (do_munmap(mm, addr, len))
+		if (do_munmap(mm, addr, len, 1))
 			return -ENOMEM;
 		goto munmap_back;
 	}
@@ -492,11 +567,17 @@ munmap_back:
 	    > current->rlim[RLIMIT_AS].rlim_cur)
 		return -ENOMEM;
 
+	if (sysctl_overcommit_memory > 1)
+		vm_flags &= ~MAP_NORESERVE;
+
 	/* Private writable mapping? Check memory availability.. */
-	if ((vm_flags & (VM_SHARED | VM_WRITE)) == VM_WRITE &&
-	    !(flags & MAP_NORESERVE)				 &&
-	    !vm_enough_memory(len >> PAGE_SHIFT))
-		return -ENOMEM;
+	if ((((vm_flags & (VM_SHARED | VM_WRITE)) == VM_WRITE) ||
+			(file == NULL)) && !(flags & MAP_NORESERVE)) {
+		charged = len >> PAGE_SHIFT;
+		if (!vm_enough_memory(charged, 1))
+			return -ENOMEM;
+		vm_flags |= VM_ACCOUNT;
+	}
 
 	/* Can we just expand an old anonymous mapping? */
 	if (!file && !(vm_flags & VM_SHARED) && rb_parent)
@@ -508,8 +589,9 @@ munmap_back:
 	 * not unmapped, but the maps are removed from the list.
 	 */
 	vma = kmem_cache_alloc(vm_area_cachep, SLAB_KERNEL);
+	error = -ENOMEM;
 	if (!vma)
-		return -ENOMEM;
+		goto unacct_error;
 
 	vma->vm_mm = mm;
 	vma->vm_start = addr;
@@ -534,6 +616,11 @@ munmap_back:
 		}
 		vma->vm_file = file;
 		get_file(file);
+		/*
+		 * Subdrivers can clear VM_IO if their mappings are
+		 * valid pages inside mem_map[]
+		 */
+		vma->vm_flags |= VM_IO;
 		error = file->f_op->mmap(file, vma);
 		if (error)
 			goto unmap_and_free_vma;
@@ -592,9 +679,12 @@ unmap_and_free_vma:
 	fput(file);
 
 	/* Undo any partial mapping done by a device driver. */
-	zap_page_range(mm, vma->vm_start, vma->vm_end - vma->vm_start);
+	zap_page_range(mm, vma->vm_start, vma->vm_end - vma->vm_start, ZPR_NORMAL);
 free_vma:
 	kmem_cache_free(vm_area_cachep, vma);
+unacct_error:
+	if (charged)
+		vm_unacct_memory(charged);
 	return error;
 }
 
@@ -737,6 +827,45 @@ struct vm_area_struct * find_vma_prev(struct mm_struct * mm, unsigned long addr,
 	return NULL;
 }
 
+/*
+ * vma is the first one with  address < vma->vm_end,
+ * and even address < vma->vm_start. Have to extend vma.
+ */
+int expand_stack(struct vm_area_struct * vma, unsigned long address)
+{
+	unsigned long grow;
+
+	/*
+	 * vma->vm_start/vm_end cannot change under us because the caller
+	 * is required to hold the mmap_sem in write mode. We need to get
+	 * the spinlock only before relocating the vma range ourself.
+	 */
+	address &= PAGE_MASK;
+ 	spin_lock(&vma->vm_mm->page_table_lock);
+	grow = (vma->vm_start - address) >> PAGE_SHIFT;
+
+	/* Overcommit.. */
+	if(!vm_enough_memory(grow, 1)) {
+		spin_unlock(&vma->vm_mm->page_table_lock);
+		return -ENOMEM;
+	}
+	
+	if (vma->vm_end - address > current->rlim[RLIMIT_STACK].rlim_cur ||
+			((vma->vm_mm->total_vm + grow) << PAGE_SHIFT) >
+			current->rlim[RLIMIT_AS].rlim_cur) {
+		spin_unlock(&vma->vm_mm->page_table_lock);
+		vm_unacct_memory(grow);
+		return -ENOMEM;
+	}
+	vma->vm_start = address;
+	vma->vm_pgoff -= grow;
+	vma->vm_mm->total_vm += grow;
+	if (vma->vm_flags & VM_LOCKED)
+		vma->vm_mm->locked_vm += grow;
+	spin_unlock(&vma->vm_mm->page_table_lock);
+	return 0;
+}
+
 struct vm_area_struct * find_extend_vma(struct mm_struct * mm, unsigned long addr)
 {
 	struct vm_area_struct * vma;
@@ -784,7 +913,7 @@ struct vm_area_struct * find_extend_vma(struct mm_struct * mm, unsigned long add
  */
 static struct vm_area_struct * unmap_fixup(struct mm_struct *mm, 
 	struct vm_area_struct *area, unsigned long addr, size_t len, 
-	struct vm_area_struct *extra)
+	struct vm_area_struct *extra, int acct)
 {
 	struct vm_area_struct *mpnt;
 	unsigned long end = addr + len;
@@ -799,9 +928,14 @@ static struct vm_area_struct * unmap_fixup(struct mm_struct *mm,
 			area->vm_ops->close(area);
 		if (area->vm_file)
 			fput(area->vm_file);
+		if (acct)
+			vm_unacct_vma(area);
 		kmem_cache_free(vm_area_cachep, area);
 		return extra;
 	}
+
+	if (acct && (area->vm_flags & VM_ACCOUNT))
+		vm_unacct_memory(len >> PAGE_SHIFT);
 
 	/* Work out to one of the ends. */
 	if (end == area->vm_end) {
@@ -905,6 +1039,8 @@ no_mmaps:
 	 * old method of shifting the VA >> by PGDIR_SHIFT doesn't work.
 	 */
 	start_index = pgd_index(first);
+	if (start_index < FIRST_USER_PGD_NR)
+		start_index = FIRST_USER_PGD_NR;
 	end_index = pgd_index(last);
 	if (end_index > start_index) {
 		clear_page_tables(mm, start_index, end_index - start_index);
@@ -917,7 +1053,7 @@ no_mmaps:
  * work.  This now handles partial unmappings.
  * Jeremy Fitzhardine <jeremy@sw.oz.au>
  */
-int do_munmap(struct mm_struct *mm, unsigned long addr, size_t len)
+int do_munmap(struct mm_struct *mm, unsigned long addr, size_t len, int acct)
 {
 	struct vm_area_struct *mpnt, *prev, **npp, *free, *extra;
 
@@ -990,12 +1126,13 @@ int do_munmap(struct mm_struct *mm, unsigned long addr, size_t len)
 		remove_shared_vm_struct(mpnt);
 		mm->map_count--;
 
-		zap_page_range(mm, st, size);
+		zap_page_range(mm, st, size, ZPR_PARTITION);
 
 		/*
-		 * Fix the mapping, and free the old area if it wasn't reused.
+		 * Fix the mapping, and free the old area if it was not
+		 * reused.
 		 */
-		extra = unmap_fixup(mm, mpnt, st, size, extra);
+		extra = unmap_fixup(mm, mpnt, st, size, extra, acct);
 		if (file)
 			atomic_inc(&file->f_dentry->d_inode->i_writecount);
 	}
@@ -1016,7 +1153,7 @@ asmlinkage long sys_munmap(unsigned long addr, size_t len)
 	struct mm_struct *mm = current->mm;
 
 	down_write(&mm->mmap_sem);
-	ret = do_munmap(mm, addr, len);
+	ret = do_munmap(mm, addr, len, 1);
 	up_write(&mm->mmap_sem);
 	return ret;
 }
@@ -1037,6 +1174,9 @@ unsigned long do_brk(unsigned long addr, unsigned long len)
 	if (!len)
 		return addr;
 
+	if ((addr + len) > TASK_SIZE || (addr + len) < addr)
+		return -EINVAL;
+
 	/*
 	 * mlock MCL_FUTURE?
 	 */
@@ -1053,7 +1193,7 @@ unsigned long do_brk(unsigned long addr, unsigned long len)
  munmap_back:
 	vma = find_vma_prepare(mm, addr, &prev, &rb_link, &rb_parent);
 	if (vma && vma->vm_start < addr + len) {
-		if (do_munmap(mm, addr, len))
+		if (do_munmap(mm, addr, len, 1))
 			return -ENOMEM;
 		goto munmap_back;
 	}
@@ -1066,10 +1206,10 @@ unsigned long do_brk(unsigned long addr, unsigned long len)
 	if (mm->map_count > max_map_count)
 		return -ENOMEM;
 
-	if (!vm_enough_memory(len >> PAGE_SHIFT))
+	if (!vm_enough_memory(len >> PAGE_SHIFT, 1))
 		return -ENOMEM;
 
-	flags = VM_DATA_DEFAULT_FLAGS | mm->def_flags;
+	flags = VM_DATA_DEFAULT_FLAGS | VM_ACCOUNT | mm->def_flags;
 
 	/* Can we just expand an old anonymous mapping? */
 	if (rb_parent && vma_merge(mm, prev, rb_parent, addr, addr + len, flags))
@@ -1079,8 +1219,10 @@ unsigned long do_brk(unsigned long addr, unsigned long len)
 	 * create a vma struct for an anonymous mapping
 	 */
 	vma = kmem_cache_alloc(vm_area_cachep, SLAB_KERNEL);
-	if (!vma)
+	if (!vma) {
+		vm_unacct_memory(len >> PAGE_SHIFT);
 		return -ENOMEM;
+	}
 
 	vma->vm_mm = mm;
 	vma->vm_start = addr;
@@ -1141,13 +1283,21 @@ void exit_mmap(struct mm_struct * mm)
 		unsigned long end = mpnt->vm_end;
 		unsigned long size = end - start;
 
+		/*
+		 * If the VMA has been charged for, account for its
+		 * removal
+		 */
+		if (mpnt->vm_flags & VM_ACCOUNT)
+			vm_unacct_vma(mpnt);
+
 		if (mpnt->vm_ops) {
 			if (mpnt->vm_ops->close)
 				mpnt->vm_ops->close(mpnt);
 		}
+
 		mm->map_count--;
 		remove_shared_vm_struct(mpnt);
-		zap_page_range(mm, start, size);
+		zap_page_range(mm, start, size, ZPR_PARTITION);
 		if (mpnt->vm_file)
 			fput(mpnt->vm_file);
 		kmem_cache_free(vm_area_cachep, mpnt);

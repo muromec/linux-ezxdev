@@ -22,21 +22,12 @@
 
 #define	ide__sti()	__sti()
 
-static __inline__ int ide_default_irq(ide_ioreg_t base)
-{
-	return 0;
-}
-
-static __inline__ ide_ioreg_t ide_default_io_base(int index)
-{
-	return 0;
-}
-
 static __inline__ void ide_init_hwif_ports(hw_regs_t *hw, ide_ioreg_t data_port, ide_ioreg_t ctrl_port, int *irq)
 {
-	ide_ioreg_t reg =  data_port;
+	ide_ioreg_t reg = data_port;
 	int i;
 
+	memset(&hw, 0, sizeof(hw));
 	for (i = IDE_DATA_OFFSET; i <= IDE_STATUS_OFFSET; i++) {
 		hw->io_ports[i] = reg;
 		reg += 1;
@@ -57,16 +48,6 @@ static __inline__ void ide_init_hwif_ports(hw_regs_t *hw, ide_ioreg_t data_port,
  */
 static __inline__ void ide_init_default_hwifs(void)
 {
-#ifndef CONFIG_BLK_DEV_IDEPCI
-	hw_regs_t hw;
-	int index;
-
-	for (index = 0; index < MAX_HWIFS; index++) {
-		ide_init_hwif_ports(&hw, ide_default_io_base(index), 0, NULL);
-		hw.irq = ide_default_irq(ide_default_io_base(index));
-		ide_register_hw(&hw, NULL);
-	}
-#endif /* CONFIG_BLK_DEV_IDEPCI */
 }
 
 typedef union {

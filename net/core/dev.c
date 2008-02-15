@@ -66,6 +66,11 @@
  * 		J Hadi Salim	:	- Backlog queue sampling
  *				        - netif_rx() feedback	
  */
+/*
+ *
+ * 2005-Apr-04  Motorola  Add security patch 
+ */
+
 
 #include <asm/uaccess.h>
 #include <asm/system.h>
@@ -100,10 +105,14 @@
 #include <linux/init.h>
 #include <linux/kmod.h>
 #include <linux/module.h>
+#include <linux/security.h>
 #if defined(CONFIG_NET_RADIO) || defined(CONFIG_NET_PCMCIA_RADIO)
 #include <linux/wireless.h>		/* Note : will define WIRELESS_EXT */
 #include <net/iw_handler.h>
 #endif	/* CONFIG_NET_RADIO || CONFIG_NET_PCMCIA_RADIO */
+
+#include <linux/trace.h>
+
 #ifdef CONFIG_PLIP
 extern int plip_init(void);
 #endif
@@ -1022,6 +1031,8 @@ int dev_queue_xmit(struct sk_buff *skb)
 			return -ENOMEM;
 	}
 
+	TRACE_NETWORK(TRACE_EV_NETWORK_PACKET_OUT, skb->protocol);
+
 	/* Grab device queue */
 	spin_lock_bh(&dev->queue_lock);
 	q = dev->qdisc;
@@ -1049,9 +1060,15 @@ int dev_queue_xmit(struct sk_buff *skb)
 		int cpu = smp_processor_id();
 
 		if (dev->xmit_lock_owner != cpu) {
+                        /*
+                         * The spin_lock effectivly does a preempt lock, but 
+                         * we are about to drop that...
+                         */
+			preempt_disable();
 			spin_unlock(&dev->queue_lock);
 			spin_lock(&dev->xmit_lock);
 			dev->xmit_lock_owner = cpu;
+			preempt_enable();
 
 			if (!netif_queue_stopped(dev)) {
 				if (netdev_nit)
@@ -1199,6 +1216,7 @@ static void get_sample_stats(int cpu)
 static void sample_queue(unsigned long dummy)
 {
 /* 10 ms 0r 1ms -- i dont care -- JHS */
+/* run from timer interrupt, preemption is always off here */
 	int next_tick = 1;
 	int cpu = smp_processor_id();
 
@@ -1230,7 +1248,7 @@ static void sample_queue(unsigned long dummy)
 
 int netif_rx(struct sk_buff *skb)
 {
-	int this_cpu = smp_processor_id();
+	int this_cpu;
 	struct softnet_data *queue;
 	unsigned long flags;
 
@@ -1240,9 +1258,10 @@ int netif_rx(struct sk_buff *skb)
 	/* The code is rearranged so that the path is the most
 	   short when CPU is congested, but is still operating.
 	 */
-	queue = &softnet_data[this_cpu];
 
 	local_irq_save(flags);
+	this_cpu = smp_processor_id();
+	queue = &softnet_data[this_cpu];
 
 	netdev_rx_stat[this_cpu].total++;
 	if (queue->input_pkt_queue.qlen <= netdev_max_backlog) {
@@ -1424,6 +1443,7 @@ int netif_receive_skb(struct sk_buff *skb)
 	skb_bond(skb);
 
 	netdev_rx_stat[smp_processor_id()].total++;
+		TRACE_NETWORK(TRACE_EV_NETWORK_PACKET_IN, skb->protocol);
 
 #ifdef CONFIG_NET_FASTROUTE
 	if (skb->pkt_type == PACKET_FASTROUTE) {
@@ -2579,6 +2599,8 @@ int unregister_netdevice(struct net_device *dev)
 #ifdef CONFIG_NET_DIVERT
 	free_divert_blk(dev);
 #endif
+
+	security_netdev_unregister(dev);
 
 	if (dev->features & NETIF_F_DYNALLOC) {
 #ifdef NET_REFCNT_DEBUG

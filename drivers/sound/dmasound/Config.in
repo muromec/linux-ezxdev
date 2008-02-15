@@ -27,13 +27,27 @@ else
 fi
 
 # the new dmasound_pmac driver needs access to the i2c bus
+# and nvram.
 if [ "$CONFIG_DMASOUND_PMAC" = "y" ] ; then
-   define_tristate CONFIG_I2C y
-   define_tristate CONFIG_I2C_KEYWEST y
+   if [ "$CONFIG_I2C" != "y" ]; then
+      define_tristate CONFIG_I2C y
+   fi
+   if [ "$CONFIG_I2C_KEYWEST" != "y" ]; then
+      define_tristate CONFIG_I2C_KEYWEST y
+   fi
+   if [ "$CONFIG_NVRAM" != "y" -a "$CONFIG_NVRAM" != "m" ]; then
+      define_tristate CONFIG_NVRAM y
+   fi
 else
    if [ "$CONFIG_DMASOUND_PMAC" = "m" ] ; then
-   define_tristate CONFIG_I2C m
-   define_tristate CONFIG_I2C_KEYWEST m
+      if [ "$CONFIG_I2C" != "y" -a "$CONFIG_I2C" != "m" ]; then
+         define_tristate CONFIG_I2C m
+      fi
+      if [ "$CONFIG_I2C_KEYWEST" != "y" -a "$CONFIG_I2C_KEYWEST" != "m" ]; then
+         define_tristate CONFIG_I2C_KEYWEST m
+      fi
+      if [ "$CONFIG_NVRAM" != "y" -a "$CONFIG_NVRAM" != "m" ]; then
+         define_tristate CONFIG_NVRAM y
+      fi
    fi
 fi
-

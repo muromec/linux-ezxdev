@@ -19,10 +19,17 @@
  *		Arnt Gulbrandsen, <agulbra@nvg.unit.no>
  *		Jorge Cwik, <jorge@laser.satlink.net>
  */
+/*
+ *
+ * 2005-Apr-04  Motorola  Add security patch 
+ */
+
+
 
 #include <linux/config.h>
 #include <linux/mm.h>
 #include <linux/sysctl.h>
+#include <linux/security.h>
 #include <net/tcp.h>
 #include <net/inet_common.h>
 
@@ -648,7 +655,8 @@ struct sock *tcp_create_openreq_child(struct sock *sk, struct open_request *req,
 		struct sk_filter *filter;
 #endif
 
-		memcpy(newsk, sk, sizeof(*newsk));
+		clone_sk(newsk, sk);
+
 		newsk->state = TCP_SYN_RECV;
 
 		/* SANITY */
@@ -784,6 +792,8 @@ struct sock *tcp_create_openreq_child(struct sock *sk, struct open_request *req,
 		TCP_ECN_openreq_child(newtp, req);
 
 		TCP_INC_STATS_BH(TcpPassiveOpens);
+
+		security_tcp_create_openreq_child(sk, newsk, skb, req);
 	}
 	return newsk;
 }

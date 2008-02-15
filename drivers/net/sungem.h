@@ -936,16 +936,6 @@ enum gem_phy_type {
 	phy_serdes,
 };
 
-enum gem_phy_model {
-	phymod_generic,
-	phymod_bcm5201,
-	phymod_bcm5221,
-	phymod_bcm5400,
-	phymod_bcm5401,
-	phymod_bcm5411,
-	phymod_m1011,
-};
-
 enum link_state {
 	link_down = 0,	/* No link, will retry */
 	link_aneg,	/* Autoneg in progress */
@@ -980,7 +970,8 @@ struct gem {
 	struct net_device_stats net_stats;
 
 	enum gem_phy_type	phy_type;
-	enum gem_phy_model	phy_mod;
+	struct mii_phy		phy_mii;
+	
 	int			tx_fifo_sz;
 	int			rx_fifo_sz;
 	int			rx_pause_off;
@@ -992,9 +983,8 @@ struct gem {
 	u32			swrst_base;
 
 	/* Autoneg & PHY control */
-	int			link_cntl;
-	int			link_advertise;
-	int			link_fcntl;
+	int			want_autoneg;
+	int			last_forced_speed;
 	enum link_state		lstate;
 	struct timer_list	link_timer;
 	int			timer_ticks;
@@ -1014,6 +1004,9 @@ struct gem {
 #endif
 };
 
+#define found_mii_phy(gp) ((gp->phy_type == phy_mii_mdio0 || gp->phy_type == phy_mii_mdio1) \
+				&& gp->phy_mii.def && gp->phy_mii.def->ops)
+			
 #define ALIGNED_RX_SKB_ADDR(addr) \
         ((((unsigned long)(addr) + (64UL - 1UL)) & ~(64UL - 1UL)) - (unsigned long)(addr))
 static __inline__ struct sk_buff *gem_alloc_skb(int size, int gfp_flags)

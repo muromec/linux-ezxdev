@@ -21,7 +21,7 @@
  */
 #define current_text_addr() ({ __label__ _l; _l: &&_l;})
 
-#ifndef __ASSEMBLY__
+#if !defined (_LANGUAGE_ASSEMBLY)
 #include <linux/threads.h>
 #include <asm/cachectl.h>
 #include <asm/mipsregs.h>
@@ -43,6 +43,7 @@ extern void (*cpu_wait)(void);
 extern void r3081_wait(void);
 extern void r39xx_wait(void);
 extern void r4k_wait(void);
+extern void sr7100_wait(void);
 extern void au1k_wait(void);
 
 extern struct cpuinfo_mips cpu_data[];
@@ -56,13 +57,12 @@ extern unsigned int vced_count, vcei_count;
 
 /*
  * Bus types (default is ISA, but people can check others with these..)
+ * MCA_bus hardcoded to 0 for now.
+ *
+ * This needs to be extended since MIPS systems are being delivered with
+ * numerous different types of bus systems.
  */
-#ifdef CONFIG_EISA
 extern int EISA_bus;
-#else
-#define EISA_bus (0)
-#endif
-
 #define MCA_bus 0
 #define MCA_bus__is_a_macro /* for versions in ksyms.c */
 
@@ -153,7 +153,7 @@ struct thread_struct {
 	unsigned long irix_oldctx;
 };
 
-#endif /* !__ASSEMBLY__ */
+#endif /* !defined (_LANGUAGE_ASSEMBLY) */
 
 #define INIT_THREAD  { \
         /* \
@@ -183,7 +183,7 @@ struct thread_struct {
 
 #define KERNEL_STACK_SIZE 8192
 
-#ifndef __ASSEMBLY__
+#if !defined (_LANGUAGE_ASSEMBLY)
 
 /* Free all resources held by a thread. */
 #define release_thread(thread) do { } while(0)
@@ -241,7 +241,7 @@ unsigned long get_wchan(struct task_struct *p);
 
 #define cpu_relax()	do { } while (0)
 
-#endif /* !__ASSEMBLY__ */
+#endif /* !defined (_LANGUAGE_ASSEMBLY) */
 #endif /* __KERNEL__ */
 
 /*

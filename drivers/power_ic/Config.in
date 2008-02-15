@@ -1,0 +1,72 @@
+# /vobs/ezx_linux/code/linux/linux-2.4.17/drivers/power_ic/Config.in
+#
+# Description - Configuration file for Power IC driver.
+#
+# Copyright (C) 2005 - Motorola
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License version 2 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+# Motorola 2005-Feb-28 - Rewrote the software for PCAP.
+# Motorola 2005-Jul-21 - Finalized the file.
+
+mainmenu_option next_comment
+comment 'Power IC driver'
+
+if [ "$CONFIG_ARM" = "y" ]; then
+   if [ "$CONFIG_CPU_BULVERDE" = "y" ]; then
+      bool '  Power IC support' CONFIG_MOT_POWER_IC
+
+      if [ "$CONFIG_MOT_POWER_IC" = "y" ]; then
+         mainmenu_option next_comment
+         comment 'Power IC settings'
+	 comment 'Power IC type'
+         choice 'Power IC type' \
+            "PCAP2                    CONFIG_MOT_POWER_IC_PCAP2  \
+             Atlas                    CONFIG_MOT_POWER_IC_ATLAS" PCAP2
+
+     comment 'Headset type'
+         choice 'Headset type' \
+            "Stereo35                 CONFIG_MOT_POWER_IC_BARREL_HEADSET_STEREO_3MM5  \
+             Stereo                   CONFIG_MOT_POWER_IC_BARREL_HEADSET_STEREO  \
+             Mono                     CONFIG_MOT_POWER_IC_BARREL_HEADSET_MONO    \
+             None                     CONFIG_MOT_POWER_IC_BARREL_HEADSET_NONE" Stereo
+
+         comment 'Memory Card Supply to determine power supply'
+	 comment 'For PCAP2: TRANSFLASH = VAUX3 SD = VAUX2' 
+         choice 'Memory Card Supply' \
+            "TRANSFLASH               CONFIG_MOT_POWER_IC_MEM_CARD_SPLY_TRANSFLASH  \
+             SD                       CONFIG_MOT_POWER_IC_MEM_CARD_SPLY_SD" TRANSFLASH
+
+         comment 'To determine power supplies for Bluetooth and WLAN'
+	 comment 'For Old Config: Bluetooth = VAUX1  WLAN = V6 and VAUX2' 
+         choice 'Bluetooth Supply' \
+            "BLUETOOTH_ON_V6          CONFIG_MOT_POWER_IC_BLUETOOTH_SPLY_V6  \
+             BLUETOOTH_ON_VAUX1       CONFIG_MOT_POWER_IC_BLUETOOTH_SPLY_VAUX1" BLUETOOTH_ON_V6
+
+         comment 'To determine SPI operating in interrupt handler'
+	 comment 'it will improve the touchscreen feature performance' 
+         bool '  Support SPI operate directly in interrupt handler ' CONFIG_MOT_POWER_IC_PCAP2_SPI_BUS_INTERRUPT
+
+         comment 'To determin BP control SW2 bit'
+         comment 'It will decrease the power consumption'
+         bool '  Let BP control SW2 bit  ' CONFIG_ARCH_EZX_BP_CONTROL_SW2
+
+         comment 'Power IC debug trace'
+         bool '    Build with kernel trace messages?' CONFIG_MOT_POWER_IC_TRACEMSG
+         endmenu
+      fi
+   fi
+fi
+
+endmenu

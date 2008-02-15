@@ -6,13 +6,35 @@
 # for more details.
 #
 # Copyright (C) 1995-2001 by Russell King
+#
+# Copyright (C) 2005 Motorola Inc.
+#
+# modified by w19962, add EZX platform support
+
 
 LINKFLAGS	:=-p -X -T arch/arm/vmlinux.lds
-GZFLAGS		:=-9
-CFLAGS		+=-fno-common -pipe
+OBJCOPYFLAGS	:=-O binary -R .note -R .comment -S
+GZFLAGS		:=-n9
+CFLAGS		+=-Uarm -fno-common -pipe
+
+ifeq ($(CONFIG_FRAME_POINTER),y)
+CFLAGS		+=-mapcs -mno-sched-prolog
+endif
+
+CFLAGS		:=$(CFLAGS:-O2=-Os)
 
 ifeq ($(CONFIG_DEBUG_INFO),y)
 CFLAGS		+=-g
+endif
+
+ifeq ($(CONFIG_KGDB),y)
+CFLAGS		+=-ggdb
+endif
+
+ifeq ($(CONFIG_CPU_BIG_ENDIAN),y)
+CC		+= -mbig-endian
+AS		+= -EB
+LD		+= -EB
 endif
 
 # Select CPU dependent flags.  Note that order of declaration is important;
@@ -24,10 +46,15 @@ apcs-y				:=-mapcs-32
 apcs-$(CONFIG_CPU_26)		:=-mapcs-26 -mcpu=arm3 -Os
 
 # This selects which instruction set is used.
+# Note that GCC is lame - it doesn't numerically define an
+# architecture version macro, but instead defines a whole
+# series of macros.
 arch-y				:=
-arch-$(CONFIG_CPU_32v3)		:=-march=armv3
-arch-$(CONFIG_CPU_32v4)		:=-march=armv4
-arch-$(CONFIG_CPU_32v5)		:=-march=armv5
+arch-$(CONFIG_CPU_32v3)		:=-D__LINUX_ARM_ARCH__=3 -march=armv3
+arch-$(CONFIG_CPU_32v4)		:=-D__LINUX_ARM_ARCH__=4 -march=armv4
+arch-$(CONFIG_CPU_32v5)		:=-D__LINUX_ARM_ARCH__=5 -march=armv5te
+arch-$(CONFIG_CPU_XSCALE)	:=-D__LINUX_ARM_ARCH__=5 -mcpu=xscale
+#arch-$(CONFIG_CPU_XSCALE)	:=-D__LINUX_ARM_ARCH__=5 -march=armv4 -Wa,-mxscale
 
 # This selects how we optimise for the processor.
 tune-y				:=
@@ -36,16 +63,19 @@ tune-$(CONFIG_CPU_ARM710)	:=-mtune=arm710
 tune-$(CONFIG_CPU_ARM720T)	:=-mtune=arm7tdmi
 tune-$(CONFIG_CPU_ARM920T)	:=-mtune=arm9tdmi
 tune-$(CONFIG_CPU_ARM922T)	:=-mtune=arm9tdmi
+tune-$(CONFIG_CPU_ARM925T)	:=-mtune=arm9tdmi
 tune-$(CONFIG_CPU_ARM926T)	:=-mtune=arm9tdmi
 tune-$(CONFIG_CPU_SA110)	:=-mtune=strongarm110
 tune-$(CONFIG_CPU_SA1100)	:=-mtune=strongarm1100
+tune-$(CONFIG_CPU_XSCALE)	:=-mtune=xscale
+#tune-$(CONFIG_CPU_XSCALE)	:=-mtune=strongarm
 
 CFLAGS_BOOT	:=$(apcs-y) $(arch-y) $(tune-y) -mshort-load-bytes -msoft-float
 CFLAGS		+=$(apcs-y) $(arch-y) $(tune-y) -mshort-load-bytes -msoft-float
-AFLAGS		+=$(apcs-y) $(arch-y) -mno-fpu -msoft-float
+AFLAGS		+=$(apcs-y) $(arch-y) -msoft-float
 
 ifeq ($(CONFIG_CPU_26),y)
-PROCESSOR	 = armo
+PROCESSOR	:= armo
   ifeq ($(CONFIG_ROM_KERNEL),y)
     DATAADDR	 = 0x02080000
     TEXTADDR	 = 0x03800000
@@ -58,7 +88,7 @@ endif
 
 ifeq ($(CONFIG_CPU_32),y)
 PROCESSOR	 = armv
-TEXTADDR	 = 0xC0008000
+TEXTADDR	 = 0x$(shell echo $(CONFIG_KERNEL_START)|sed -e's/0000$$/8000/'|sed -e's/^0x//')
 LDSCRIPT	 = arch/arm/vmlinux-armv.lds.in
 endif
 
@@ -79,6 +109,10 @@ endif
 ifeq ($(CONFIG_ARCH_CLPS7500),y)
 MACHINE		 = clps7500
 INCDIR		 = cl7500
+endif
+
+ifeq ($(CONFIG_ARCH_RISCSTATION),y)
+MACHINE		 = riscstation
 endif
 
 ifeq ($(CONFIG_FOOTBRIDGE),y)
@@ -113,6 +147,15 @@ endif
 MACHINE		 = sa1100
 endif
 
+ifeq ($(CONFIG_ARCH_PXA),y)
+  ifeq ($(CONFIG_ARCH_EZX),y)
+    MACHINE      = ezx
+    INCDIR       = pxa
+  else
+    MACHINE      = pxa
+  endif
+endif
+
 ifeq ($(CONFIG_ARCH_L7200),y)
 MACHINE		 = l7200
 endif
@@ -125,8 +168,13 @@ ifeq ($(CONFIG_ARCH_MX1ADS),y)
 MACHINE		 = mx1ads
 endif
 
+ifeq ($(CONFIG_ARCH_MX2ADS),y)
+MACHINE		 = mx2ads
+INCDIR		 = mx2ads
+endif
+
 ifeq ($(CONFIG_ARCH_CAMELOT),y)
-MACHINE          = epxa10db
+MACHINE          = epxa
 endif
 
 ifeq ($(CONFIG_ARCH_CLPS711X),y)
@@ -135,19 +183,85 @@ MACHINE		 = clps711x
 endif
 
 ifeq ($(CONFIG_ARCH_FORTUNET),y)
-TEXTADDR	 = 0xc0008000
+TEXTADDR	 = 0xc0208000
 endif
 
 ifeq ($(CONFIG_ARCH_ANAKIN),y)
 MACHINE		 = anakin
 endif
 
-export	MACHINE PROCESSOR TEXTADDR GZFLAGS CFLAGS_BOOT
+ifeq ($(CONFIG_ARCH_OMAHA),y)
+MACHINE                = omaha
+endif
+
+ifeq ($(CONFIG_ARCH_IOP3XX),y)
+MACHINE		 = iop3xx
+endif
+
+ifeq ($(CONFIG_ARCH_ADIFCC),y)
+MACHINE		= adifcc
+endif
+
+ifeq ($(CONFIG_ARCH_IXP1200),y)
+MACHINE		 = ixp1200
+endif
+
+ifeq ($(CONFIG_ARCH_TI925),y)
+MACHINE		 = ti925
+INCDIR 		 = ti925
+TEXTADDR	 = 0xC4008000
+endif
+
+ifeq ($(CONFIG_ARCH_OMAP1510),y)
+MACHINE                  = omap1510
+INCDIR                   = omap1510
+endif
+
+ifeq ($(CONFIG_ARCH_OMAP1610),y)
+MACHINE                  = omap1610
+INCDIR                   = omap1610
+endif
+ 
+ifeq ($(CONFIG_ARCH_OMAP730),y)
+MACHINE                  = omap730
+INCDIR                   = omap730
+endif
+
+ifeq ($(CONFIG_ARCH_OMAP710),y)
+MACHINE                  = omap710
+INCDIR                   = omap710
+endif
+
+ifeq ($(CONFIG_ARCH_S3C24A0),y)
+MACHINE                  = s3c24a0
+INCDIR			 = s3c24a0
+endif
+
+ifeq ($(CONFIG_ARCH_S3C2440),y)
+MACHINE                  = s3c2440
+INCDIR                   = s3c2440
+endif
+
+
+ifeq ($(CONFIG_XIP_ROM),y) 
+  DATAADDR   := $(TEXTADDR)
+  TEXTADDR    = $(shell echo 0x`echo $(CONFIG_XIP_PHYS_ADDR)|sed -e's/^0x//'` |\
+			awk --non-decimal-data '/[:xdigit:]/ \
+			  {printf("0x%x\n",and($$0,0x000fffff)+0xbf000000)}' )
+  LDSCRIPT    = arch/arm/vmlinux-armv-xip.lds.in
+  export DATAADDR
+endif
+
+
+export	MACHINE PROCESSOR TEXTADDR GZFLAGS CFLAGS_BOOT OBJCOPYFLAGS
+ifeq ($(CONFIG_XIP_ROM),y)      
+  export DATAADDR
+endif
 
 # Only set INCDIR if its not already defined above
 # Grr, ?= doesn't work as all the other assignment operators do.  Make bug?
 ifeq ($(origin INCDIR), undefined)
-INCDIR		:= $(MACHINE)
+INCDIR		:=$(MACHINE)
 endif
 
 ifeq ($(origin DATAADDR), undefined)
@@ -161,32 +275,37 @@ SUBDIRS		+= $(MACHDIR)
 CORE_FILES	:= $(MACHDIR)/$(MACHINE).o $(CORE_FILES)
 endif
 
-HEAD		:= arch/arm/kernel/head-$(PROCESSOR).o \
-		   arch/arm/kernel/init_task.o
-SUBDIRS		+= arch/arm/kernel arch/arm/mm arch/arm/lib arch/arm/nwfpe
-CORE_FILES	:= arch/arm/kernel/kernel.o arch/arm/mm/mm.o $(CORE_FILES)
-LIBS		:= arch/arm/lib/lib.a $(LIBS)
+HEAD		:=arch/arm/kernel/head-$(PROCESSOR).o \
+		  arch/arm/kernel/init_task.o
+SUBDIRS		+=arch/arm/kernel arch/arm/mm arch/arm/lib arch/arm/nwfpe
+CORE_FILES	:=arch/arm/kernel/kernel.o arch/arm/mm/mm.o $(CORE_FILES)
+LIBS		:=arch/arm/lib/lib.a $(LIBS)
 
 ifeq ($(CONFIG_FPE_NWFPE),y)
-LIBS		:= arch/arm/nwfpe/math-emu.o $(LIBS)
+LIBS		:=arch/arm/nwfpe/math-emu.o $(LIBS)
 endif
 
 # Only include fastfpe if it is part of the kernel tree.
-FASTFPE		:= arch/arm/fastfpe
+FASTFPE		:=arch/arm/fastfpe
 ifeq ($(FASTFPE),$(wildcard $(FASTFPE)))
-SUBDIRS		+= $(FASTFPE)
+SUBDIRS		+=$(FASTFPE)
 ifeq ($(CONFIG_FPE_FASTFPE),y)
-LIBS		:= arch/arm/fastfpe/fast-math-emu.o $(LIBS)
+LIBS		:=arch/arm/fastfpe/fast-math-emu.o $(LIBS)
 endif
 endif
 
 ifeq ($(findstring y,$(CONFIG_ARCH_CLPS7500) $(CONFIG_ARCH_L7200)),y)
-SUBDIRS		+= drivers/acorn/char
-DRIVERS		+= drivers/acorn/char/acorn-char.o
+SUBDIRS		+=drivers/acorn/char
+DRIVERS		+=drivers/acorn/char/acorn-char.o
 endif
 
-MAKEBOOT	 = $(MAKE) -C arch/$(ARCH)/boot
-MAKETOOLS	 = $(MAKE) -C arch/$(ARCH)/tools
+ifeq ($(CONFIG_ARCH_RISCSTATION),y)
+SUBDIRS		+=drivers/acorn/char
+DRIVERS		+=drivers/acorn/char/acorn-char.o
+endif
+
+MAKEBOOT	 =$(MAKE) -C arch/$(ARCH)/boot
+MAKETOOLS	 =$(MAKE) -C arch/$(ARCH)/tools
 
 # The following is a hack to get 'constants.h' up
 # to date before starting compilation
@@ -194,21 +313,42 @@ MAKETOOLS	 = $(MAKE) -C arch/$(ARCH)/tools
 $(patsubst %,_dir_%, $(SUBDIRS)): maketools
 $(patsubst %,_modsubdir_%,$(MOD_DIRS)): maketools
 
-symlinks: archsymlinks
+symlinks: include/asm-arm/.arch include/asm-arm/.proc
 
-archsymlinks:
-	$(RM) include/asm-arm/arch include/asm-arm/proc
-	(cd include/asm-arm; ln -sf arch-$(INCDIR) arch; ln -sf proc-$(PROCESSOR) proc)
+#	Update machine arch and proc symlinks if something which affects
+#	them changed.  We use .arch and .proc to indicate when they were
+#	updated last, otherwise make uses the target directory mtime.
+
+include/asm-arm/.arch: $(wildcard include/config/arch/*.h)
+	@echo '  Making asm-arm/arch -> asm-arm/arch-$(INCDIR) symlink'
+	@rm -f include/asm-arm/arch
+	@ln -sf arch-$(INCDIR) include/asm-arm/arch
+	@touch $@
+
+include/asm-arm/.proc: $(wildcard include/config/cpu/32.h) $(wildcard include/config/cpu/26.h)
+	@echo '  Making asm-arm/proc -> asm-arm/proc-$(PROCESSOR) symlink'
+	@rm -f include/asm-arm/proc
+	@ln -sf proc-$(PROCESSOR) include/asm-arm/proc
+	@touch $@
+
+.PHONY: maketools
+maketools: include/asm-arm/.arch include/asm-arm/.proc \
+        include/asm-arm/constants.h include/linux/version.h checkbin
+	@$(MAKETOOLS)
 
 vmlinux: arch/arm/vmlinux.lds
 
-arch/arm/vmlinux.lds: $(LDSCRIPT) dummy
+arch/arm/vmlinux.lds: arch/arm/Makefile $(LDSCRIPT) \
+	$(wildcard include/config/cpu/32.h) \
+	$(wildcard include/config/cpu/26.h) \
+	$(wildcard include/config/arch/*.h)
+	@echo '  Generating $@'
 	@sed 's/TEXTADDR/$(TEXTADDR)/;s/DATAADDR/$(DATAADDR)/' $(LDSCRIPT) >$@
 
 arch/arm/kernel arch/arm/mm arch/arm/lib: dummy
 	$(MAKE) CFLAGS="$(CFLAGS) $(CFLAGS_KERNEL)" $(subst $@, _dir_$@, $@)
 
-bzImage zImage zinstall Image bootpImage install: vmlinux
+bzImage zImage zinstall Image xipImage uImage bootpImage install %.swap: vmlinux
 	@$(MAKEBOOT) $@
 
 CLEAN_FILES	+= \
@@ -216,38 +356,36 @@ CLEAN_FILES	+= \
 
 MRPROPER_FILES	+= \
 	arch/arm/tools/constants.h* \
-	include/asm-arm/arch \
-	include/asm-arm/proc \
+	include/asm-arm/arch include/asm-arm/.arch \
+	include/asm-arm/proc include/asm-arm/.proc \
 	include/asm-arm/constants.h* \
 	include/asm-arm/mach-types.h
 
 # We use MRPROPER_FILES and CLEAN_FILES now
-archmrproper:
+archmrproper: FORCE
 	@/bin/true
 
-archclean:
+archclean: FORCE
 	@$(MAKEBOOT) clean
 
-archdep: scripts/mkdep archsymlinks
+archdep: scripts/mkdep symlinks include/linux/version.h
 	@$(MAKETOOLS) dep
 	@$(MAKEBOOT) dep
-
-# we need version.h
-maketools: checkbin include/linux/version.h
-	@$(MAKETOOLS) all
 
 # Ensure this is ld "2.9.4" or later
 NEW_LINKER	:= $(shell $(LD) --gc-sections --version >/dev/null 2>&1; echo $$?)
 
 ifneq ($(NEW_LINKER),0)
-checkbin:
+checkbin: FORCE
 	@echo '*** ${VERSION}.${PATCHLEVEL} kernels no longer build correctly with old versions of binutils.'
 	@echo '*** Please upgrade your binutils to 2.9.5.'
 	@false
 else
-checkbin:
+checkbin: FORCE
 	@true
 endif
+
+.PHONY: FORCE
 
 # My testing targets (that short circuit a few dependencies)
 zImg:;	@$(MAKEBOOT) zImage

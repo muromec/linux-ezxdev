@@ -15,6 +15,14 @@
  * Rewrote bits to get rid of console_lock
  *	01Mar01 Andrew Morton <andrewm@uow.edu.au>
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by w19962, for EZX platform
+ *
+ * 2005-Apr-05 Add security patch, Ni Jili
+ */
+
 
 #include <linux/kernel.h>
 #include <linux/mm.h>
@@ -26,6 +34,8 @@
 #include <linux/module.h>
 #include <linux/interrupt.h>			/* For in_interrupt() */
 #include <linux/config.h>
+#include <linux/security.h>
+#include <linux/delay.h>
 
 #include <asm/uaccess.h>
 
@@ -36,7 +46,11 @@
 #elif defined(CONFIG_SMP)
 #define LOG_BUF_LEN	(32768)
 #else	
+#ifdef CONFIG_PANIC_LOG
+#define LOG_BUF_LEN     (1024*128)	// same to PANIC_BUFSIZE, also LOGO_SIZE
+#else
 #define LOG_BUF_LEN	(16384)			/* This must be a power of two */
+#endif		// CONFIG_PANIC_LOG
 #endif
 
 #define LOG_BUF_MASK	(LOG_BUF_LEN-1)
@@ -71,6 +85,7 @@ int oops_in_progress;
 static DECLARE_MUTEX(console_sem);
 struct console *console_drivers;
 
+
 /*
  * logbuf_lock protects log_buf, log_start, log_end, con_start and logged_chars
  * It is also used in interesting ways to provide interlocking in
@@ -89,6 +104,15 @@ static unsigned long log_start;			/* Index into log_buf: next char to be read by
 static unsigned long con_start;			/* Index into log_buf: next char to be sent to consoles */
 static unsigned long log_end;			/* Index into log_buf: most-recently-written-char + 1 */
 static unsigned long logged_chars;		/* Number of chars produced since last read+clear operation */
+
+/* The function will fetch current log buf info */
+void logbuf_info(char **start, unsigned long *cnt)
+{
+	printk("****** log buf length: 0x%x, start offset: 0x%x ******\n", LOG_BUF_LEN, (unsigned int)(log_start & LOG_BUF_MASK));
+	*start = log_buf;
+	*cnt = LOG_BUF_LEN;
+}
+
 
 struct console_cmdline console_cmdline[MAX_CMDLINECONSOLES];
 static int preferred_console = -1;
@@ -171,6 +195,10 @@ int do_syslog(int type, char * buf, int len)
 	int do_clear = 0;
 	char c;
 	int error = 0;
+
+	error = security_syslog(type);
+	if (error)
+		return error;
 
 	switch (type) {
 	case 0:		/* Close log */
@@ -294,8 +322,6 @@ out:
 
 asmlinkage long sys_syslog(int type, char * buf, int len)
 {
-	if ((type != 3) && !capable(CAP_SYS_ADMIN))
-		return -EPERM;
 	return do_syslog(type, buf, len);
 }
 
@@ -404,14 +430,17 @@ static void emit_log_char(char c)
  * then changes console_loglevel may break. This is because console_loglevel
  * is inspected when the actual printing occurs.
  */
+
 asmlinkage int printk(const char *fmt, ...)
 {
 	va_list args;
 	unsigned long flags;
-	int printed_len;
+	int printed_len = 0;
 	char *p;
 	static char printk_buf[1024];
 	static int log_level_unknown = 1;
+	int tmp_len = 0;
+	
 
 	if (oops_in_progress) {
 		/* If a crash is occurring, make sure we can't deadlock */
@@ -424,14 +453,42 @@ asmlinkage int printk(const char *fmt, ...)
 	spin_lock_irqsave(&logbuf_lock, flags);
 
 	/* Emit the output into the temporary buffer */
+#if 1
+        /* add T[jiffies] at the beginning of each printk */
+
+        if (            *(fmt + 0) == '<' &&
+                        *(fmt + 1) >= '0' &&
+                        *(fmt + 1) <= '7' &&
+                        *(fmt + 2) == '>') {
+
+                printk_buf[0] = *(fmt + 0);
+                printk_buf[1] = *(fmt + 1);
+                printk_buf[2] = *(fmt + 2);
+                printk_buf[3] = '\0';
+                printed_len = 3;
+                tmp_len = printed_len;
+        }
+
+        printed_len += snprintf((printk_buf + printed_len), 
+                        (sizeof(printk_buf) - printed_len), "T[%ld]", jiffies);
+#endif
+
 	va_start(args, fmt);
-	printed_len = vsnprintf(printk_buf, sizeof(printk_buf), fmt, args);
+	printed_len += vsnprintf((printk_buf + printed_len), 
+                        (sizeof(printk_buf) - printed_len), 
+                        (fmt + tmp_len), args);
 	va_end(args);
 
 	/*
 	 * Copy the output into log_buf.  If the caller didn't provide
 	 * appropriate log level tags, we insert them here
 	 */
+#if	defined(CONFIG_DEBUG_LL)
+	{
+		extern void printascii(const char *);
+		printascii(printk_buf);
+	}
+#endif
 	for (p = printk_buf; *p; p++) {
 		if (log_level_unknown) {
 			if (p[0] != '<' || p[1] < '0' || p[1] > '7' || p[2] != '>') {

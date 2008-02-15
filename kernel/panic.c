@@ -3,6 +3,11 @@
  *
  *  Copyright (C) 1991, 1992  Linus Torvalds
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ *  2005-Nov-11  add panic reboot on EzX platform, Li Qiang
+ */
 
 /*
  * This function is used through-out the kernel (including mm and fs)
@@ -19,7 +24,7 @@
 
 asmlinkage void sys_sync(void);	/* it's really int */
 
-int panic_timeout;
+int panic_timeout = 1;
 
 struct notifier_block *panic_notifier_list;
 
@@ -65,7 +70,11 @@ NORET_TYPE void panic(const char * fmt, ...)
 #ifdef CONFIG_SMP
 	smp_send_stop();
 #endif
-
+	if (panic_timeout > 0)
+	{
+		printk(KERN_EMERG "Kernel paniced, rebooting system in %d seconds...\n", panic_timeout);
+	}
+	
 	notifier_call_chain(&panic_notifier_list, 0, NULL);
 
 	if (panic_timeout > 0)
@@ -81,7 +90,11 @@ NORET_TYPE void panic(const char * fmt, ...)
 		 *	choosing not too. It might crash, be corrupt or do
 		 *	more harm than good for other reasons.
 		 */
+#ifdef CONFIG_ARCH_EZXBASE 
+		ezxpanic_machine_restart(NULL);
+#else
 		machine_restart(NULL);
+#endif
 	}
 #ifdef __sparc__
 	{
@@ -101,6 +114,7 @@ NORET_TYPE void panic(const char * fmt, ...)
 		panic_blink(); 
 #endif
 		CHECK_EMERGENCY_SYNC
+		barrier();
 	}
 }
 

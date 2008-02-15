@@ -64,6 +64,13 @@
  * Move do_SAK() into process context.  Less stack use in devfs functions.
  * alloc_tty_struct() always uses kmalloc() -- Andrew Morton <andrewm@uow.edu.eu> 17Mar01
  */
+/*
+ * Copyright (C) 2003-2005 Motorola Inc.
+ *
+ * modified by A17140, for EZX platform
+ *
+ * 2005-Apr - Motorola - add security LSM patch by Ni Jili, for EZX platform
+ */
 
 #include <linux/config.h>
 #include <linux/types.h>
@@ -90,6 +97,12 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/smp_lock.h>
+#include <linux/security.h>
+
+#if defined(CONFIG_SH_KGDB_CONSOLE) || \
+    defined(__arm__) && defined(CONFIG_KGDB_CONSOLE)
+#include <asm/kgdb.h>
+#endif
 
 #include <asm/uaccess.h>
 #include <asm/system.h>
@@ -156,14 +169,19 @@ extern void con3215_init(void);
 extern void tty3215_init(void);
 extern void tub3270_con_init(void);
 extern void tub3270_init(void);
-extern void rs285_console_init(void);
-extern void sa1100_rs_console_init(void);
+extern void uart_console_init(void);
 extern void sgi_serial_console_init(void);
 extern void sci_console_init(void);
 extern void tx3912_console_init(void);
 extern void tx3912_rs_init(void);
+extern void tx4925_sio_console_init(void);
+extern void tx4925_sio_init(void);
+extern void tx4927_sio_console_init(void);
+extern void tx4927_sio_init(void);
 extern void txx927_console_init(void);
 extern void sb1250_serial_console_init(void);
+extern void gt64xxx_mpsc_console_init(void);
+extern void sicc_console_init(void);
 
 #ifndef MIN
 #define MIN(a,b)	((a) < (b) ? (a) : (b))
@@ -725,6 +743,7 @@ static inline ssize_t do_tty_write(
 			ret = -ERESTARTSYS;
 			if (signal_pending(current))
 				break;
+			debug_lock_break(551);
 			if (current->need_resched)
 				schedule();
 		}
@@ -1467,6 +1486,10 @@ static int tty_fasync(int fd, struct file * filp, int on)
 		if (!waitqueue_active(&tty->read_wait))
 			tty->minimum_to_wake = 1;
 		if (filp->f_owner.pid == 0) {
+			retval = security_file_set_fowner(filp);
+			if (retval)
+				return retval;
+
 			filp->f_owner.pid = (-tty->pgrp) ? : current->pid;
 			filp->f_owner.uid = current->uid;
 			filp->f_owner.euid = current->euid;
@@ -1902,6 +1925,8 @@ void do_SAK(struct tty_struct *tty)
  * This routine is called out of the software interrupt to flush data
  * from the flip buffer to the line discipline.
  */
+spinlock_t flush_to_ldisc_lock = SPIN_LOCK_UNLOCKED;
+
 static void flush_to_ldisc(void *private_)
 {
 	struct tty_struct *tty = (struct tty_struct *) private_;
@@ -1910,10 +1935,24 @@ static void flush_to_ldisc(void *private_)
 	int		count;
 	unsigned long flags;
 
-	if (test_bit(TTY_DONT_FLIP, &tty->flags)) {
+       if(tty->driver.btuart)
+	     spin_lock_irqsave(&flush_to_ldisc_lock, flags);
+
+	if (test_bit(TTY_DONT_FLIP, &tty->flags)  || ((test_bit(TTY_THROTTLED, &tty->flags) &&tty->driver.btuart)) ) {
+		queue_task(&tty->flip.tqueue, &tq_timer);
+              if(tty->driver.btuart)
+                   spin_unlock_irqrestore(&flush_to_ldisc_lock, flags) ;		   
+		return;
+	}
+
+#if defined(CONFIG_ARCH_EZX_A780) || defined(CONFIG_ARCH_EZX_E680)
+	if(tty && tty->driver.btuart &&
+	  ((N_TTY_BUF_SIZE - tty->read_cnt - 2) < (512 + 128))) {
 		queue_task(&tty->flip.tqueue, &tq_timer);
 		return;
 	}
+#endif
+
 	if (tty->flip.buf_num) {
 		cp = tty->flip.char_buf + TTY_FLIPBUF_SIZE;
 		fp = tty->flip.flag_buf + TTY_FLIPBUF_SIZE;
@@ -1936,6 +1975,9 @@ static void flush_to_ldisc(void *private_)
 	restore_flags(flags);
 	
 	tty->ldisc.receive_buf(tty, cp, fp, count);
+
+       if(tty->driver.btuart)
+            spin_unlock_irqrestore(&flush_to_ldisc_lock, flags);	   
 }
 
 /*
@@ -2208,9 +2250,17 @@ void __init console_init(void)
 #ifdef CONFIG_VT
 	con_init();
 #endif
+#if defined(CONFIG_SH_KGDB_CONSOLE) || \
+    defined(__arm__) && defined(CONFIG_KGDB_CONSOLE)
+	kgdb_console_init();
+#endif
 #ifdef CONFIG_AU1000_SERIAL_CONSOLE
 	au1000_serial_console_init();
 #endif
+#ifdef CONFIG_SERIAL_SICC_CONSOLE
+	sicc_console_init();
+#endif
+
 #ifdef CONFIG_SERIAL_CONSOLE
 #if (defined(CONFIG_8xx) || defined(CONFIG_8260))
 	console_8xx_init();
@@ -2251,17 +2301,11 @@ void __init console_init(void)
 #ifdef CONFIG_STDIO_CONSOLE
 	stdio_console_init();
 #endif
-#ifdef CONFIG_SERIAL_21285_CONSOLE
-	rs285_console_init();
-#endif
-#ifdef CONFIG_SERIAL_SA1100_CONSOLE
-	sa1100_rs_console_init();
+#ifdef CONFIG_SERIAL_CORE_CONSOLE
+	uart_console_init();
 #endif
 #ifdef CONFIG_ARC_CONSOLE
 	arc_console_init();
-#endif
-#ifdef CONFIG_SERIAL_AMBA_CONSOLE
-	ambauart_console_init();
 #endif
 #ifdef CONFIG_SERIAL_TX3912_CONSOLE
 	tx3912_console_init();
@@ -2271,6 +2315,9 @@ void __init console_init(void)
 #endif
 #ifdef CONFIG_SIBYTE_SB1250_DUART_CONSOLE
 	sb1250_serial_console_init();
+#endif
+#ifdef CONFIG_GT64XXX_CONSOLE
+	gt64xxx_mpsc_console_init();
 #endif
 }
 
@@ -2362,6 +2409,12 @@ void __init tty_init(void)
 #ifdef CONFIG_SERIAL_TX3912
 	tx3912_rs_init();
 #endif
+#ifdef CONFIG_TX4925_SIO
+	tx4925_sio_init();
+#endif
+#ifdef CONFIG_TX4927_SIO
+	tx4927_sio_init();
+#endif
 #ifdef CONFIG_ROCKETPORT
 	rp_init();
 #endif
@@ -2410,5 +2463,11 @@ void __init tty_init(void)
 #endif
 #ifdef CONFIG_A2232
 	a2232board_init();
+#endif
+#ifdef CONFIG_TXX927_SERIAL_CONSOLE
+	txx927_console_init();
+#endif
+#ifdef CONFIG_SIBYTE_SB1250_DUART_CONSOLE
+	sb1250_serial_console_init();
 #endif
 }

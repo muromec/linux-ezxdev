@@ -33,6 +33,16 @@
 #define CC_N_BIT	(1 << 31)
 #define PCMASK		0
 
+/* 2.5 versions */
+#define PSR_T_BIT	0x00000020
+#define PSR_F_BIT	0x00000040
+#define PSR_I_BIT	0x00000080
+#define PSR_J_BIT	0x01000000
+#define PSR_V_BIT	0x10000000
+#define PSR_C_BIT	0x20000000
+#define PSR_Z_BIT	0x40000000
+#define PSR_N_BIT	0x80000000
+
 #ifndef __ASSEMBLY__
 
 /* this struct defines the way the registers are stored on the

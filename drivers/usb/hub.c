@@ -5,7 +5,10 @@
  * (C) Copyright 1999 Johannes Erdfelt
  * (C) Copyright 1999 Gregory P. Smith
  * (C) Copyright 2001 Brad Hards (bhards@bigpond.net.au)
- *
+ *	
+ *  Copyright (C) 2005 - Motorola  	
+ *  History: 
+ *  2005-Aug-01   Add handshake between AP and BP before ICL establish in EZX platform   [w20535@motorola.com]
  */
 
 #include <linux/config.h>
@@ -27,8 +30,11 @@
 #include <asm/semaphore.h>
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
+#include <asm/hardware.h>
 
 #include "hub.h"
+
+#define WAKE_UP_BP_UDELAY	125
 
 /* Wakes up khubd */
 static spinlock_t hub_event_lock = SPIN_LOCK_UNLOCKED;
@@ -595,6 +601,7 @@ static int usb_hub_port_reset(struct usb_device *hub, int port,
 {
 	int i, status;
 
+	printk("%s: Reset the port[%d].\n", __FUNCTION__, port);
 	/* Reset the port */
 	for (i = 0; i < HUB_RESET_TRIES; i++) {
 		usb_set_port_feature(hub, port + 1, USB_PORT_FEAT_RESET);
@@ -717,6 +724,49 @@ static void usb_hub_port_connect_change(struct usb_hub *hubstate, int port,
 		}
 
 		hub->children[port] = dev;
+		
+		/* add by Levis for wakeup BP */
+		int begin = 0;
+#ifdef CONFIG_ARCH_EZXBASE
+			set_GPIO_mode(GPIO_IN | GPIO_BP_RDY);
+			if(!GPIO_is_high(GPIO_BP_RDY))
+			{
+				if(GPIO_is_high(GPIO_AP_RDY ))
+				{
+					GPCR(GPIO_AP_RDY ) = GPIO_bit(GPIO_AP_RDY );
+					udelay(WAKE_UP_BP_UDELAY);
+					GPSR(GPIO_AP_RDY ) = GPIO_bit(GPIO_AP_RDY );
+				}else {
+					GPSR(GPIO_AP_RDY ) = GPIO_bit(GPIO_AP_RDY );
+					udelay(WAKE_UP_BP_UDELAY);
+					GPCR(GPIO_AP_RDY ) = GPIO_bit(GPIO_AP_RDY );
+				}
+				begin = jiffies;
+				while(!GPIO_is_high(GPIO_BP_RDY) && (jiffies < (begin+HZ)))					;
+				if(!GPIO_is_high(GPIO_BP_RDY))
+				{
+					printk("%s: Wakeup BP timeout! BP is still in sleep state!\n", __FUNCTION__);		
+				}				
+			}
+#else  
+		set_GPIO_mode(GPIO_IN | 41);
+		if(GPIO_is_high(41))
+		{
+			if(GPIO_is_high(GPIO_MCU_INT_SW))
+				GPCR(GPIO_MCU_INT_SW) = GPIO_bit(GPIO_MCU_INT_SW);		
+			else {
+				GPSR(GPIO_MCU_INT_SW) = GPIO_bit(GPIO_MCU_INT_SW);		
+			}	
+			begin = jiffies;
+			while(GPIO_is_high(41) && (jiffies < (begin+HZ))) printk("%s: waitting for BP active!\n", __FUNCTION__);
+			if(GPIO_is_high(GPIO_MCU_INT_SW))
+				GPCR(GPIO_MCU_INT_SW) = GPIO_bit(GPIO_MCU_INT_SW);		
+			else {
+				GPSR(GPIO_MCU_INT_SW) = GPIO_bit(GPIO_MCU_INT_SW);		
+			}	
+		}
+#endif	
+		/* end Levis */
 
 		/* Reset the device */
 		if (usb_hub_port_reset(hub, port, dev, delay)) {
@@ -816,6 +866,7 @@ static void usb_hub_events(void)
 
 		if (hub->error) {
 			dbg("resetting hub %d for error %d", dev->devnum, hub->error);
+			printk("resetting hub %d for error %d\n", dev->devnum, hub->error);
 
 			if (usb_hub_reset(hub)) {
 				err("error resetting hub %d - disconnecting", dev->devnum);
@@ -828,7 +879,7 @@ static void usb_hub_events(void)
 			hub->error = 0;
 		}
 
-		for (i = 0; i < hub->descriptor->bNbrPorts; i++) {
+		for (i = 2; i < hub->descriptor->bNbrPorts; i++) {
 			ret = usb_hub_port_status(dev, i, &portstatus, &portchange);
 			if (ret < 0) {
 				continue;
@@ -1076,7 +1127,7 @@ int usb_reset_device(struct usb_device *dev)
 			else
 				err("USB device descriptor short read (expected %Zi, got %i)", sizeof(dev->descriptor), ret);
         
-			clear_bit(dev->devnum, &dev->bus->devmap.devicemap);
+			clear_bit(dev->devnum, (volatile unsigned long *)&dev->bus->devmap.devicemap);
 			dev->devnum = -1;
 			return -EIO;
 		}
@@ -1085,7 +1136,7 @@ int usb_reset_device(struct usb_device *dev)
 		if (ret < 0) {
 			err("unable to get configuration (error=%d)", ret);
 			usb_destroy_configuration(dev);
-			clear_bit(dev->devnum, &dev->bus->devmap.devicemap);
+			clear_bit(dev->devnum, (volatile unsigned long *)&dev->bus->devmap.devicemap);
 			dev->devnum = -1;
 			return 1;
 		}

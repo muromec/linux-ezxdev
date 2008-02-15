@@ -1,19 +1,13 @@
 /*
- * LCD, LED and Button interface for Cobalt
+ *	LCD, LED, and Button interface for Cobalt	
+ *      Andrew Bose
  *
- * This file is subject to the terms and conditions of the GNU General Public
- * License.  See the file "COPYING" in the main directory of this archive
- * for more details.
- *
- * Copyright (C) 1996, 1997 by Andrew Bose
- *
- * Linux kernel version history:
- *       March 2001: Ported from 2.0.34  by Liam Davies
  *
  */
 
 #define RTC_IO_EXTENT	0x10    /*Only really two ports, but...	*/
 
+#include <linux/module.h>
 #include <linux/types.h>
 #include <linux/errno.h>
 #include <linux/miscdevice.h>
@@ -38,8 +32,6 @@ static int lcd_present = 1;
 
 int led_state = 0;
 
-#if defined(CONFIG_TULIP) && 0
-
 #define MAX_INTERFACES	8
 static linkcheck_func_t linkcheck_callbacks[MAX_INTERFACES];
 static void *linkcheck_cookies[MAX_INTERFACES];
@@ -54,7 +46,6 @@ int lcd_register_linkcheck_func(int iface_num, void *func, void *cookie)
 	linkcheck_cookies[iface_num] = cookie;
 	return 0;
 }
-#endif
 
 static int lcd_ioctl(struct inode *inode, struct file *file, unsigned int cmd, 
 			unsigned long arg)
@@ -364,15 +355,14 @@ static int lcd_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
 		if(copy_from_user(&button_display, (struct lcd_display *)arg, sizeof(button_display)))
 		  return -EFAULT;
 		iface_num = button_display.buttons;
-#if defined(CONFIG_TULIP) && 0
 		if (iface_num >= 0 &&
 		    iface_num < MAX_INTERFACES &&
 		    linkcheck_callbacks[iface_num] != NULL) {
 			button_display.buttons =
 				linkcheck_callbacks[iface_num](linkcheck_cookies[iface_num]);
-		} else
-#endif
+		} else {
 			button_display.buttons = 0;
+		}
 
                 if(__copy_to_user((struct lcd_display*)arg, &button_display, sizeof(struct lcd_display)))
 		  return -EFAULT;
@@ -628,5 +618,5 @@ return (  (READ_FLASH(address) & 0x20) ==  0x20 );
 
 }
 
-
-
+EXPORT_SYMBOL(lcd_register_linkcheck_func);
+MODULE_LICENSE("GPL");

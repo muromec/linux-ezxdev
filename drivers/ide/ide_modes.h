@@ -208,8 +208,12 @@ byte ide_get_best_pio_mode (ide_drive_t *drive, byte mode_wanted, byte max_mode,
 		 * Conservative "downgrade" for all pre-ATA2 drives
 		 */
 		if (pio_mode && pio_mode < 4) {
+/* The microdrive on the interposer card of the PowerK2 seems to run much
+   better if it is not downgraded */
+#ifndef CONFIG_POWERK2 
 			pio_mode--;
 			overridden = 1;
+#endif /* CONFIG_POWERK2 */
 #if 0
 			use_iordy = (pio_mode > 2);
 #endif

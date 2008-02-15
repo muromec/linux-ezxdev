@@ -59,6 +59,7 @@ typedef struct __wait_queue wait_queue_t;
 # define wq_write_lock_irq write_lock_irq
 # define wq_write_lock_irqsave write_lock_irqsave
 # define wq_write_unlock_irqrestore write_unlock_irqrestore
+# define wq_write_unlock_irq write_unlock_irq
 # define wq_write_unlock write_unlock
 #else
 # define wq_lock_t spinlock_t
@@ -71,6 +72,7 @@ typedef struct __wait_queue wait_queue_t;
 # define wq_write_lock_irq spin_lock_irq
 # define wq_write_lock_irqsave spin_lock_irqsave
 # define wq_write_unlock_irqrestore spin_unlock_irqrestore
+# define wq_write_unlock_irq spin_unlock_irq
 # define wq_write_unlock spin_unlock
 #endif
 

@@ -439,6 +439,8 @@
 #define PNP_IRQ_FRMT 0x0022 /*  PNP small item IRQ format */
 #ifdef CONFIG_SH_HICOSH4
 #define CS8900_IRQ_MAP 0x0002 /* HiCO-SH4 board has its IRQ on #1 */
+#elif defined(CONFIG_BEECH)
+#define CS8900_IRQ_MAP 1 << UIC_IRQ_EIR4
 #else
 #define CS8900_IRQ_MAP 0x1c20 /*  This IRQ map is fixed */
 #endif

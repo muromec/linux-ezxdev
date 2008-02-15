@@ -12,6 +12,8 @@
  * lookup logic.
  */
 /* [Feb-Apr 2000, AV] Rewrite to the new namespace architecture.
+ *
+ * add security patch for EzX by Jili Ni 200504
  */
 
 #include <linux/init.h>
@@ -22,6 +24,7 @@
 #include <linux/dnotify.h>
 #include <linux/smp_lock.h>
 #include <linux/personality.h>
+#include <linux/security.h>
 
 #include <asm/namei.h>
 #include <asm/uaccess.h>
@@ -198,14 +201,23 @@ int vfs_permission(struct inode * inode, int mask)
 
 int permission(struct inode * inode,int mask)
 {
+	int retval;
+	int submask;
+
+	/* Ordinary permission routines do not understand MAY_APPEND. */
+	submask = mask & ~MAY_APPEND;
+
 	if (inode->i_op && inode->i_op->permission) {
-		int retval;
 		lock_kernel();
-		retval = inode->i_op->permission(inode, mask);
+		retval = inode->i_op->permission(inode, submask);
 		unlock_kernel();
-		return retval;
+	} else {
+		retval = vfs_permission(inode, submask);
 	}
-	return vfs_permission(inode, mask);
+	if (retval)
+		return retval;
+
+	return security_inode_permission(inode, mask);
 }
 
 /*
@@ -334,7 +346,7 @@ static struct dentry * real_lookup(struct dentry * parent, struct qstr * name, i
  */
 static inline int do_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
-	int err;
+	int err = -ELOOP;
 	if (current->link_count >= 5)
 		goto loop;
 	if (current->total_link_count >= 40)
@@ -343,6 +355,9 @@ static inline int do_follow_link(struct dentry *dentry, struct nameidata *nd)
 		current->state = TASK_RUNNING;
 		schedule();
 	}
+	err = security_inode_follow_link(dentry, nd);
+	if (err)
+		goto loop;
 	current->link_count++;
 	current->total_link_count++;
 	UPDATE_ATIME(dentry->d_inode);
@@ -351,7 +366,7 @@ static inline int do_follow_link(struct dentry *dentry, struct nameidata *nd)
 	return err;
 loop:
 	path_release(nd);
-	return -ELOOP;
+	return err;
 }
 
 static inline int __follow_up(struct vfsmount **mnt, struct dentry **base)
@@ -971,14 +986,20 @@ int vfs_create(struct inode *dir, struct dentry *dentry, int mode)
 	if (!dir->i_op || !dir->i_op->create)
 		goto exit_lock;
 
+	error = security_inode_create(dir, dentry, mode);
+	if (error)
+		goto exit_lock;
+
 	DQUOT_INIT(dir);
 	lock_kernel();
 	error = dir->i_op->create(dir, dentry, mode);
 	unlock_kernel();
 exit_lock:
 	up(&dir->i_zombie);
-	if (!error)
+	if (!error) {
 		inode_dir_notify(dir, DN_CREATE);
+		security_inode_post_create(dir, dentry, mode);
+	}
 	return error;
 }
 
@@ -1005,6 +1026,11 @@ int open_namei(const char * pathname, int flag, int mode, struct nameidata *nd)
 	int count = 0;
 
 	acc_mode = ACC_MODE(flag);
+
+	/* Allow the LSM permission hook to distinguish append 
+	   access from general write access. */
+	if (flag & O_APPEND)
+		acc_mode |= MAY_APPEND;
 
 	/*
 	 * The simplest case - just a plain lookup.
@@ -1046,8 +1072,9 @@ do_last:
 
 	/* Negative dentry, just create the file */
 	if (!dentry->d_inode) {
-		error = vfs_create(dir->d_inode, dentry,
-				   mode & ~current->fs->umask);
+		if (!IS_POSIX_ACL(dir->d_inode))
+			mode &= ~current->fs->umask;
+		error = vfs_create(dir->d_inode, dentry, mode);
 		up(&dir->d_inode->i_sem);
 		dput(nd->dentry);
 		nd->dentry = dentry;
@@ -1182,6 +1209,9 @@ do_link:
 	 * stored in nd->last.name and we will have to putname() it when we
 	 * are done. Procfs-like symlinks just set LAST_BIND.
 	 */
+	error = security_inode_follow_link(dentry, nd);
+	if (error)
+		goto exit_dput;
 	UPDATE_ATIME(dentry->d_inode);
 	error = dentry->d_inode->i_op->follow_link(dentry, nd);
 	dput(dentry);
@@ -1248,14 +1278,20 @@ int vfs_mknod(struct inode *dir, struct dentry *dentry, int mode, dev_t dev)
 	if (!dir->i_op || !dir->i_op->mknod)
 		goto exit_lock;
 
+	error = security_inode_mknod(dir, dentry, mode, dev);
+	if (error)
+		goto exit_lock;
+
 	DQUOT_INIT(dir);
 	lock_kernel();
 	error = dir->i_op->mknod(dir, dentry, mode, dev);
 	unlock_kernel();
 exit_lock:
 	up(&dir->i_zombie);
-	if (!error)
+	if (!error) {
 		inode_dir_notify(dir, DN_CREATE);
+		security_inode_post_mknod(dir, dentry, mode, dev);
+	}
 	return error;
 }
 
@@ -1278,7 +1314,8 @@ asmlinkage long sys_mknod(const char * filename, int mode, dev_t dev)
 	dentry = lookup_create(&nd, 0);
 	error = PTR_ERR(dentry);
 
-	mode &= ~current->fs->umask;
+	if (!IS_POSIX_ACL(nd.dentry->d_inode))
+		mode &= ~current->fs->umask;
 	if (!IS_ERR(dentry)) {
 		switch (mode & S_IFMT) {
 		case 0: case S_IFREG:
@@ -1316,16 +1353,22 @@ int vfs_mkdir(struct inode *dir, struct dentry *dentry, int mode)
 	if (!dir->i_op || !dir->i_op->mkdir)
 		goto exit_lock;
 
-	DQUOT_INIT(dir);
 	mode &= (S_IRWXUGO|S_ISVTX);
+	error = security_inode_mkdir(dir, dentry, mode);
+	if (error)
+		goto exit_lock;
+
+	DQUOT_INIT(dir);
 	lock_kernel();
 	error = dir->i_op->mkdir(dir, dentry, mode);
 	unlock_kernel();
 
 exit_lock:
 	up(&dir->i_zombie);
-	if (!error)
+	if (!error) {
 		inode_dir_notify(dir, DN_CREATE);
+		security_inode_post_mkdir(dir,dentry, mode);
+	}
 	return error;
 }
 
@@ -1346,8 +1389,9 @@ asmlinkage long sys_mkdir(const char * pathname, int mode)
 		dentry = lookup_create(&nd, 1);
 		error = PTR_ERR(dentry);
 		if (!IS_ERR(dentry)) {
-			error = vfs_mkdir(nd.dentry->d_inode, dentry,
-					  mode & ~current->fs->umask);
+			if (!IS_POSIX_ACL(nd.dentry->d_inode))
+				mode &= ~current->fs->umask;
+			error = vfs_mkdir(nd.dentry->d_inode, dentry, mode);
 			dput(dentry);
 		}
 		up(&nd.dentry->d_inode->i_sem);
@@ -1409,11 +1453,14 @@ int vfs_rmdir(struct inode *dir, struct dentry *dentry)
 	if (d_mountpoint(dentry))
 		error = -EBUSY;
 	else {
-		lock_kernel();
-		error = dir->i_op->rmdir(dir, dentry);
-		unlock_kernel();
-		if (!error)
-			dentry->d_inode->i_flags |= S_DEAD;
+		error = security_inode_rmdir(dir, dentry);
+		if (!error) {
+			lock_kernel();
+			error = dir->i_op->rmdir(dir, dentry);
+			unlock_kernel();
+			if (!error)
+				dentry->d_inode->i_flags |= S_DEAD;
+		}
 	}
 	double_up(&dir->i_zombie, &dentry->d_inode->i_zombie);
 	if (!error) {
@@ -1479,11 +1526,14 @@ int vfs_unlink(struct inode *dir, struct dentry *dentry)
 			if (d_mountpoint(dentry))
 				error = -EBUSY;
 			else {
-				lock_kernel();
-				error = dir->i_op->unlink(dir, dentry);
-				unlock_kernel();
-				if (!error)
-					d_delete(dentry);
+				error = security_inode_unlink(dir, dentry);
+				if (!error) {
+					lock_kernel();
+					error = dir->i_op->unlink(dir, dentry);
+					unlock_kernel();
+					if (!error)
+						d_delete(dentry);
+				}
 			}
 		}
 	}
@@ -1548,6 +1598,10 @@ int vfs_symlink(struct inode *dir, struct dentry *dentry, const char *oldname)
 	if (!dir->i_op || !dir->i_op->symlink)
 		goto exit_lock;
 
+	error = security_inode_symlink(dir, dentry, oldname);
+	if (error)
+		goto exit_lock;
+
 	DQUOT_INIT(dir);
 	lock_kernel();
 	error = dir->i_op->symlink(dir, dentry, oldname);
@@ -1555,8 +1609,10 @@ int vfs_symlink(struct inode *dir, struct dentry *dentry, const char *oldname)
 
 exit_lock:
 	up(&dir->i_zombie);
-	if (!error)
+	if (!error) {
 		inode_dir_notify(dir, DN_CREATE);
+		security_inode_post_symlink(dir, dentry, oldname);
+	}
 	return error;
 }
 
@@ -1621,6 +1677,10 @@ int vfs_link(struct dentry *old_dentry, struct inode *dir, struct dentry *new_de
 	if (!dir->i_op || !dir->i_op->link)
 		goto exit_lock;
 
+	error = security_inode_link(old_dentry, dir, new_dentry);
+	if (error)
+		goto exit_lock;
+
 	DQUOT_INIT(dir);
 	lock_kernel();
 	error = dir->i_op->link(old_dentry, dir, new_dentry);
@@ -1628,8 +1688,10 @@ int vfs_link(struct dentry *old_dentry, struct inode *dir, struct dentry *new_de
 
 exit_lock:
 	up(&dir->i_zombie);
-	if (!error)
+	if (!error) {
 		inode_dir_notify(dir, DN_CREATE);
+		security_inode_post_link(old_dentry, dir, new_dentry);
+	}
 	return error;
 }
 
@@ -1741,6 +1803,10 @@ int vfs_rename_dir(struct inode *old_dir, struct dentry *old_dentry,
 	if (error)
 		return error;
 
+	error = security_inode_rename(old_dir, old_dentry, new_dir, new_dentry);
+	if (error)
+		return error;
+
 	DQUOT_INIT(old_dir);
 	DQUOT_INIT(new_dir);
 	down(&old_dir->i_sb->s_vfs_rename_sem);
@@ -1777,8 +1843,11 @@ int vfs_rename_dir(struct inode *old_dir, struct dentry *old_dentry,
 		double_up(&old_dir->i_zombie,
 			  &new_dir->i_zombie);
 		
-	if (!error)
+	if (!error) {
 		d_move(old_dentry,new_dentry);
+		security_inode_post_rename(old_dir, old_dentry,
+							new_dir, new_dentry);
+	}
 out_unlock:
 	up(&old_dir->i_sb->s_vfs_rename_sem);
 	return error;
@@ -1809,6 +1878,10 @@ int vfs_rename_other(struct inode *old_dir, struct dentry *old_dentry,
 	if (!old_dir->i_op || !old_dir->i_op->rename)
 		return -EPERM;
 
+	error = security_inode_rename(old_dir, old_dentry, new_dir, new_dentry);
+	if (error)
+		return error;
+
 	DQUOT_INIT(old_dir);
 	DQUOT_INIT(new_dir);
 	double_down(&old_dir->i_zombie, &new_dir->i_zombie);
@@ -1823,6 +1896,7 @@ int vfs_rename_other(struct inode *old_dir, struct dentry *old_dentry,
 	if (!(old_dir->i_sb->s_type->fs_flags & FS_ODD_RENAME)) {
 		d_move(old_dentry, new_dentry);
 	}
+	security_inode_post_rename(old_dir, old_dentry, new_dir, new_dentry);
 	return 0;
 }
 

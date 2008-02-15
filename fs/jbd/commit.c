@@ -212,6 +212,9 @@ write_out_data_locked:
 				__journal_remove_journal_head(bh);
 				refile_buffer(bh);
 				__brelse(bh);
+				debug_lock_break(2);
+				if (conditional_schedule_needed())
+					break;
 			}
 		}
 		if (bufs == ARRAY_SIZE(wbuf)) {
@@ -235,8 +238,7 @@ write_out_data_locked:
 		journal_brelse_array(wbuf, bufs);
 		lock_journal(journal);
 		spin_lock(&journal_datalist_lock);
-		if (bufs)
-			goto write_out_data_locked;
+		goto write_out_data_locked;
 	}
 
 	/*
@@ -272,6 +274,14 @@ sync_datalist_empty:
 	 */
 	while ((jh = commit_transaction->t_async_datalist)) {
 		struct buffer_head *bh = jh2bh(jh);
+		if (conditional_schedule_needed()) {
+			debug_lock_break(551);
+			spin_unlock(&journal_datalist_lock);
+			unlock_journal(journal);
+			lock_journal(journal);
+			spin_lock(&journal_datalist_lock);
+			continue;
+		}
 		if (buffer_locked(bh)) {
 			spin_unlock(&journal_datalist_lock);
 			unlock_journal(journal);

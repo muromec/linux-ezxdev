@@ -9,7 +9,8 @@
  * Packets are stored in sk_buffs and have the 2-byte PPP protocol
  * number at the start, but not the address and control bytes.
  *
- * Copyright 1999 Paul Mackerras.
+ *  Copyright 1999 Paul Mackerras.
+ *  Copyright (C) 2004 Motorola, Inc.
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
@@ -18,10 +19,18 @@
  *
  * ==FILEVERSION 20000322==
  */
-
+/*
+ * Revision History:
+ *                    Modification     Tracking
+ * Author                 Date          Number     Description of Changes
+ * ----------------   ------------    ----------   -------------------------
+ * Liang Jian(w19964)  06/09/2004     LIBee19433   Fix STK class E potential bug
+ *
+ */
 #include <linux/list.h>
 #include <linux/skbuff.h>
 #include <linux/poll.h>
+#include <linux/ppp_defs.h>
 
 struct ppp_channel;
 
@@ -67,6 +76,8 @@ extern int ppp_channel_index(struct ppp_channel *);
 
 /* Get the unit number associated with a channel, or -1 if none */
 extern int ppp_unit_number(struct ppp_channel *);
+
+extern int ppp_idle_time( struct ppp_channel *, struct ppp_idle * );
 
 /*
  * SMP locking notes:

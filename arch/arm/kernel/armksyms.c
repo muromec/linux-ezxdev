@@ -46,6 +46,8 @@ extern void __bad_xchg(volatile void *ptr, int size);
  */
 extern int sys_write(int, const char *, int);
 extern int sys_read(int, char *, int);
+extern long sys_ioctl(unsigned int fd, unsigned int cmd,
+		      unsigned long arg);
 extern int sys_lseek(int, off_t, int);
 extern int sys_exit(int);
 
@@ -62,9 +64,12 @@ extern void __modsi3(void);
 extern void __muldi3(void);
 extern void __ucmpdi2(void);
 extern void __udivdi3(void);
+extern void __umoddi3(void);
 extern void __udivmoddi4(void);
 extern void __udivsi3(void);
 extern void __umodsi3(void);
+extern void abort(void);
+extern void do_div64(void);
 
 extern void ret_from_exception(void);
 extern void fpundefinstr(void);
@@ -109,6 +114,7 @@ EXPORT_SYMBOL(dump_fpu);
 EXPORT_SYMBOL(udelay);
 #ifdef CONFIG_CPU_32
 EXPORT_SYMBOL(__ioremap);
+EXPORT_SYMBOL(__ioremap_readonly);
 EXPORT_SYMBOL(__iounmap);
 #endif
 EXPORT_SYMBOL(kernel_thread);
@@ -189,6 +195,7 @@ EXPORT_SYMBOL_NOVERS(memcpy);
 EXPORT_SYMBOL_NOVERS(memmove);
 EXPORT_SYMBOL_NOVERS(memcmp);
 EXPORT_SYMBOL_NOVERS(memscan);
+EXPORT_SYMBOL_NOVERS(memchr);
 EXPORT_SYMBOL_NOVERS(__memzero);
 
 	/* user mem (segment) */
@@ -200,7 +207,7 @@ EXPORT_SYMBOL(__arch_strnlen_user);
 
 	/* consistent area handling */
 EXPORT_SYMBOL(pci_alloc_consistent);
-EXPORT_SYMBOL(consistent_alloc);
+EXPORT_SYMBOL(__consistent_alloc);
 EXPORT_SYMBOL(consistent_free);
 EXPORT_SYMBOL(consistent_sync);
 
@@ -228,20 +235,33 @@ EXPORT_SYMBOL_NOVERS(__modsi3);
 EXPORT_SYMBOL_NOVERS(__muldi3);
 EXPORT_SYMBOL_NOVERS(__ucmpdi2);
 EXPORT_SYMBOL_NOVERS(__udivdi3);
+EXPORT_SYMBOL_NOVERS(__umoddi3);
 EXPORT_SYMBOL_NOVERS(__udivmoddi4);
 EXPORT_SYMBOL_NOVERS(__udivsi3);
 EXPORT_SYMBOL_NOVERS(__umodsi3);
 EXPORT_SYMBOL_NOVERS(abort);
+EXPORT_SYMBOL_NOVERS(do_div64);
 
 	/* bitops */
-EXPORT_SYMBOL(set_bit);
-EXPORT_SYMBOL(test_and_set_bit);
-EXPORT_SYMBOL(clear_bit);
-EXPORT_SYMBOL(test_and_clear_bit);
-EXPORT_SYMBOL(change_bit);
-EXPORT_SYMBOL(test_and_change_bit);
-EXPORT_SYMBOL(find_first_zero_bit);
-EXPORT_SYMBOL(find_next_zero_bit);
+EXPORT_SYMBOL(_set_bit_le);
+EXPORT_SYMBOL(_test_and_set_bit_le);
+EXPORT_SYMBOL(_clear_bit_le);
+EXPORT_SYMBOL(_test_and_clear_bit_le);
+EXPORT_SYMBOL(_change_bit_le);
+EXPORT_SYMBOL(_test_and_change_bit_le);
+EXPORT_SYMBOL(_find_first_zero_bit_le);
+EXPORT_SYMBOL(_find_next_zero_bit_le);
+
+#ifdef __ARMEB__
+EXPORT_SYMBOL(_set_bit_be);
+EXPORT_SYMBOL(_test_and_set_bit_be);
+EXPORT_SYMBOL(_clear_bit_be);
+EXPORT_SYMBOL(_test_and_clear_bit_be);
+EXPORT_SYMBOL(_change_bit_be);
+EXPORT_SYMBOL(_test_and_change_bit_be);
+EXPORT_SYMBOL(_find_first_zero_bit_be);
+EXPORT_SYMBOL(_find_next_zero_bit_be);
+#endif
 
 	/* elf */
 EXPORT_SYMBOL(elf_platform);
@@ -250,6 +270,7 @@ EXPORT_SYMBOL(elf_hwcap);
 	/* syscalls */
 EXPORT_SYMBOL(sys_write);
 EXPORT_SYMBOL(sys_read);
+EXPORT_SYMBOL(sys_ioctl);
 EXPORT_SYMBOL(sys_lseek);
 EXPORT_SYMBOL(sys_open);
 EXPORT_SYMBOL(sys_exit);

@@ -1,3 +1,8 @@
+/*
+ *
+ * 2005-Apr-04 Motorola  Add security patch 
+ */
+
 #ifndef _LINUX_ELF_H
 #define _LINUX_ELF_H
 
@@ -173,6 +178,8 @@ typedef __s64	Elf64_Sxword;
 #define AT_PLATFORM 15  /* string identifying CPU for optimizations */
 #define AT_HWCAP  16    /* arch dependent hints at CPU capabilities */
 #define AT_CLKTCK 17	/* frequency at which times() increments */
+
+#define AT_SECURE 23   /* secure mode boolean */
 
 typedef struct dynamic{
   Elf32_Sword d_tag;
@@ -575,7 +582,7 @@ typedef struct elf64_shdr {
 #define NT_PRFPREG	2
 #define NT_PRPSINFO	3
 #define NT_TASKSTRUCT	4
-#define NT_PRFPXREG	20
+#define NT_PRXFPREG	0x46e62b7f	/* copied from gdb5.1/include/elf/common.h */
 
 /* Note header in a PT_NOTE section */
 typedef struct elf32_note {

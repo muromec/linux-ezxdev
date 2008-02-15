@@ -1,61 +1,39 @@
 /*
  * JFFS2 -- Journalling Flash File System, Version 2.
  *
- * Copyright (C) 2001 Red Hat, Inc.
+ * Copyright (C) 2001-2003 Red Hat, Inc.
+ * Copyright (c) 2005 Motorola Inc.
  *
- * Created by David Woodhouse <dwmw2@cambridge.redhat.com>
+ * Created by David Woodhouse <dwmw2@infradead.org>
+ * Modified for EzXBASE by Ru Yi <e5537c@motorola.com> 2005/10/05
+ *     For improvement the performance, redesigned the GC policy 
  *
- * The original JFFS, from which the design for JFFS2 was derived,
- * was designed and implemented by Axis Communications AB.
+ * For licensing information, see the file 'LICENCE' in this directory.
  *
- * The contents of this file are subject to the Red Hat eCos Public
- * License Version 1.1 (the "Licence"); you may not use this file
- * except in compliance with the Licence.  You may obtain a copy of
- * the Licence at http://www.redhat.com/
- *
- * Software distributed under the Licence is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied.
- * See the Licence for the specific language governing rights and
- * limitations under the Licence.
- *
- * The Original Code is JFFS2 - Journalling Flash File System, version 2
- *
- * Alternatively, the contents of this file may be used under the
- * terms of the GNU General Public License version 2 (the "GPL"), in
- * which case the provisions of the GPL are applicable instead of the
- * above.  If you wish to allow the use of your version of this file
- * only under the terms of the GPL and not to allow others to use your
- * version of this file under the RHEPL, indicate your decision by
- * deleting the provisions above and replace them with the notice and
- * other provisions required by the GPL.  If you do not delete the
- * provisions above, a recipient may use your version of this file
- * under either the RHEPL or the GPL.
- *
- * $Id: background.c,v 1.16 2001/10/08 09:22:38 dwmw2 Exp $
+ * $Id: background.c,v 1.51 2005/03/17 20:15:58 gleixner Exp $
  *
  */
 
-#define __KERNEL_SYSCALLS__
-
 #include <linux/kernel.h>
-#include <linux/sched.h>
-#include <linux/unistd.h>
 #include <linux/jffs2.h>
 #include <linux/mtd/mtd.h>
-#include <linux/interrupt.h>
 #include <linux/completion.h>
 #include "nodelist.h"
 
+#undef daemonize
+#define daemonize(fmt, ...) do {						\
+	snprintf(current->comm, sizeof(current->comm), fmt ,##__VA_ARGS__);	\
+	__daemonize_modvers();							\
+	} while(0)
 
 static int jffs2_garbage_collect_thread(void *);
-static int thread_should_wake(struct jffs2_sb_info *c);
 
 void jffs2_garbage_collect_trigger(struct jffs2_sb_info *c)
 {
-	spin_lock_bh(&c->erase_completion_lock);
-        if (c->gc_task && thread_should_wake(c))
+	spin_lock(&c->erase_completion_lock);
+        if (c->gc_task && jffs2_thread_should_wake(c))
                 send_sig(SIGHUP, c->gc_task, 1);
-	spin_unlock_bh(&c->erase_completion_lock);
+	spin_unlock(&c->erase_completion_lock);
 }
 
 /* This must only ever be called when no GC thread is currently running */
@@ -86,98 +64,113 @@ int jffs2_start_garbage_collect_thread(struct jffs2_sb_info *c)
 
 void jffs2_stop_garbage_collect_thread(struct jffs2_sb_info *c)
 {
-	spin_lock_bh(&c->erase_completion_lock);
+	spin_lock(&c->erase_completion_lock);
 	if (c->gc_task) {
 		D1(printk(KERN_DEBUG "jffs2: Killing GC task %d\n", c->gc_task->pid));
 		send_sig(SIGKILL, c->gc_task, 1);
 	}
-	spin_unlock_bh(&c->erase_completion_lock);
+	spin_unlock(&c->erase_completion_lock);
 	wait_for_completion(&c->gc_thread_exit);
 }
 
 static int jffs2_garbage_collect_thread(void *_c)
 {
 	struct jffs2_sb_info *c = _c;
+	int interval = 3000; 
+	
+	daemonize("jffs2_gcd_mtd%d", c->mtd->index);
+	allow_signal(SIGKILL);
+#ifdef CONFIG_ARCH_EZX
+	allow_signal(SIGTERM);
+#endif
+	allow_signal(SIGSTOP);
+	allow_signal(SIGCONT);
 
-	daemonize();
-	current->tty = NULL;
 	c->gc_task = current;
 	up(&c->gc_thread_start);
 
-        sprintf(current->comm, "jffs2_gcd_mtd%d", c->mtd->index);
-
-	/* FIXME in the 2.2 backport */
-	current->nice = 10;
+	set_user_nice(current, 10);
 
 	for (;;) {
-		spin_lock_irq(&current->sigmask_lock);
-		siginitsetinv (&current->blocked, sigmask(SIGHUP) | sigmask(SIGKILL) | sigmask(SIGSTOP) | sigmask(SIGCONT));
-		recalc_sigpending(current);
-		spin_unlock_irq(&current->sigmask_lock);
+		allow_signal(SIGHUP);
 
-		if (!thread_should_wake(c)) {
-                        set_current_state (TASK_INTERRUPTIBLE);
+		if (!jffs2_thread_should_wake(c)) {
 			D1(printk(KERN_DEBUG "jffs2_garbage_collect_thread sleeping...\n"));
-			/* Yes, there's a race here; we checked thread_should_wake() before
-			   setting current->state to TASK_INTERRUPTIBLE. But it doesn't
+			/* Yes, there's a race here; we checked jffs2_thread_should_wake()
+			   before setting current->state to TASK_INTERRUPTIBLE. But it doesn't
 			   matter - We don't care if we miss a wakeup, because the GC thread
 			   is only an optimisation anyway. */
+			set_current_state(TASK_INTERRUPTIBLE);
+		
+		#ifdef CONFIG_ARCH_EZX
+			if (c->dirty_size > c->free_size)
+				interval = 500;
+			else if (c->dirty_size > c->free_size/2 
+				&& c->dirty_size > c->nospc_dirty_size)
+				interval = 1000;
+			else
+				interval = 3000;
+			
+			schedule_timeout(interval);
+		#else
 			schedule();
+		#endif
 		}
-                
-		if (current->need_resched)
-			schedule();
 
-                /* Put_super will send a SIGKILL and then wait on the sem. 
-                 */
-                while (signal_pending(current)) {
-                        siginfo_t info;
-                        unsigned long signr;
+		if (try_to_freeze(0))
+			continue;
 
-                        spin_lock_irq(&current->sigmask_lock);
-                        signr = dequeue_signal(&current->blocked, &info);
-                        spin_unlock_irq(&current->sigmask_lock);
+		cond_resched();
 
-                        switch(signr) {
-                        case SIGSTOP:
-                                D1(printk(KERN_DEBUG "jffs2_garbage_collect_thread(): SIGSTOP received.\n"));
-                                set_current_state(TASK_STOPPED);
-                                schedule();
-                                break;
+		/* Put_super will send a SIGKILL and then wait on the sem. 
+		 */
+		while (signal_pending(current)) {
+			siginfo_t info;
+			unsigned long signr;
 
-                        case SIGKILL:
-                                D1(printk(KERN_DEBUG "jffs2_garbage_collect_thread(): SIGKILL received.\n"));
-				spin_lock_bh(&c->erase_completion_lock);
-                                c->gc_task = NULL;
-				spin_unlock_bh(&c->erase_completion_lock);
-				complete_and_exit(&c->gc_thread_exit, 0);
+			signr = dequeue_signal_lock(current, &current->blocked, &info);
+
+			switch(signr) {
+			case SIGSTOP:
+				D1(printk(KERN_DEBUG "jffs2_garbage_collect_thread(): SIGSTOP received.\n"));
+				set_current_state(TASK_STOPPED);
+				schedule();
+				break;
+
+		#ifdef CONFIG_ARCH_EZX
+			case SIGTERM:
+				D1(printk(KERN_DEBUG "jffs2_garbage_collect_thread(): SIGTERM received.\n"));
+				goto die;
+		#endif
+			case SIGKILL:
+				D1(printk(KERN_DEBUG "jffs2_garbage_collect_thread(): SIGKILL received.\n"));
+				goto die;
 
 			case SIGHUP:
 				D1(printk(KERN_DEBUG "jffs2_garbage_collect_thread(): SIGHUP received.\n"));
 				break;
 			default:
 				D1(printk(KERN_DEBUG "jffs2_garbage_collect_thread(): signal %ld received\n", signr));
-
-                        }
-                }
+			}
+		}
 		/* We don't want SIGHUP to interrupt us. STOP and KILL are OK though. */
-		spin_lock_irq(&current->sigmask_lock);
-		siginitsetinv (&current->blocked, sigmask(SIGKILL) | sigmask(SIGSTOP) | sigmask(SIGCONT));
-		recalc_sigpending(current);
-		spin_unlock_irq(&current->sigmask_lock);
+
+#ifdef CONFIG_ARCH_EZX
+		if(c->dirty_size <= c->free_size/2 && !jffs2_thread_should_wake(c))
+			continue;
+#endif		
+		
+		disallow_signal(SIGHUP);
 
 		D1(printk(KERN_DEBUG "jffs2_garbage_collect_thread(): pass\n"));
-		jffs2_garbage_collect_pass(c);
+		if (jffs2_garbage_collect_pass(c) == -ENOSPC) {
+			printk(KERN_NOTICE "No space for garbage collection. Aborting GC thread\n");
+			goto die;
+		}
 	}
-}
-
-static int thread_should_wake(struct jffs2_sb_info *c)
-{
-	D1(printk(KERN_DEBUG "thread_should_wake(): nr_free_blocks %d, nr_erasing_blocks %d, dirty_size 0x%x\n", 
-		  c->nr_free_blocks, c->nr_erasing_blocks, c->dirty_size));
-	if (c->nr_free_blocks + c->nr_erasing_blocks < JFFS2_RESERVED_BLOCKS_GCTRIGGER &&
-	    c->dirty_size > c->sector_size)
-		return 1;
-	else 
-		return 0;
+ die:
+	spin_lock(&c->erase_completion_lock);
+	c->gc_task = NULL;
+	spin_unlock(&c->erase_completion_lock);
+	complete_and_exit(&c->gc_thread_exit, 0);
 }

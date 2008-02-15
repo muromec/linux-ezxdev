@@ -121,16 +121,11 @@
 static int tot_menu_num = 0;
 
 /*
- * Pointers to mainmenu_option and endmenu of each menu.
- */
-struct kconfig * menu_first [100];
-struct kconfig * menu_last  [100];
-
-/*
  * Generate portion of wish script for the beginning of a submenu.
  * The guts get filled in with the various options.
  */
-static void start_proc( char * label, int menu_num, int toplevel )
+static void start_proc( struct kconfig **menu_first, struct kconfig **menu_last,
+			char * label, int menu_num, int toplevel )
 {
     if ( toplevel )
 	printf( "menu_option menu%d %d \"%s\"\n", menu_num, menu_num, label );
@@ -986,7 +981,8 @@ static void generate_update_var( struct kconfig * scfg, int menu_num )
 /*
  * Generates the end of a menu procedure.
  */
-static void end_proc( struct kconfig * scfg, int menu_num )
+static void end_proc( struct kconfig **menu_first, struct kconfig **menu_last,
+		      struct kconfig * scfg, int menu_num )
 {
     struct kconfig * cfg;
 
@@ -1118,8 +1114,11 @@ static void end_proc( struct kconfig * scfg, int menu_num )
 void dump_tk_script( struct kconfig * scfg )
 {
     int menu_depth;
-    int menu_num [64];
+    int *menu_num;
+    struct kconfig **menu_first; /* pointer to mainmenu_option for each menu */
+    struct kconfig **menu_last;  /* pointer to endmenu for each menu */
     int imenu, i;
+    int menucnt;                 /* total number of menus */
     int top_level_num = 0;
     struct kconfig * cfg;
     struct kconfig * cfg1 = NULL;
@@ -1131,7 +1130,17 @@ void dump_tk_script( struct kconfig * scfg )
      */
     tot_menu_num = 0;
     menu_depth   = 0;
-    menu_num [0] = 0;
+    
+    /* Scan the list, count the number of menus. */
+    for (cfg = scfg, menucnt = 0; cfg != NULL; cfg = cfg->next)
+	if (cfg->token == token_mainmenu_option)
+	    menucnt++;
+    
+    /* Allocate storage for menu data placement. */
+    menu_num = (int *)alloca (sizeof (int) * menucnt);
+    menu_num[0] = 0;
+    menu_first = (struct kconfig **) alloca (sizeof (struct kconfig *) * menucnt);
+    menu_last = (struct kconfig **) alloca (sizeof (struct kconfig *) * menucnt);
 
     for ( cfg = scfg; cfg != NULL; cfg = cfg->next )
     {
@@ -1145,10 +1154,7 @@ void dump_tk_script( struct kconfig * scfg )
 	    break;
 
 	case token_mainmenu_option:
-	    if ( ++menu_depth >= 64 )
-		{ fprintf( stderr, "menus too deep\n" ); exit( 1 ); }
-	    if ( ++tot_menu_num >= 100 )
-		{ fprintf( stderr, "too many menus\n" ); exit( 1 ); }
+	    menu_depth++, tot_menu_num++;
 	    menu_num   [menu_depth]   = tot_menu_num;
 	    menu_first [tot_menu_num] = cfg;
 	    menu_last  [tot_menu_num] = cfg;
@@ -1230,8 +1236,8 @@ void dump_tk_script( struct kconfig * scfg )
 	int opt_count = 0;
 
 	clear_globalflags();
-	start_proc( menu_first[imenu]->label, imenu, 
-		!menu_first[imenu]->menu_number );
+	start_proc( menu_first, menu_last, menu_first[imenu]->label, imenu, 
+		   !menu_first[imenu]->menu_number );
 
 	for ( cfg = menu_first[imenu]->next; cfg != NULL && cfg != menu_last[imenu]; cfg = cfg->next )
 	{
@@ -1345,7 +1351,7 @@ void dump_tk_script( struct kconfig * scfg )
 	    }
 	}
 
-	end_proc( scfg, imenu );
+	end_proc( menu_first, menu_last, scfg, imenu );
     }
 
     /*

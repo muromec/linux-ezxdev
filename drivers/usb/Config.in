@@ -1,10 +1,27 @@
 #
+# Copyright (C) 2005 Motorola Inc.
+#
+# modified by w4860c, for EZX platform
+#
+
+#
 # USB device configuration
 #
 mainmenu_option next_comment
 comment 'USB support'
 
-dep_tristate 'Support for USB' CONFIG_USB $CONFIG_PCI
+# ARM SA1111 chips have a non-PCI based "OHCI-compatible" USB host interface.
+# MPC850/MPC823 processors also have a non-PCI USB controller.
+# Add Arctic II to that list.
+
+if [ "$CONFIG_PCI" = "y" -o "$CONFIG_SA1111" = "y" \
+	-o "$CONFIG_8xx" = "y" -o "$CONFIG_ARCH_OMAP1510" = "y" \
+	-o "$CONFIG_ARCTIC2" = "y" -o "$CONFIG_XSCALE_WMMX" = "y" ]; then
+   tristate 'Support for USB' CONFIG_USB
+else
+   define_bool CONFIG_USB n
+fi
+
 if [ "$CONFIG_USB" = "y" -o  "$CONFIG_USB" = "m" ]; then
    bool '  USB verbose debug messages' CONFIG_USB_DEBUG
 
@@ -28,6 +45,28 @@ if [ "$CONFIG_USB" = "y" -o  "$CONFIG_USB" = "m" ]; then
       define_bool CONFIG_USB_UHCI_ALT n
    fi
    dep_tristate '  OHCI (Compaq, iMacs, OPTi, SiS, ALi, ...) support' CONFIG_USB_OHCI $CONFIG_USB
+   if [ "$CONFIG_SA1111" = "y" ]; then
+      dep_tristate '    SA1111 OHCI-compatible host interface support' CONFIG_USB_OHCI_SA1111 $CONFIG_USB_OHCI
+   fi
+   if [ "$CONFIG_XSCALE_WMMX" = "y" ]; then
+      dep_tristate '  WMMX OHCI-compatible host interface support' CONFIG_USB_OHCI_WMMX $CONFIG_USB_OHCI
+   fi
+   dep_tristate '    Non-PCI OHCI support' CONFIG_USB_NON_PCI_OHCI $CONFIG_USB_OHCI
+   if [ "$CONFIG_8xx" = "y" ]; then
+      dep_tristate '  MPC850/823 USB HCI support' CONFIG_USB_MPC8xx $CONFIG_USB
+      if [ "$CONFIG_USB_MPC8xx" = "n" ]; then
+         bool '  MPC850/823 USB Function (Client) support' CONFIG_USB_CLIENT_MPC8xx
+      fi
+   fi
+   if [ "$CONFIG_IBM_OCP" = "y" ]; then
+      tristate '   IBM On-chip USB support (EXPERIMENTAL)' CONFIG_USB_OCP_OHCI 
+   fi
+   if [ "$CONFIG_ARCH_OMAP1510" = "y" ]; then
+      dep_tristate '    OMAP1510 OHCI-compatible host interface support' CONFIG_USB_OHCI_OMAP1510 $CONFIG_USB_OHCI
+   fi
+   if [ "$CONFIG_ARCTIC2" = "y" ]; then
+      dep_tristate '  Phillips ISP1161 USB host support' CONFIG_USB_ISP116X $CONFIG_USB
+   fi
 
    comment 'USB Device Class drivers'
    dep_tristate '  USB Audio support' CONFIG_USB_AUDIO $CONFIG_USB $CONFIG_SOUND
@@ -108,4 +147,12 @@ if [ "$CONFIG_USB" = "y" -o  "$CONFIG_USB" = "m" ]; then
    dep_tristate '  Tieman Voyager USB Braille display support (EXPERIMENTAL)' CONFIG_USB_BRLVGER $CONFIG_USB $CONFIG_EXPERIMENTAL
    dep_tristate '  USB LCD device support' CONFIG_USB_LCD $CONFIG_USB
 fi
+   comment 'USB IPC driver'
+   dep_tristate '  Bulverde USB IPC Support (EXPERIMENTAL)' CONFIG_IPC_USB $CONFIG_USB $CONFIG_EXPERIMENTAL
+   dep_bool     '     No USB Suspend resume' CONFIG_NO_USB_SUSPEND_RESUME $CONFIG_IPC_USB $CONFIG_USB $CONFIG_EXPERIMENTAL
+   dep_bool     '     No hardware handshake' CONFIG_NO_HW_SHAKEHAND $CONFIG_ARCH_EZXBASE $CONFIG_IPC_USB $CONFIG_USB $CONFIG_EXPERIMENTAL
+
+
+   comment 'USB DSPLOG driver'
+   dep_tristate '   USB DSPLOG Support (EXPERIMENTAL)' CONFIG_DSPLOG_USB $CONFIG_USB $CONFIG_EXPERIMENTAL
 endmenu

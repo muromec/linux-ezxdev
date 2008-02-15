@@ -1,5 +1,5 @@
 /*
- * BK Id: %F% %I% %G% %U% %#%
+ * BK Id: SCCS/s.keyboard.h 1.20 08/29/02 16:21:23 paulus
  */
 /*
  *  linux/include/asm-ppc/keyboard.h

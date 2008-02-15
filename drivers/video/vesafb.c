@@ -23,7 +23,9 @@
 #include <linux/init.h>
 
 #include <asm/io.h>
+#ifdef CONFIG_MTRR
 #include <asm/mtrr.h>
+#endif /* CONFIG_MTRR */
 
 #include <video/fbcon.h>
 #include <video/fbcon-cfb8.h>
@@ -109,7 +111,7 @@ static struct display_switch vesafb_sw;
 static int vesafb_pan_display(struct fb_var_screeninfo *var, int con,
                               struct fb_info *info)
 {
-#ifdef __i386__
+#if defined(__i386__) || defined(__x86_64__)
 	int offset;
 
 	if (!ypan)
@@ -307,11 +309,13 @@ static void vesa_setpalette(int regno, unsigned red, unsigned green, unsigned bl
 #ifdef i386
 	struct { u_char blue, green, red, pad; } entry;
 
+#if defined(__i386__) || defined(__x86_64__)
 	if (pmi_setpal) {
 		entry.red   = red   >> 10;
 		entry.green = green >> 10;
 		entry.blue  = blue  >> 10;
 		entry.pad   = 0;
+
 	        __asm__ __volatile__(
                 "call *(%%esi)"
                 : /* no return value */
@@ -321,7 +325,9 @@ static void vesa_setpalette(int regno, unsigned red, unsigned green, unsigned bl
                   "d" (regno),          /* EDX */
                   "D" (&entry),         /* EDI */
                   "S" (&pmi_pal));      /* ESI */
-	} else {
+	} else
+#endif /* __i386__ || __x86_64__ */
+	{
 		/* without protected mode interface, try VGA registers... */
 		outb_p(regno,       dac_reg);
 		outb_p(red   >> 10, dac_val);
@@ -469,6 +475,7 @@ int __init vesafb_setup(char *options)
 			inverse=1;
 		else if (! strcmp(this_opt, "redraw"))
 			ypan=0;
+#if defined(__i386__) || defined(__x86_64__)
 		else if (! strcmp(this_opt, "ypan"))
 			ypan=1;
 		else if (! strcmp(this_opt, "ywrap"))
@@ -477,8 +484,11 @@ int __init vesafb_setup(char *options)
 			pmi_setpal=0;
 		else if (! strcmp(this_opt, "pmipal"))
 			pmi_setpal=1;
+#endif /* __i386__ || __x64-64__ */
+#ifdef CONFIG_MTRR
 		else if (! strcmp(this_opt, "mtrr"))
 			mtrr=1;
+#endif
 		else if (!strncmp(this_opt, "font:", 5))
 			strcpy(fb_info.fontname, this_opt+5);
 	}
@@ -550,6 +560,13 @@ int __init vesafb_init(void)
 	printk(KERN_INFO "vesafb: mode is %dx%dx%d, linelength=%d, pages=%d\n",
 	       video_width, video_height, video_bpp, video_linelength, screen_info.pages);
 
+	vesafb_defined.xres=video_width;
+	vesafb_defined.yres=video_height;
+	vesafb_defined.xres_virtual=video_width;
+	vesafb_defined.yres_virtual=video_size / video_linelength;
+	vesafb_defined.bits_per_pixel=video_bpp;
+
+#if defined(__i386__) || defined(__x86_64__)
 	if (screen_info.vesapm_seg) {
 		printk(KERN_INFO "vesafb: protected mode interface info at %04x:%04x\n",
 		       screen_info.vesapm_seg,screen_info.vesapm_off);
@@ -581,16 +598,12 @@ int __init vesafb_init(void)
 		}
 	}
 
-	vesafb_defined.xres=video_width;
-	vesafb_defined.yres=video_height;
-	vesafb_defined.xres_virtual=video_width;
-	vesafb_defined.yres_virtual=video_size / video_linelength;
-	vesafb_defined.bits_per_pixel=video_bpp;
-
 	if (ypan && vesafb_defined.yres_virtual > video_height) {
 		printk(KERN_INFO "vesafb: scrolling: %s using protected mode interface, yres_virtual=%d\n",
 		       (ypan > 1) ? "ywrap" : "ypan",vesafb_defined.yres_virtual);
-	} else {
+	} else
+#endif /* __i386__ || __x86-64__ */
+	{
 		printk(KERN_INFO "vesafb: scrolling: redraw\n");
 		vesafb_defined.yres_virtual = video_height;
 		ypan = 0;
@@ -643,6 +656,7 @@ int __init vesafb_init(void)
 	 * region already (FIXME) */
 	request_region(0x3c0, 32, "vesafb");
 
+#ifdef CONFIG_MTRR
 	if (mtrr) {
 		int temp_size = video_size;
 		/* Find the largest power-of-two */
@@ -654,6 +668,7 @@ int __init vesafb_init(void)
 			temp_size >>= 1;
 		}
 	}
+#endif /* CONFIG_MTRR */
 	
 	strcpy(fb_info.modename, "VESA VGA");
 	fb_info.changevar = NULL;

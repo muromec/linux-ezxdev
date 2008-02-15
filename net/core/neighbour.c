@@ -14,6 +14,7 @@
  *	Vitaly E. Lavrov	releasing NULL neighbor in neigh_add.
  */
 
+#include <linux/init.h>
 #include <linux/config.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
@@ -1496,8 +1497,8 @@ struct neigh_sysctl_table
 	{{CTL_NET, "net", NULL, 0, 0555, NULL},{0}}
 };
 
-int neigh_sysctl_register(struct net_device *dev, struct neigh_parms *p,
-			  int p_id, int pdev_id, char *p_name)
+int __noinstrument neigh_sysctl_register(struct net_device *dev, struct neigh_parms *p,
+					 int p_id, int pdev_id, char *p_name)
 {
 	struct neigh_sysctl_table *t;
 

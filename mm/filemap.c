@@ -3,6 +3,13 @@
  *
  * Copyright (C) 1994-1999  Linus Torvalds
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by w15879, for EZX platform
+ *
+ * 2005-Apr-04 Add security patch, Ni Jili
+ */
 
 /*
  * This file handles the generic file mmap semantics used by
@@ -23,6 +30,9 @@
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/iobuf.h>
+#include <linux/security.h>
+
+#include <linux/trace.h>
 
 #include <asm/pgalloc.h>
 #include <asm/uaccess.h>
@@ -121,6 +131,12 @@ void __remove_inode_page(struct page *page)
 {
 	if (PageDirty(page) && !PageSwapCache(page))
 		BUG();
+
+	if (DelallocPage(page)) {
+		printk("Delalloc page %p removed from inode\n", page);
+		BUG();
+	}
+
 	remove_page_from_inode_queue(page);
 	remove_page_from_hash_queue(page);
 }
@@ -299,6 +315,7 @@ static int truncate_list_pages(struct list_head *head, unsigned long start, unsi
 
 			page_cache_release(page);
 
+			/* we hit this with lock depth of 1 or 2 */
 			if (current->need_resched) {
 				__set_current_state(TASK_RUNNING);
 				schedule();
@@ -409,6 +426,8 @@ static int invalidate_list_pages2(struct list_head *head)
 		}
 
 		page_cache_release(page);
+
+		debug_lock_break(551);
 		if (current->need_resched) {
 			__set_current_state(TASK_RUNNING);
 			schedule();
@@ -563,11 +582,15 @@ int filemap_fdatasync(struct address_space * mapping)
 		list_del(&page->list);
 		list_add(&page->list, &mapping->locked_pages);
 
-		if (!PageDirty(page))
-			continue;
-
 		page_cache_get(page);
 		spin_unlock(&pagecache_lock);
+
+		/* BKL is held ... */
+		debug_lock_break(1);
+		conditional_schedule();
+
+		if (!PageDirty(page))
+			goto clean;
 
 		lock_page(page);
 
@@ -579,7 +602,7 @@ int filemap_fdatasync(struct address_space * mapping)
 				ret = err;
 		} else
 			UnlockPage(page);
-
+clean:
 		page_cache_release(page);
 		spin_lock(&pagecache_lock);
 	}
@@ -597,14 +620,27 @@ int filemap_fdatasync(struct address_space * mapping)
 int filemap_fdatawait(struct address_space * mapping)
 {
 	int ret = 0;
+	DEFINE_LOCK_COUNT();
 
 	spin_lock(&pagecache_lock);
 
+restart:
         while (!list_empty(&mapping->locked_pages)) {
 		struct page *page = list_entry(mapping->locked_pages.next, struct page, list);
 
 		list_del(&page->list);
 		list_add(&page->list, &mapping->clean_pages);
+
+		if (TEST_LOCK_COUNT(32)) {
+			RESET_LOCK_COUNT();
+			debug_lock_break(2);
+			if (conditional_schedule_needed()) {
+				page_cache_get(page);
+				break_spin_lock_and_resched(&pagecache_lock);
+				page_cache_release(page);
+				goto restart;
+			}
+		}
 
 		if (!PageLocked(page))
 			continue;
@@ -841,10 +877,12 @@ void ___wait_on_page(struct page *page)
 		set_task_state(tsk, TASK_UNINTERRUPTIBLE);
 		if (!PageLocked(page))
 			break;
+		TRACE_MEMORY(TRACE_EV_MEMORY_PAGE_WAIT_START, 0);
 		sync_page(page);
 		schedule();
 	} while (PageLocked(page));
 	__set_task_state(tsk, TASK_RUNNING);
+	TRACE_MEMORY(TRACE_EV_MEMORY_PAGE_WAIT_END, 0);
 	remove_wait_queue(waitqueue, &wait);
 }
 
@@ -963,6 +1001,7 @@ static struct page * __find_lock_page_helper(struct address_space *mapping,
 	 * the hash-list needs a held write-lock.
 	 */
 repeat:
+	break_spin_lock(&pagecache_lock);
 	page = __find_page_nolock(mapping, offset, hash);
 	if (page) {
 		page_cache_get(page);
@@ -1307,6 +1346,90 @@ static void generic_file_readahead(int reada_ok,
 	return;
 }
 
+/**
+ * shrink_list - non-blockingly drop pages from the given cache list
+ * @mapping: the mapping from which we want to drop pages
+ * @list: which list (e.g. locked, dirty, clean)?
+ * @max_index: greatest index from which we will drop pages
+ */
+static unsigned long shrink_list(struct address_space *mapping,
+				 struct list_head *list,
+				 unsigned long max_index)
+{
+	struct list_head *curr = list->prev;
+	unsigned long nr_shrunk = 0;
+
+	spin_lock(&pagemap_lru_lock);
+	spin_lock(&pagecache_lock);
+
+	while ((curr != list)) {
+		struct page *page = list_entry(curr, struct page, list);
+
+		curr = curr->prev;
+
+		if (page->index > max_index)
+			continue;
+
+		if (PageDirty(page))
+			continue;
+
+		if (TryLockPage(page))
+			break;
+
+		if (page->buffers && !try_to_release_page(page, 0)) {
+			/* probably dirty buffers */
+			unlock_page(page);
+			break;
+		}
+
+		if (page_count(page) != 1) {
+			unlock_page(page);
+			continue;
+		}
+
+		__lru_cache_del(page);
+		__remove_inode_page(page);
+		unlock_page(page);
+		page_cache_release(page);
+		nr_shrunk++;
+	}
+
+	spin_unlock(&pagecache_lock);
+	spin_unlock(&pagemap_lru_lock);
+
+	return nr_shrunk;
+}
+
+/**
+ * shrink_pagecache - nonblockingly drop pages from the mapping.
+ * @file: the file we are doing I/O on
+ * @max_index: the maximum index from which we are willing to drop pages
+ * 
+ * This is for O_STREAMING, which says "I am streaming data, I know I will not
+ * revisit this; do not cache anything".
+ * 
+ * max_index allows us to only drop pages which are behind `index', to avoid
+ * trashing readahead.
+ */
+static unsigned long shrink_pagecache(struct file *file,
+				      unsigned long max_index)
+{
+	struct address_space *mapping = file->f_dentry->d_inode->i_mapping;
+	unsigned long nr_locked, nr_clean, nr_dirty;
+
+	/*
+	 * ensure we have a decent amount of work todo
+	 */
+	if (mapping->nrpages < 256)
+		return 0;
+
+	nr_locked = shrink_list(mapping, &mapping->locked_pages, max_index);
+	nr_clean = shrink_list(mapping, &mapping->clean_pages, max_index);
+	nr_dirty = shrink_list(mapping, &mapping->dirty_pages, max_index);
+
+	return nr_locked + nr_clean + nr_dirty;
+}
+
 /*
  * Mark a page as having seen activity.
  *
@@ -1321,6 +1444,8 @@ void mark_page_accessed(struct page *page)
 	} else
 		SetPageReferenced(page);
 }
+
+EXPORT_SYMBOL(mark_page_accessed);
 
 /*
  * This is a generic file read routine, and uses the
@@ -1538,6 +1663,8 @@ no_cached_page:
 	filp->f_reada = 1;
 	if (cached_page)
 		page_cache_release(cached_page);
+	if (filp->f_flags & O_STREAMING)
+		shrink_pagecache(filp, index);
 	UPDATE_ATIME(inode);
 }
 
@@ -1765,6 +1892,10 @@ asmlinkage ssize_t sys_sendfile(int out_fd, int in_fd, off_t *offset, size_t cou
 	if (retval)
 		goto fput_in;
 
+	retval = security_file_permission (in_file, MAY_READ);
+	if (retval)
+		goto fput_in;
+
 	/*
 	 * Get output file, and verify that it is ok..
 	 */
@@ -1779,6 +1910,10 @@ asmlinkage ssize_t sys_sendfile(int out_fd, int in_fd, off_t *offset, size_t cou
 		goto fput_out;
 	out_inode = out_file->f_dentry->d_inode;
 	retval = locks_verify_area(FLOCK_VERIFY_WRITE, out_inode, out_file, out_file->f_pos, count);
+	if (retval)
+		goto fput_out;
+
+	retval = security_file_permission (out_file, MAY_WRITE);
 	if (retval)
 		goto fput_out;
 
@@ -2114,6 +2249,8 @@ static inline int filemap_sync_pte_range(pmd_t * pmd,
 		address += PAGE_SIZE;
 		pte++;
 	} while (address && (address < end));
+	debug_lock_break(1);
+	break_spin_lock(&vma->vm_mm->page_table_lock);
 	return error;
 }
 
@@ -2144,6 +2281,9 @@ static inline int filemap_sync_pmd_range(pgd_t * pgd,
 		address = (address + PMD_SIZE) & PMD_MASK;
 		pmd++;
 	} while (address && (address < end));
+
+	debug_lock_break(1);
+	break_spin_lock(&vma->vm_mm->page_table_lock);
 	return error;
 }
 
@@ -2194,6 +2334,7 @@ int generic_file_mmap(struct file * file, struct vm_area_struct * vma)
 		return -ENOEXEC;
 	UPDATE_ATIME(inode);
 	vma->vm_ops = &generic_file_vm_ops;
+	vma->vm_flags &= ~VM_IO;
 	return 0;
 }
 
@@ -2527,7 +2668,7 @@ static long madvise_dontneed(struct vm_area_struct * vma,
 	if (vma->vm_flags & VM_LOCKED)
 		return -EINVAL;
 
-	zap_page_range(vma->vm_mm, start, end - start);
+	zap_page_range(vma->vm_mm, start, end - start, ZPR_PARTITION);
 	return 0;
 }
 
@@ -2915,6 +3056,8 @@ inline void remove_suid(struct inode *inode)
 	}
 }
 
+EXPORT_SYMBOL(remove_suid);
+
 /*
  * Write to a file through the page cache. 
  *
@@ -3049,6 +3192,9 @@ generic_file_write(struct file *file,const char *buf,size_t count, loff_t *ppos)
 
 	if (file->f_flags & O_DIRECT)
 		goto o_direct;
+
+	if (file->f_flags & O_STREAMING)
+		shrink_pagecache(file, pos >> PAGE_CACHE_SHIFT);
 
 	do {
 		unsigned long index, offset;

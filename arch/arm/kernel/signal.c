@@ -22,6 +22,7 @@
 #include <linux/personality.h>
 #include <linux/tty.h>
 #include <linux/elf.h>
+#include <linux/spinlock.h>
 
 #include <asm/pgalloc.h>
 #include <asm/ucontext.h>
@@ -405,7 +406,7 @@ setup_return(struct pt_regs *regs, struct k_sigaction *ka,
 	regs->ARM_r0 = usig;
 	regs->ARM_sp = (unsigned long)frame;
 	regs->ARM_lr = retcode;
-	regs->ARM_pc = handler & (thumb ? ~1 : ~3);
+	regs->ARM_pc = handler;
 
 #ifdef CONFIG_CPU_32
 	regs->ARM_cpsr = cpsr;
@@ -420,8 +421,11 @@ setup_frame(int usig, struct k_sigaction *ka, sigset_t *set, struct pt_regs *reg
 	struct sigframe *frame = get_sigframe(ka, regs, sizeof(*frame));
 	int err = 0;
 
-	if (!access_ok(VERIFY_WRITE, frame, sizeof (*frame)))
+	preempt_disable();
+	if (!access_ok(VERIFY_WRITE, frame, sizeof (*frame))) {
+		preempt_enable();
 		return 1;
+	}
 
 	err |= setup_sigcontext(&frame->sc, /*&frame->fpstate,*/ regs, set->sig[0]);
 
@@ -433,6 +437,7 @@ setup_frame(int usig, struct k_sigaction *ka, sigset_t *set, struct pt_regs *reg
 	if (err == 0)
 		err = setup_return(regs, ka, &frame->retcode, frame, usig);
 
+	preempt_enable();
 	return err;
 }
 
@@ -446,6 +451,7 @@ setup_rt_frame(int usig, struct k_sigaction *ka, siginfo_t *info,
 	if (!access_ok(VERIFY_WRITE, frame, sizeof (*frame)))
 		return 1;
 
+	preempt_disable();
 	__put_user_error(&frame->info, &frame->pinfo, err);
 	__put_user_error(&frame->uc, &frame->puc, err);
 	err |= copy_siginfo_to_user(&frame->info, info);
@@ -466,11 +472,17 @@ setup_rt_frame(int usig, struct k_sigaction *ka, siginfo_t *info,
 		 * arguments for the signal handler.
 		 *   -- Peter Maydell <pmaydell@chiark.greenend.org.uk> 2000-12-06
 		 */
-		regs->ARM_r1 = (unsigned long)frame->pinfo;
-		regs->ARM_r2 = (unsigned long)frame->puc;
+		regs->ARM_r1 = (unsigned long)&frame->info;
+		regs->ARM_r2 = (unsigned long)&frame->uc;
 	}
-
+	preempt_enable();
 	return err;
+}
+
+static inline void restart_syscall(struct pt_regs *regs)
+{
+	regs->ARM_r0 = regs->ARM_ORIG_r0;
+	regs->ARM_pc -= thumb_mode(regs) ? 2 : 4;
 }
 
 /*
@@ -613,7 +625,7 @@ asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall)
 				continue;
 
 			switch (signr) {
-			case SIGCONT: case SIGCHLD: case SIGWINCH:
+			case SIGCONT: case SIGCHLD: case SIGWINCH: case SIGURG:
 				continue;
 
 			case SIGTSTP: case SIGTTIN: case SIGTTOU:
@@ -621,13 +633,17 @@ asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall)
 					continue;
 				/* FALLTHRU */
 
-			case SIGSTOP:
+			case SIGSTOP: {
+				struct signal_struct *sig;
 				current->state = TASK_STOPPED;
 				current->exit_code = signr;
-				if (!(current->p_pptr->sig->action[SIGCHLD-1].sa.sa_flags & SA_NOCLDSTOP))
+				sig = current->p_pptr->sig;
+				if (sig && !(sig->action[SIGCHLD-1].sa.sa_flags & SA_NOCLDSTOP))
 					notify_parent(current, SIGCHLD);
 				schedule();
+				single_stepping |= ptrace_cancel_bpt(current);
 				continue;
+			}
 
 			case SIGQUIT: case SIGILL: case SIGTRAP:
 			case SIGABRT: case SIGFPE: case SIGSEGV:
@@ -637,10 +653,7 @@ asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall)
 				/* FALLTHRU */
 
 			default:
-				sigaddset(&current->pending.signal, signr);
-				recalc_sigpending(current);
-				current->flags |= PF_SIGNALED;
-				do_exit(exit_code);
+				sig_exit(signr, exit_code, &info);
 				/* NOTREACHED */
 			}
 		}
@@ -659,8 +672,10 @@ asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall)
 				}
 				/* fallthrough */
 			case -ERESTARTNOINTR:
-				regs->ARM_r0 = regs->ARM_ORIG_r0;
-				regs->ARM_pc -= 4;
+				restart_syscall(regs);
+				break;
+
+
 			}
 		}
 		/* Whee!  Actually deliver the signal.  */
@@ -674,9 +689,9 @@ asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall)
 	    (regs->ARM_r0 == -ERESTARTNOHAND ||
 	     regs->ARM_r0 == -ERESTARTSYS ||
 	     regs->ARM_r0 == -ERESTARTNOINTR)) {
-		regs->ARM_r0 = regs->ARM_ORIG_r0;
-		regs->ARM_pc -= 4;
+		restart_syscall(regs);
 	}
+
 	if (single_stepping)
 		ptrace_set_bpt(current);
 	return 0;

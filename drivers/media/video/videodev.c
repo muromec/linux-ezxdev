@@ -14,6 +14,12 @@
  * Fixes:	20000516  Claudio Matsuoka <claudio@conectiva.com>
  *		- Added procfs support
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ *  2005-March-11  Porting to EzX platform, Wang wenxin
+ *
+ */
 
 #include <linux/config.h>
 #include <linux/version.h>
@@ -62,6 +68,20 @@ LIST_HEAD(videodev_proc_list);
 
 #endif /* CONFIG_PROC_FS && CONFIG_VIDEO_PROC_FS */
 
+struct video_device *video_device_alloc(void)
+{
+	struct video_device *vfd;
+	vfd = kmalloc(sizeof(*vfd),GFP_KERNEL);
+	if (NULL == vfd)
+		return NULL;
+	memset(vfd,0,sizeof(*vfd));
+	return vfd;
+}
+
+void video_device_release(struct video_device *vfd)
+{
+	kfree(vfd);
+}
 
 /*
  *	Read will do some smarts later on. Buffer pin etc.
@@ -186,14 +206,21 @@ unlock_out:
 static int video_release(struct inode *inode, struct file *file)
 {
 	struct video_device *vfl;
+	struct module *owner;
+
+	vfl = video_devdata(file);
+	owner = vfl->owner;
+	if (vfl->close)
+		vfl->close(vfl);
 
 	down(&videodev_lock);
+	/* ->close() might have called video_device_unregister()
+           in case of a hot unplug, thus we have to get vfl again */
 	vfl = video_devdata(file);
-	if(vfl->close)
-		vfl->close(vfl);
-	vfl->users--;
-	if(vfl->owner)
-		__MOD_DEC_USE_COUNT(vfl->owner);
+	if (NULL != vfl)
+		vfl->users--;
+	if (owner)
+		__MOD_DEC_USE_COUNT(owner);
 	up(&videodev_lock);
 	return 0;
 }
@@ -234,6 +261,30 @@ int video_mmap(struct file *file, struct vm_area_struct *vma)
 /*
  * helper function -- handles userspace copying for ioctl arguments
  */
+
+static unsigned int
+video_fix_command(unsigned int cmd)
+{
+	switch (cmd) {
+	case VIDIOC_OVERLAY_OLD:
+		cmd = VIDIOC_OVERLAY;
+		break;
+	case VIDIOC_S_PARM_OLD:
+		cmd = VIDIOC_S_PARM;
+		break;
+	case VIDIOC_S_CTRL_OLD:
+		cmd = VIDIOC_S_CTRL;
+		break;
+	case VIDIOC_G_AUDIO_OLD:
+		cmd = VIDIOC_G_AUDIO;
+		break;
+	case VIDIOC_G_AUDOUT_OLD:
+		cmd = VIDIOC_G_AUDOUT;
+		break;
+	}
+	return cmd;
+}
+
 int
 video_usercopy(struct inode *inode, struct file *file,
 	       unsigned int cmd, unsigned long arg,
@@ -245,12 +296,14 @@ video_usercopy(struct inode *inode, struct file *file,
 	void	*parg = NULL;
 	int	err  = -EINVAL;
 
+	cmd = video_fix_command(cmd);
+
 	/*  Copy arguments into temp kernel buffer  */
 	switch (_IOC_DIR(cmd)) {
 	case _IOC_NONE:
 		parg = (void *)arg;
 		break;
-	case _IOC_READ: /* some v4l ioctls are marked wrong ... */
+	case _IOC_READ:
 	case _IOC_WRITE:
 	case (_IOC_WRITE | _IOC_READ):
 		if (_IOC_SIZE(cmd) <= sizeof(sbuf)) {
@@ -264,8 +317,9 @@ video_usercopy(struct inode *inode, struct file *file,
 		}
 		
 		err = -EFAULT;
-		if (copy_from_user(parg, (void *)arg, _IOC_SIZE(cmd)))
-			goto out;
+		if (_IOC_DIR(cmd) & _IOC_WRITE)
+			if (copy_from_user(parg, (void *)arg, _IOC_SIZE(cmd)))
+				goto out;
 		break;
 	}
 
@@ -604,6 +658,8 @@ void video_unregister_device(struct video_device *vfd)
 #endif
 
 	devfs_unregister (vfd->devfs_handle);
+	if (vfd->release)
+		vfd->release(vfd);
 	video_device[vfd->minor]=NULL;
 	MOD_DEC_USE_COUNT;
 	up(&videodev_lock);
@@ -654,6 +710,8 @@ static void __exit videodev_exit(void)
 module_init(videodev_init)
 module_exit(videodev_exit)
 
+EXPORT_SYMBOL(video_device_alloc);
+EXPORT_SYMBOL(video_device_release);
 EXPORT_SYMBOL(video_register_device);
 EXPORT_SYMBOL(video_unregister_device);
 EXPORT_SYMBOL(video_devdata);

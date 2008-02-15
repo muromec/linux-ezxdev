@@ -17,6 +17,8 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ *  2005-Apr-04 Motorola   Add security patch 
  */
 
 #include <linux/slab.h> 
@@ -26,6 +28,9 @@
 #include <linux/uio.h>
 #include <linux/smp_lock.h>
 #include <linux/dnotify.h>
+#include <linux/security.h>
+
+#include <linux/trace.h>
 
 #include <asm/uaccess.h>
 
@@ -114,6 +119,7 @@ asmlinkage off_t sys_lseek(unsigned int fd, off_t offset, unsigned int origin)
 	file = fget(fd);
 	if (!file)
 		goto bad;
+
 	retval = -EINVAL;
 	if (origin <= 2) {
 		loff_t res = llseek(file, offset, origin);
@@ -121,6 +127,10 @@ asmlinkage off_t sys_lseek(unsigned int fd, off_t offset, unsigned int origin)
 		if (res != (loff_t)retval)
 			retval = -EOVERFLOW;	/* LFS: should only happen on 32 bit platforms */
 	}
+	TRACE_FILE_SYSTEM(TRACE_EV_FILE_SYSTEM_SEEK,
+			  fd,
+			  offset,
+			  NULL);
 	fput(file);
 bad:
 	return retval;
@@ -139,12 +149,18 @@ asmlinkage long sys_llseek(unsigned int fd, unsigned long offset_high,
 	file = fget(fd);
 	if (!file)
 		goto bad;
+
 	retval = -EINVAL;
 	if (origin > 2)
 		goto out_putf;
 
 	offset = llseek(file, ((loff_t) offset_high << 32) | offset_low,
 			origin);
+
+	TRACE_FILE_SYSTEM(TRACE_EV_FILE_SYSTEM_SEEK,
+			  fd,
+			  offset,
+			  NULL);
 
 	retval = (int)offset;
 	if (offset >= 0) {
@@ -173,8 +189,17 @@ asmlinkage ssize_t sys_read(unsigned int fd, char * buf, size_t count)
 			if (!ret) {
 				ssize_t (*read)(struct file *, char *, size_t, loff_t *);
 				ret = -EINVAL;
-				if (file->f_op && (read = file->f_op->read) != NULL)
-					ret = read(file, buf, count, &file->f_pos);
+				if (file->f_op && (read = file->f_op->read) != NULL) {
+                    ret = security_file_permission (file, MAY_READ);
+                    if (!ret)
+                    {
+				 	    TRACE_FILE_SYSTEM(TRACE_EV_FILE_SYSTEM_READ,
+							  fd,
+							  count,
+							  NULL); 
+					    ret = read(file, buf, count, &file->f_pos);
+                    }
+				}
 			}
 		}
 		if (ret > 0)
@@ -199,8 +224,16 @@ asmlinkage ssize_t sys_write(unsigned int fd, const char * buf, size_t count)
 			if (!ret) {
 				ssize_t (*write)(struct file *, const char *, size_t, loff_t *);
 				ret = -EINVAL;
-				if (file->f_op && (write = file->f_op->write) != NULL)
-					ret = write(file, buf, count, &file->f_pos);
+				if (file->f_op && (write = file->f_op->write) != NULL) {
+                    ret = security_file_permission (file, MAY_WRITE);
+                    if (!ret){
+				        TRACE_FILE_SYSTEM(TRACE_EV_FILE_SYSTEM_WRITE,
+							  fd, 
+							  count,
+							  NULL);
+					    ret = write(file, buf, count, &file->f_pos);
+                    }
+				}
 			}
 		}
 		if (ret > 0)
@@ -330,9 +363,16 @@ asmlinkage ssize_t sys_readv(unsigned long fd, const struct iovec * vector,
 	file = fget(fd);
 	if (!file)
 		goto bad_file;
+	TRACE_FILE_SYSTEM(TRACE_EV_FILE_SYSTEM_READ,
+			  fd,
+			  count,
+			  NULL);
 	if (file->f_op && (file->f_mode & FMODE_READ) &&
-	    (file->f_op->readv || file->f_op->read))
-		ret = do_readv_writev(VERIFY_WRITE, file, vector, count);
+	    (file->f_op->readv || file->f_op->read)) {
+		ret = security_file_permission (file, MAY_READ);
+		if (!ret)
+			ret = do_readv_writev(VERIFY_WRITE, file, vector, count);
+	}
 	fput(file);
 
 bad_file:
@@ -350,9 +390,16 @@ asmlinkage ssize_t sys_writev(unsigned long fd, const struct iovec * vector,
 	file = fget(fd);
 	if (!file)
 		goto bad_file;
+	TRACE_FILE_SYSTEM(TRACE_EV_FILE_SYSTEM_WRITE,
+			  fd,
+			  count,
+			  NULL);
 	if (file->f_op && (file->f_mode & FMODE_WRITE) &&
-	    (file->f_op->writev || file->f_op->write))
-		ret = do_readv_writev(VERIFY_READ, file, vector, count);
+	    (file->f_op->writev || file->f_op->write)) {
+		ret = security_file_permission (file, MAY_WRITE);
+		if (!ret)
+			ret = do_readv_writev(VERIFY_READ, file, vector, count);
+	}
 	fput(file);
 
 bad_file:
@@ -385,6 +432,16 @@ asmlinkage ssize_t sys_pread(unsigned int fd, char * buf,
 		goto out;
 	if (pos < 0)
 		goto out;
+
+	ret = security_file_permission (file,MAY_READ);
+	if (ret)
+		goto out;
+
+	TRACE_FILE_SYSTEM(TRACE_EV_FILE_SYSTEM_READ,
+			  fd,
+			  count,
+			  NULL);
+
 	ret = read(file, buf, count, &pos);
 	if (ret > 0)
 		dnotify_parent(file->f_dentry, DN_ACCESS);
@@ -415,7 +472,15 @@ asmlinkage ssize_t sys_pwrite(unsigned int fd, const char * buf,
 	if (!file->f_op || !(write = file->f_op->write))
 		goto out;
 	if (pos < 0)
+	 goto out;
+        ret = security_file_permission (file, MAY_WRITE);
+        if (ret)
 		goto out;
+
+	TRACE_FILE_SYSTEM(TRACE_EV_FILE_SYSTEM_WRITE,
+			  fd,
+			  count,
+			  NULL);
 
 	ret = write(file, buf, count, &pos);
 	if (ret > 0)

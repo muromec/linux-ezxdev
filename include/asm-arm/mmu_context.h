@@ -13,9 +13,8 @@
 #ifndef __ASM_ARM_MMU_CONTEXT_H
 #define __ASM_ARM_MMU_CONTEXT_H
 
-#include <asm/bitops.h>
 #include <asm/pgtable.h>
-#include <asm/arch/memory.h>
+#include <asm/memory.h>
 #include <asm/proc-fns.h>
 
 #define destroy_context(mm)		do { } while(0)
@@ -30,7 +29,8 @@
  *
  * tsk->mm will be NULL
  */
-static inline void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk, unsigned cpu)
+static inline void
+enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk, unsigned cpu)
 {
 }
 
@@ -42,8 +42,11 @@ static inline void
 switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	  struct task_struct *tsk, unsigned int cpu)
 {
-	if (prev != next)
+	if (prev != next) {
 		cpu_switch_mm(next->pgd, tsk);
+		clear_bit(cpu, &prev->cpu_vm_mask);
+	}
+	set_bit(cpu, &next->cpu_vm_mask);
 }
 
 #define activate_mm(prev, next) \

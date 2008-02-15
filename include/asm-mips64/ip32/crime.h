@@ -16,13 +16,13 @@
 /*
  * Address map
  */
-#ifndef __ASSEMBLY__
+#ifndef _LANGUAGE_ASSEMBLY
 #define CRIME_BASE	KSEG1ADDR(0x14000000)
 #else
 #define CRIME_BASE	0xffffffffb4000000
 #endif
 
-#ifndef __ASSEMBLY__
+#ifndef _LANGUAGE_ASSEMBLY
 static inline u64 crime_read_64 (unsigned long __offset) {
         return *((volatile u64 *) (CRIME_BASE + __offset));
 }

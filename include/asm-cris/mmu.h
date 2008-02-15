@@ -5,6 +5,8 @@
 #ifndef _CRIS_MMU_H
 #define _CRIS_MMU_H
 
+#include <asm-generic/mmu.h>
+
 /* type used in struct mm to couple an MMU context to an active mm */
 
 typedef unsigned int mm_context_t;

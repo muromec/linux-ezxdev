@@ -119,6 +119,16 @@
 #define UART_IERX_SLEEP  0x10	/* Enable sleep mode */
 
 /*
+ * The Intel PXA250/210 chip defines those bits
+ */
+#define UART_IER_DMAE	0x80	/* DMA Requests Enable */
+#define UART_IER_UUE	0x40	/* UART Unit Enable */
+#define UART_IER_NRZE	0x20	/* NRZ coding Enable */
+#define UART_IER_RTOIE	0x10	/* Receiver Time Out Interrupt Enable */
+
+#define UART_MCR_AFE	0x20	/* Auto-flow Control Enable */
+
+/*
  * These are the definitions for the Modem Control Register
  */
 #define UART_MCR_LOOP	0x10	/* Enable loopback test mode */
@@ -277,6 +287,22 @@
  */
 #define SERIAL_RSA_BAUD_BASE (921600)
 #define SERIAL_RSA_BAUD_BASE_LO (SERIAL_RSA_BAUD_BASE / 8)
+
+/*
+ * Extra serial register definitions for the internal UARTs 
+ * in TI OMAP processors.
+ */
+#define UART_OMAP_TCR		0x06	/* transmission control register */
+#define UART_OMAP_TLR		0x07	/* trigger level register */
+#define UART_OMAP_MDR1		0x08	/* mode definition register */
+#define UART_OMAP_SCR		0x10	/* supplementary control register */
+#if 1 /* MVL-CEE */
+#define UART_OMAP_SSR		0x11	/* supplementary status register */
+#endif /* MVL-CEE */
+#define UART_OMAP_OSC_12M_SEL	0x13	/* write 1 to select a 6.5 baud 
+					 * rate divisor to get 115200 baud 
+					 * from a 12MHz clock.
+					 */
 
 #endif /* _LINUX_SERIAL_REG_H */
 

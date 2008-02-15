@@ -1,5 +1,5 @@
 /*
- * $Id: l440gx.c,v 1.8 2002/01/10 20:27:40 eric Exp $
+ * $Id: l440gx.c,v 1.13 2004/07/12 21:59:44 dwmw2 Exp $
  *
  * BIOS Flash chip on Intel 440GX board.
  *
@@ -9,6 +9,7 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/kernel.h>
+#include <linux/init.h>
 #include <asm/io.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/map.h>
@@ -27,48 +28,6 @@ static u32 iobase;
 
 static struct mtd_info *mymtd;
 
-__u8 l440gx_read8(struct map_info *map, unsigned long ofs)
-{
-	return __raw_readb(map->map_priv_1 + ofs);
-}
-
-__u16 l440gx_read16(struct map_info *map, unsigned long ofs)
-{
-	return __raw_readw(map->map_priv_1 + ofs);
-}
-
-__u32 l440gx_read32(struct map_info *map, unsigned long ofs)
-{
-	return __raw_readl(map->map_priv_1 + ofs);
-}
-
-void l440gx_copy_from(struct map_info *map, void *to, unsigned long from, ssize_t len)
-{
-	memcpy_fromio(to, map->map_priv_1 + from, len);
-}
-
-void l440gx_write8(struct map_info *map, __u8 d, unsigned long adr)
-{
-	__raw_writeb(d, map->map_priv_1 + adr);
-	mb();
-}
-
-void l440gx_write16(struct map_info *map, __u16 d, unsigned long adr)
-{
-	__raw_writew(d, map->map_priv_1 + adr);
-	mb();
-}
-
-void l440gx_write32(struct map_info *map, __u32 d, unsigned long adr)
-{
-	__raw_writel(d, map->map_priv_1 + adr);
-	mb();
-}
-
-void l440gx_copy_to(struct map_info *map, unsigned long to, const void *from, ssize_t len)
-{
-	memcpy_toio(map->map_priv_1 + to, from, len);
-}
 
 /* Is this really the vpp port? */
 void l440gx_set_vpp(struct map_info *map, int vpp)
@@ -85,22 +44,15 @@ void l440gx_set_vpp(struct map_info *map, int vpp)
 }
 
 struct map_info l440gx_map = {
-	name: "L440GX BIOS",
-	size: WINDOW_SIZE,
-	buswidth: BUSWIDTH,
-	read8: l440gx_read8,
-	read16: l440gx_read16,
-	read32: l440gx_read32,
-	copy_from: l440gx_copy_from,
-	write8: l440gx_write8,
-	write16: l440gx_write16,
-	write32: l440gx_write32,
-	copy_to: l440gx_copy_to,
+	.name = "L440GX BIOS",
+	.size = WINDOW_SIZE,
+	.bankwidth = BUSWIDTH,
+	.phys = WINDOW_ADDR,
 #if 0
 	/* FIXME verify that this is the 
 	 * appripriate code for vpp enable/disable
 	 */
-	set_vpp: l440gx_set_vpp
+	.set_vpp = l440gx_set_vpp
 #endif
 };
 
@@ -113,7 +65,6 @@ static int __init init_l440gx(void)
 	dev = pci_find_device(PCI_VENDOR_ID_INTEL, 
 		PCI_DEVICE_ID_INTEL_82371AB_0, NULL);
 
-
 	pm_dev = pci_find_device(PCI_VENDOR_ID_INTEL, 
 		PCI_DEVICE_ID_INTEL_82371AB_3, NULL);
 
@@ -122,15 +73,14 @@ static int __init init_l440gx(void)
 		return -ENODEV;
 	}
 
+	l440gx_map.virt = (unsigned long)ioremap_nocache(WINDOW_ADDR, WINDOW_SIZE);
 
-	l440gx_map.map_priv_1 = (unsigned long)ioremap_nocache(WINDOW_ADDR, WINDOW_SIZE);
-
-	if (!l440gx_map.map_priv_1) {
+	if (!l440gx_map.virt) {
 		printk(KERN_WARNING "Failed to ioremap L440GX flash region\n");
 		return -ENOMEM;
 	}
-
-	printk(KERN_NOTICE "window_addr = 0x%08lx\n", (unsigned long)l440gx_map.map_priv_1);
+	simple_map_init(&l440gx_map);
+	printk(KERN_NOTICE "window_addr = 0x%08lx\n", (unsigned long)l440gx_map.virt);
 
 	/* Setup the pm iobase resource 
 	 * This code should move into some kind of generic bridge
@@ -153,7 +103,7 @@ static int __init init_l440gx(void)
 		/* Allocate the resource region */
 		if (pci_assign_resource(pm_dev, PIIXE_IOBASE_RESOURCE) != 0) {
 			printk(KERN_WARNING "Could not allocate pm iobase resource\n");
-			iounmap((void *)l440gx_map.map_priv_1);
+			iounmap((void *)l440gx_map.virt);
 			return -ENXIO;
 		}
 	}
@@ -181,13 +131,13 @@ static int __init init_l440gx(void)
 		mymtd = do_map_probe("map_rom", &l440gx_map);
 	}
 	if (mymtd) {
-		mymtd->module = THIS_MODULE;
+		mymtd->owner = THIS_MODULE;
 
 		add_mtd_device(mymtd);
 		return 0;
 	}
 
-	iounmap((void *)l440gx_map.map_priv_1);
+	iounmap((void *)l440gx_map.virt);
 	return -ENXIO;
 }
 
@@ -196,7 +146,7 @@ static void __exit cleanup_l440gx(void)
 	del_mtd_device(mymtd);
 	map_destroy(mymtd);
 	
-	iounmap((void *)l440gx_map.map_priv_1);
+	iounmap((void *)l440gx_map.virt);
 }
 
 module_init(init_l440gx);

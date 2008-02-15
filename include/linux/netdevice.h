@@ -21,6 +21,8 @@
  *		2 of the License, or (at your option) any later version.
  *
  *		Moved to /usr/include/linux for NET3
+ *
+ * 2005-Apr-05 Add securtiy patch, Ni Jili
  */
 #ifndef _LINUX_NETDEVICE_H
 #define _LINUX_NETDEVICE_H
@@ -438,6 +440,9 @@ struct net_device
 	/* this will get initialized at each interface type init routine */
 	struct divert_blk	*divert;
 #endif /* CONFIG_NET_DIVERT */
+#ifdef CONFIG_SECURITY_NETWORK
+	void			*security;
+#endif
 };
 
 

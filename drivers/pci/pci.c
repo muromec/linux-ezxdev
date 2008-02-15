@@ -357,6 +357,50 @@ pci_restore_state(struct pci_dev *dev, u32 *buffer)
 	return 0;
 }
 
+#if	defined(__arm__)
+int 
+pci_compare_state(struct pci_dev *dev, u32 *buffer)
+{
+	int i;
+	unsigned int temp;
+
+	if (buffer) {
+		for (i = 0; i < 16; i++) {
+			pci_read_config_dword(dev,i*4,&temp);
+			if (temp!=buffer[i])
+				return 1;
+		}
+	}
+	return 0;
+}
+
+int pci_generic_suspend_save(struct pci_dev *pdev, u32 state)
+{
+	if (pdev)
+		pci_save_state(pdev,pdev->saved_state);
+	return 0;
+}
+
+int pci_generic_resume_restore(struct pci_dev *pdev)
+{
+	if (pdev)
+		pci_restore_state(pdev,pdev->saved_state);
+	return 0;		
+}
+
+int pci_generic_resume_compare(struct pci_dev *pdev)
+{
+	int retval=0;
+	if (pdev)
+		retval = pci_compare_state(pdev,pdev->saved_state);
+	return retval;		
+}
+
+EXPORT_SYMBOL(pci_generic_suspend_save);
+EXPORT_SYMBOL(pci_generic_resume_restore);
+EXPORT_SYMBOL(pci_generic_resume_compare);
+#endif
+
 /**
  * pci_enable_device_bars - Initialize some of a device for use
  * @dev: PCI device to be initialized

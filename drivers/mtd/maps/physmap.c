@@ -1,112 +1,119 @@
 /*
- * $Id: physmap.c,v 1.15 2001/10/02 15:05:14 dwmw2 Exp $
+ * $Id: physmap.c,v 1.34 2004/07/21 00:16:14 jwboyer Exp $
  *
  * Normal mappings of chips in physical memory
+ *
+ * Copyright (C) 2003 MontaVista Software Inc.
+ * Author: Jun Sun, jsun@mvista.com or jsun@junsun.net
+ *
+ * 031022 - [jsun] add run-time configure and partition setup
  */
 
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/slab.h>
 #include <asm/io.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/map.h>
 #include <linux/config.h>
-
-
-#define WINDOW_ADDR CONFIG_MTD_PHYSMAP_START
-#define WINDOW_SIZE CONFIG_MTD_PHYSMAP_LEN
-#define BUSWIDTH CONFIG_MTD_PHYSMAP_BUSWIDTH
+#include <linux/mtd/partitions.h>
 
 static struct mtd_info *mymtd;
 
-__u8 physmap_read8(struct map_info *map, unsigned long ofs)
-{
-	return __raw_readb(map->map_priv_1 + ofs);
-}
-
-__u16 physmap_read16(struct map_info *map, unsigned long ofs)
-{
-	return __raw_readw(map->map_priv_1 + ofs);
-}
-
-__u32 physmap_read32(struct map_info *map, unsigned long ofs)
-{
-	return __raw_readl(map->map_priv_1 + ofs);
-}
-
-void physmap_copy_from(struct map_info *map, void *to, unsigned long from, ssize_t len)
-{
-	memcpy_fromio(to, map->map_priv_1 + from, len);
-}
-
-void physmap_write8(struct map_info *map, __u8 d, unsigned long adr)
-{
-	__raw_writeb(d, map->map_priv_1 + adr);
-	mb();
-}
-
-void physmap_write16(struct map_info *map, __u16 d, unsigned long adr)
-{
-	__raw_writew(d, map->map_priv_1 + adr);
-	mb();
-}
-
-void physmap_write32(struct map_info *map, __u32 d, unsigned long adr)
-{
-	__raw_writel(d, map->map_priv_1 + adr);
-	mb();
-}
-
-void physmap_copy_to(struct map_info *map, unsigned long to, const void *from, ssize_t len)
-{
-	memcpy_toio(map->map_priv_1 + to, from, len);
-}
-
 struct map_info physmap_map = {
-	name: "Physically mapped flash",
-	size: WINDOW_SIZE,
-	buswidth: BUSWIDTH,
-	read8: physmap_read8,
-	read16: physmap_read16,
-	read32: physmap_read32,
-	copy_from: physmap_copy_from,
-	write8: physmap_write8,
-	write16: physmap_write16,
-	write32: physmap_write32,
-	copy_to: physmap_copy_to
+	.name = "phys_mapped_flash",
+	.phys = CONFIG_MTD_PHYSMAP_START,
+	.size = CONFIG_MTD_PHYSMAP_LEN,
+	.bankwidth = CONFIG_MTD_PHYSMAP_BANKWIDTH,
 };
 
-int __init init_physmap(void)
-{
-       	printk(KERN_NOTICE "physmap flash device: %x at %x\n", WINDOW_SIZE, WINDOW_ADDR);
-	physmap_map.map_priv_1 = (unsigned long)ioremap(WINDOW_ADDR, WINDOW_SIZE);
+#ifdef CONFIG_MTD_PARTITIONS
+static struct mtd_partition *mtd_parts;
+static int                   mtd_parts_nb;
 
-	if (!physmap_map.map_priv_1) {
+static int num_physmap_partitions;
+static struct mtd_partition *physmap_partitions;
+
+static const char *part_probes[] __initdata = {"cmdlinepart", "RedBoot", NULL};
+
+void physmap_set_partitions(struct mtd_partition *parts, int num_parts)
+{
+	physmap_partitions=parts;
+	num_physmap_partitions=num_parts;
+}
+#endif /* CONFIG_MTD_PARTITIONS */
+
+static int __init init_physmap(void)
+{
+	static const char *rom_probe_types[] = { "cfi_probe", "jedec_probe", "map_rom", NULL };
+	const char **type;
+
+       	printk(KERN_NOTICE "physmap flash device: %lx at %lx\n", physmap_map.size, physmap_map.phys);
+	physmap_map.virt = (unsigned long)ioremap(physmap_map.phys, physmap_map.size);
+
+	if (!physmap_map.virt) {
 		printk("Failed to ioremap\n");
 		return -EIO;
 	}
-	mymtd = do_map_probe("cfi_probe", &physmap_map);
-	if (mymtd) {
-		mymtd->module = THIS_MODULE;
 
+	simple_map_init(&physmap_map);
+
+	mymtd = NULL;
+	type = rom_probe_types;
+	for(; !mymtd && *type; type++) {
+		mymtd = do_map_probe(*type, &physmap_map);
+	}
+	if (mymtd) {
+		mymtd->owner = THIS_MODULE;
+
+#ifdef CONFIG_MTD_PARTITIONS
+		mtd_parts_nb = parse_mtd_partitions(mymtd, part_probes, 
+						    &mtd_parts, 0);
+
+		if (mtd_parts_nb > 0)
+		{
+			add_mtd_partitions (mymtd, mtd_parts, mtd_parts_nb);
+			return 0;
+		}
+
+		if (num_physmap_partitions != 0) 
+		{
+			printk(KERN_NOTICE 
+			       "Using physmap partition definition\n");
+			add_mtd_partitions (mymtd, physmap_partitions, num_physmap_partitions);
+			return 0;
+		}
+
+#endif
 		add_mtd_device(mymtd);
+
 		return 0;
 	}
 
-	iounmap((void *)physmap_map.map_priv_1);
+	iounmap((void *)physmap_map.virt);
 	return -ENXIO;
 }
 
 static void __exit cleanup_physmap(void)
 {
-	if (mymtd) {
+#ifdef CONFIG_MTD_PARTITIONS
+	if (mtd_parts_nb) {
+		del_mtd_partitions(mymtd);
+		kfree(mtd_parts);
+	} else if (num_physmap_partitions) {
+		del_mtd_partitions(mymtd);
+	} else {
 		del_mtd_device(mymtd);
-		map_destroy(mymtd);
 	}
-	if (physmap_map.map_priv_1) {
-		iounmap((void *)physmap_map.map_priv_1);
-		physmap_map.map_priv_1 = 0;
-	}
+#else
+	del_mtd_device(mymtd);
+#endif
+	map_destroy(mymtd);
+
+	iounmap((void *)physmap_map.virt);
+	physmap_map.virt = 0;
 }
 
 module_init(init_physmap);

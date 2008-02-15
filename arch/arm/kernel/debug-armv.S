@@ -20,9 +20,20 @@
  * printk isn't working).  For DEBUGGING ONLY!!!  Do not leave
  * references to these in a production kernel!
  */
-#if defined(CONFIG_ARCH_RPC)
+#if defined(CONFIG_ARCH_RPC) || defined(CONFIG_ARCH_RISCSTATION)
 		.macro	addruart,rx
-		mov	\rx, #0xe0000000
+
+/* note, errors can occur in the head code BEFORE the memory map has been
+ * setup (and therefore the mapping for the IO) so the #if statement allows
+ * the address of the uart to be changed to the physical address instead of
+ * the logical
+ *
+ * (bjd)
+ */
+		mrc	p15, 0, \rx, c1, c0
+		tst	\rx, #1			@ MMU enabled?
+		movne	\rx, #0xe0000000
+		moveq	\rx, #0x03000000
 		orr	\rx, \rx, #0x00010000
 		orr	\rx, \rx, #0x00000fe0
 		.endm
@@ -66,7 +77,7 @@
 		tst	\rd, #0x10
 		beq	1001b
 		.endm
- 	
+
 #elif defined(CONFIG_ARCH_SHARK)
 		.macro	addruart,rx
 		mov	\rx, #0xe0000000
@@ -210,6 +221,31 @@
 		bne	1001b
 		.endm
 
+#elif defined(CONFIG_ARCH_PXA)
+
+		.macro	addruart,rx
+		mrc	p15, 0, \rx, c1, c0
+		tst	\rx, #1			@ MMU enabled?
+		moveq	\rx, #0x40000000		@ physical
+		movne	\rx, #io_p2v(0x40000000)	@ virtual
+		orr	\rx, \rx, #0x00100000		@ FFUART
+		.endm
+
+		.macro	senduart,rd,rx
+		str	\rd, [\rx, #0]
+		.endm
+
+		.macro	busyuart,rd,rx
+1002:		ldr	\rd, [\rx, #0x14]
+		tst	\rd, #(1 << 6)
+		beq	1002b
+		.endm
+
+		.macro	waituart,rd,rx
+1001:		ldr	\rd, [\rx, #0x14]
+		tst	\rd, #(1 << 5)
+		beq	1001b
+		.endm
 #elif defined(CONFIG_ARCH_CLPS7500)
 		.macro	addruart,rx
 		mov	\rx, #0xe0000000
@@ -322,6 +358,21 @@
 		bne	1001b
 1002:
 		.endm
+#elif defined(CONFIG_ARCH_OMAHA)
+
+#include <asm/hardware/serial_omaha.h>
+
+		.macro	addruart,rx
+		.endm
+
+		.macro	senduart,rd,rx
+		.endm
+
+		.macro	waituart,rd,rx
+		.endm
+
+		.macro	busyuart,rd,rx
+		.endm
 
 #elif defined(CONFIG_ARCH_ANAKIN)
 
@@ -365,7 +416,7 @@
 		tst	\rx, #1			@ MMU enabled?
 		ldr	\rx, =EXC_UART00_BASE	@ physical base address
 		orrne	\rx, \rx, #0xff000000	@ virtual base
-		orrne	\rx, \rx, #0x00f00000	
+		orrne	\rx, \rx, #0x00f00000
 		.endm
 
 		.macro	senduart,rd,rx
@@ -384,6 +435,263 @@
 		ands 	\rd, \rd,  #UART_TSR_TX_LEVEL_MSK
 		bne	1001b
 		.endm
+
+#elif defined(CONFIG_ARCH_IOP3XX)
+
+
+		.macro	addruart,rx
+		mov	\rx, #0xfe000000	@ physical
+#if defined(CONFIG_ARCH_IQ80310)
+		orr	\rx, \rx, #0x00810000
+#elif defined(CONFIG_ARCH_IQ80321)
+		orr	\rx, \rx, #0x00800000
+#endif
+		.endm
+
+		.macro	senduart,rd,rx
+		strb	\rd, [\rx]
+		.endm
+
+		.macro	busyuart,rd,rx
+1002:		ldrb	\rd, [\rx, #0x5]
+		and	\rd, \rd, #0x60
+		teq	\rd, #0x60
+		bne	1002b
+		.endm
+
+		.macro	waituart,rd,rx
+#ifndef CONFIG_ARCH_IQ80321
+1001:		ldrb	\rd, [\rx, #0x6]
+		tst	\rd, #0x10
+		beq	1001b
+#endif
+		.endm
+
+#elif defined(CONFIG_ARCH_ADIFCC)
+
+
+		.macro	addruart,rx
+		mrc	p15, 0, \rx, c1, c0
+		tst	\rx, #1			@ MMU enabled?
+#ifdef CONFIG_ADI_EVB
+		mov	\rx, #0x00400000	@ physical base address
+		orrne	\rx, \rx, #0xff000000	@ virtual base
+#elif defined(CONFIG_ARCH_BRH)
+		moveq	\rx, #0x03000000	@ physical base address
+		movne	\rx, #0xff000000	@ virtual base
+#endif
+		.endm
+
+		.macro	senduart,rd,rx
+		strb	\rd, [\rx]
+		.endm
+
+		.macro	busyuart,rd,rx
+1002:		ldrb	\rd, [\rx, #0x5]
+		and	\rd, \rd, #0x60
+		teq	\rd, #0x60
+		bne	1002b
+		.endm
+
+		.macro	waituart,rd,rx
+1001:		ldrb	\rd, [\rx, #0x6]
+		tst	\rd, #0x10
+		beq	1001b
+		.endm
+
+
+#elif defined(CONFIG_ARCH_IXP1200)
+
+                .macro  addruart,rx
+                mrc     p15, 0, \rx, c1, c0
+                tst     \rx, #1                 @ MMU enabled?
+                moveq   \rx, #0x90000000        @ physical base address
+                movne   \rx, #0xf0000000        @ virtual address
+                add     \rx, \rx, #0x00003000   @
+                .endm
+
+                .macro  senduart,rd,rx
+                str     \rd, [\rx, #0xc00]      @ UARTDR
+                .endm
+
+                .macro  busyuart,rd,rx
+1001:           ldr     \rd, [\rx, #0x400]      @ UARTFLG
+                tst     \rd, #1 << 2            @ loop until set
+                beq     1001b
+                .endm
+
+                .macro  waituart,rd,rx
+                .endm
+
+
+#elif	defined(CONFIG_ARCH_OMAP1510)
+
+		.macro	addruart,rx
+		mov	\rx, #0xff000000
+		orr	\rx, \rx, #0x00fb0000
+		orr	\rx, \rx, #0x00000000
+		.endm
+
+		.macro	senduart,rd,rx
+		strb	\rd, [\rx]
+		.endm
+
+		.macro	busyuart,rd,rx
+1002:		ldrb	\rd, [\rx, #(0x5 << 2)]
+		and	\rd, \rd, #0x60
+		teq	\rd, #0x60
+		bne	1002b
+		.endm
+
+		.macro	waituart,rd,rx
+1001:		ldrb	\rd, [\rx, #(0x6 << 2)]
+		tst	\rd, #0x10
+		beq	1001b
+		.endm
+
+#elif	defined(CONFIG_ARCH_OMAP1610)
+
+		.macro	addruart,rx
+		mov	\rx, #0xff000000
+		orr	\rx, \rx, #0x00fb0000
+		orr	\rx, \rx, #0x00000000
+		.endm
+
+		.macro	senduart,rd,rx
+		strb	\rd, [\rx]
+		.endm
+
+		.macro	busyuart,rd,rx
+1002:		ldrb	\rd, [\rx, #(0x5 << 2)]
+		and	\rd, \rd, #0x60
+		teq	\rd, #0x60
+		bne	1002b
+		.endm
+
+		.macro	waituart,rd,rx
+1001:		ldrb	\rd, [\rx, #(0x6 << 2)]
+		tst	\rd, #0x10
+		beq	1001b
+		.endm
+
+#elif	defined(CONFIG_ARCH_OMAP730)
+
+               .macro  addruart,rx
+               mov     \rx, #0xff000000
+               orr     \rx, \rx, #0x00fb0000
+               orr     \rx, \rx, #0x00000000
+               .endm
+
+               .macro  senduart,rd,rx
+               strb    \rd, [\rx]
+               .endm
+
+               .macro  busyuart,rd,rx
+1002:          ldrb    \rd, [\rx, #0x5]
+               and     \rd, \rd, #0x60
+               teq     \rd, #0x60
+               bne     1002b
+               .endm
+
+               .macro  waituart,rd,rx
+1001:          ldrb    \rd, [\rx, #0x5]
+               tst     \rd, #0x20
+               beq     1001b
+               .endm
+
+#elif	defined(CONFIG_ARCH_OMAP710)
+
+		.macro	addruart,rx
+		mov	\rx, #0xff000000
+		orr	\rx, \rx, #0x00fc0000
+		orr	\rx, \rx, #0x0000e800
+		.endm
+
+		.macro	senduart,rd,rx
+		strb	\rd, [\rx]
+		.endm
+
+		.macro	busyuart,rd,rx
+1002:		ldrb	\rd, [\rx, #0x5]
+		and	\rd, \rd, #0x60
+		teq	\rd, #0x60
+		bne	1002b
+		.endm
+
+		.macro	waituart,rd,rx
+1001:		ldrb	\rd, [\rx, #0x6]
+		tst	\rd, #0x10
+		beq	1001b
+		.endm
+
+#elif defined(CONFIG_ARCH_MX2ADS)
+
+		.macro addruart,rx
+		mrc	p15, 0, \rx, c1, c0
+		tst	\rx, #1			@ MMU enabled?
+		moveq	\rx, #0x10000000	@ physical
+		movne	\rx, #0xe4000000	@ virtual
+@		orr	\rx, \rx, #(0x1000a000 & 0xff000000)
+		orr	\rx, \rx, #(0x1000a000 & 0x0000ff00)
+		.endm
+
+		.macro senduart,rd,rx
+		str	\rd, [\rx, #0x40]	@ TXDATA
+		.endm
+
+		.macro waituart,rd,rx
+		.endm
+
+		.macro busyuart,rd,rx
+1002:		ldr	\rd, [\rx, #0x98]	@ SR2
+		tst	\rd, #1 << 3		@ TXDC
+		beq	1002b			@ wait until transmit done
+		.endm
+
+#elif   defined(CONFIG_ARCH_S3C24A0)
+		                                                                                             
+		.macro  addruart,rx
+		mrc		p15, 0, \rx, c1, c0
+		tst		\rx, #1					@ MMU enabled ?
+		moveq	\rx, #0x44000000		@ physical base address
+		movne	\rx, #0xe4000000		@ virtual address
+		orr		\rx, \rx, #0x00400000
+		.endm
+		
+		.macro  senduart,rd,rx
+		str		\rd, [\rx, #0x20]		@ UTXH
+		.endm
+		
+		.macro  waituart,rd,rx
+		.endm
+		
+		.macro  busyuart,rd,rx
+1001:	ldr		\rd, [\rx, #0x10]		@ read UTRSTAT
+		tst		\rd, #1 << 2			@ TX_EMPTY ?
+		beq     1001b
+		.endm
+		
+#elif defined(CONFIG_ARCH_S3C2440)
+
+                 .macro  addruart,rx
+                 mrc     p15, 0, \rx, c1, c0
+                 tst     \rx, #1         	 @ MMU enabled ?
+                 moveq   \rx, #0x50000000        @ physical base address
+                 movne   \rx, #0xf0000000        @ virtual address
+                 .endm
+  
+                 .macro  senduart,rd,rx
+                 str     \rd, [\rx, #0x20]       @ UTXH
+                 .endm
+  
+                 .macro  waituart,rd,rx
+                 .endm
+  
+                .macro  busyuart,rd,rx
+1001:   	ldr     \rd, [\rx, #0x10]       @ read UTRSTAT
+                tst     \rd, #1 << 2            @ TX_EMPTY ?
+                beq     1001b
+                .endm
 
 #else
 #error Unknown architecture

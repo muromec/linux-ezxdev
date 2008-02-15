@@ -2,7 +2,7 @@
 /*
  * MTD driver for the 28F160F3 Flash Memory (non-CFI) on LART.
  *
- * $Id: lart.c,v 1.2 2001/10/02 15:05:13 dwmw2 Exp $
+ * $Id: lart.c,v 1.7 2004/08/09 13:19:44 dwmw2 Exp $
  *
  * Author: Abraham vd Merwe <abraham@2d3d.co.za>
  *
@@ -42,7 +42,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/types.h>
-#include <linux/version.h>
+#include <linux/init.h>
 #include <linux/errno.h>
 #include <linux/mtd/mtd.h>
 #ifdef HAVE_PARTITIONS
@@ -433,7 +433,7 @@ static int flash_erase (struct mtd_info *mtd,struct erase_info *instr)
 	 }
 
    instr->state = MTD_ERASE_DONE;
-   if (instr->callback) instr->callback (instr);
+   mtd_erase_callback(instr);
 
    return (0);
 }
@@ -584,46 +584,41 @@ static int flash_write (struct mtd_info *mtd,loff_t to,size_t len,size_t *retlen
 
 static struct mtd_info mtd;
 
-static struct mtd_erase_region_info erase_regions[] =
-{
-   /* parameter blocks */
-   {
-	     offset: 0x00000000,
-	  erasesize: FLASH_BLOCKSIZE_PARAM,
-	  numblocks: FLASH_NUMBLOCKS_16m_PARAM
-   },
-   /* main blocks */
-   {
-	     offset: FLASH_BLOCKSIZE_PARAM * FLASH_NUMBLOCKS_16m_PARAM,
-	  erasesize: FLASH_BLOCKSIZE_MAIN,
-	  numblocks: FLASH_NUMBLOCKS_16m_MAIN
-   }
+static struct mtd_erase_region_info erase_regions[] = {
+	/* parameter blocks */
+	{
+		.offset		= 0x00000000,
+		.erasesize	= FLASH_BLOCKSIZE_PARAM,
+		.numblocks	= FLASH_NUMBLOCKS_16m_PARAM,
+	},
+	/* main blocks */
+	{
+		.offset	 = FLASH_BLOCKSIZE_PARAM * FLASH_NUMBLOCKS_16m_PARAM,
+		.erasesize	= FLASH_BLOCKSIZE_MAIN,
+		.numblocks	= FLASH_NUMBLOCKS_16m_MAIN,
+	}
 };
 
 #ifdef HAVE_PARTITIONS
-static struct mtd_partition lart_partitions[] =
-{
-   /* blob */
-   {
-	       name: "blob",
-	     offset: BLOB_START,
-	       size: BLOB_LEN,
-	 mask_flags: 0
-   },
-   /* kernel */
-   {
-	       name: "kernel",
-	     offset: KERNEL_START,			/* MTDPART_OFS_APPEND */
-	       size: KERNEL_LEN,
-	 mask_flags: 0
-   },
-   /* initial ramdisk / file system */
-   {
-	       name: "file system",
-	     offset: INITRD_START,			/* MTDPART_OFS_APPEND */
-	       size: INITRD_LEN,			/* MTDPART_SIZ_FULL */
-	 mask_flags: 0
-   }
+static struct mtd_partition lart_partitions[] = {
+	/* blob */
+	{
+		.name	= "blob",
+		.offset	= BLOB_START,
+		.size	= BLOB_LEN,
+	},
+	/* kernel */
+	{
+		.name	= "kernel",
+		.offset	= KERNEL_START,		/* MTDPART_OFS_APPEND */
+		.size	= KERNEL_LEN,
+	},
+	/* initial ramdisk / file system */
+	{
+		.name	= "file system",
+		.offset	= INITRD_START,		/* MTDPART_OFS_APPEND */
+		.size	= INITRD_LEN,		/* MTDPART_SIZ_FULL */
+	}
 };
 #endif
 
@@ -646,10 +641,10 @@ int __init lart_flash_init (void)
    mtd.erasesize = FLASH_BLOCKSIZE_MAIN;
    mtd.numeraseregions = NB_OF (erase_regions);
    mtd.eraseregions = erase_regions;
-   mtd.module = THIS_MODULE;
    mtd.erase = flash_erase;
    mtd.read = flash_read;
    mtd.write = flash_write;
+   mtd.owner = THIS_MODULE;
 
 #ifdef LART_DEBUG
    printk (KERN_DEBUG

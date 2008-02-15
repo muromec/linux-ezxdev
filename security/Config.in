@@ -1,0 +1,24 @@
+#
+# Security configuration
+#
+# Copyright (C) 2005  Motorola Inc.
+#
+# 2005-Mar - Motorola - Modified by Zhu Zhifu for Security Access Control Module
+#
+
+bool 'Enable different security models' CONFIG_SECURITY
+if [ "$CONFIG_SECURITY" != "n" ]; then
+  bool 'Socket and Networking Security Hooks' CONFIG_SECURITY_NETWORK
+  tristate 'Capabilities Support' CONFIG_SECURITY_CAPABILITIES
+  tristate 'LSM port of Openwall (EXPERIMENTAL)' CONFIG_SECURITY_OWLSM 
+  if [ "$CONFIG_SECURITY_OWLSM" = "y" -o "$CONFIG_SECURITY_OWLSM" = "m" ]; then
+	bool '  Add RLIMITS_NPROC check to execve' CONFIG_OWLSM_RLIMIT_NPROC
+	bool '  Restricted links in /tmp' CONFIG_OWLSM_LINK
+	bool '  Special handling of fd 0, 1, and 2' CONFIG_OWLSM_FD
+  fi
+  tristate ' Motorola Access Control Module' CONFIG_SECURITY_MOTOAC
+  if [ "$CONFIG_SECURITY_MOTOAC" != "n" ]; then
+        bool '  Support for development' CONFIG_SECURITY_AC_DEVELOP
+  fi
+fi
+endmenu

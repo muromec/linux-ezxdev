@@ -2,6 +2,8 @@
  *  linux/fs/proc/array.c
  *
  *  Copyright (C) 1992  by Linus Torvalds
+ *  Copyright (C) 2005  Motorola Inc. 
+ *
  *  based on ideas by Darren Senn
  *
  * Fixes:
@@ -50,6 +52,10 @@
  * Al Viro & Jeff Garzik :  moved most of the thing into base.c and
  *			 :  proc_misc.c. The rest may eventually go into
  *			 :  base.c too.
+ *
+ * 2005-Feb - Motorola - add domaintype info into proc for Security AC by Wang Witty
+ *
+ * 2005-Apr - Motorola - add security LSM patch for EzX by Jili Ni
  */
 
 #include <linux/config.h>
@@ -75,6 +81,11 @@
 #include <asm/pgtable.h>
 #include <asm/io.h>
 #include <asm/processor.h>
+
+#ifdef CONFIG_SECURITY_MOTOAC
+extern int sys_task_to_dom(struct task_struct *p);
+extern int sys_task_to_proc(struct task_struct *p);
+#endif
 
 /* Gcc optimizes away "strlen(x)" for constant x */
 #define ADDBUF(buffer, string) \
@@ -175,6 +186,30 @@ static inline char * task_state(struct task_struct *p, char *buffer)
 	buffer += sprintf(buffer, "\n");
 	return buffer;
 }
+
+#ifdef CONFIG_SECURITY_MOTOAC
+static inline char * task_domain(struct task_struct *p, char *buffer)
+{
+    int dno;
+    int pno;
+
+    dno = sys_task_to_dom(p);
+    pno = sys_task_to_proc(p);
+
+    read_lock(&tasklist_lock);
+	buffer += sprintf(buffer,
+		"Pid:\t%d\n"
+		"ProcessNo:\t%d\n"
+		"DomainType:\t%d\n",
+		p->pid, 
+		pno,
+        dno);
+	read_unlock(&tasklist_lock);	
+	
+	buffer += sprintf(buffer, "\n");
+	return buffer;
+}
+#endif
 
 static inline char * task_mem(struct mm_struct *mm, char *buffer)
 {
@@ -297,6 +332,24 @@ int proc_pid_status(struct task_struct *task, char * buffer)
 	return buffer - orig;
 }
 
+#ifdef CONFIG_SECURITY_MOTOAC
+int proc_pid_domain(struct task_struct *task, char * buffer)
+{
+	char * orig = buffer;
+	struct mm_struct *mm;
+
+	buffer = task_name(task, buffer);
+	buffer = task_domain(task, buffer);
+	task_lock(task);
+	mm = task->mm;
+	if(mm)
+		atomic_inc(&mm->mm_users);
+	task_unlock(task);
+	
+	return buffer - orig;
+}
+#endif
+
 int proc_pid_stat(struct task_struct *task, char * buffer)
 {
 	unsigned long vsize, eip, esp, wchan;
@@ -338,9 +391,8 @@ int proc_pid_stat(struct task_struct *task, char * buffer)
 
 	/* scale priority and nice values from timeslices to -20..20 */
 	/* to make it look like a "normal" Unix priority/nice value  */
-	priority = task->counter;
-	priority = 20 - (priority * 10 + DEF_COUNTER / 2) / DEF_COUNTER;
-	nice = task->nice;
+	priority = task_prio(task);
+	nice = task_nice(task);
 
 	read_lock(&tasklist_lock);
 	ppid = task->pid ? task->p_opptr->pid : 0;
@@ -390,7 +442,7 @@ int proc_pid_stat(struct task_struct *task, char * buffer)
 		task->nswap,
 		task->cnswap,
 		task->exit_signal,
-		task->processor);
+		task->cpu);
 	if(mm)
 		mmput(mm);
 	return res;

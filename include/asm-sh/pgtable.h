@@ -62,9 +62,9 @@ extern void flush_cache_page(struct vm_area_struct *vma, unsigned long addr);
 extern void flush_dcache_page(struct page *pg);
 extern void flush_icache_range(unsigned long start, unsigned long end);
 extern void flush_cache_sigtramp(unsigned long addr);
+extern void flush_icache_page(struct vm_area_struct *vma, struct page *pg);
 
 #define flush_page_to_ram(page)			do { } while (0)
-#define flush_icache_page(vma,pg)		do { } while (0)
 #define flush_icache_user_range(vma,pg,adr,len)	do { } while (0)
 
 /* Initialization of P3 area for copy_user_page */
@@ -232,6 +232,19 @@ static inline pte_t pte_mkexec(pte_t pte)	{ set_pte(&pte, __pte(pte_val(pte) | _
 static inline pte_t pte_mkdirty(pte_t pte)	{ set_pte(&pte, __pte(pte_val(pte) | _PAGE_DIRTY)); return pte; }
 static inline pte_t pte_mkyoung(pte_t pte)	{ set_pte(&pte, __pte(pte_val(pte) | _PAGE_ACCESSED)); return pte; }
 static inline pte_t pte_mkwrite(pte_t pte)	{ set_pte(&pte, __pte(pte_val(pte) | _PAGE_RW)); return pte; }
+
+/*
+ * Macro and implementation to make a page protection as uncachable.
+ */
+#define pgprot_noncached pgprot_noncached
+
+static inline pgprot_t pgprot_noncached(pgprot_t _prot)
+{
+	unsigned long prot = pgprot_val(_prot);
+
+	prot &= ~_PAGE_CACHABLE;
+	return __pgprot(prot);
+}
 
 /*
  * Conversion functions: convert a page and protection to a page entry,

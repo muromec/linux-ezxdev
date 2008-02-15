@@ -1,0 +1,27 @@
+#
+# CDC ACM Function Driver
+#
+# Copyright (C) 2003,2004 Belcarra
+#
+
+mainmenu_option next_comment
+comment "CDC ACM Function"
+
+dep_tristate '  CDC ACM Function' CONFIG_USBD_ACM $CONFIG_USBD
+if [ "$CONFIG_USBD_ACM" = "y" -o "$CONFIG_USBD_ACM" = "m" ]; then
+   hex     'VendorID (hex value)' CONFIG_USBD_ACM_VENDORID "12b9"
+   hex     'ProductID (hex value)' CONFIG_USBD_ACM_PRODUCTID "f002"
+   hex     'bcdDevice (binary-coded decimal)' CONFIG_USBD_ACM_BCDDEVICE "0100"
+
+   string 'iManufacturer (string)' CONFIG_USBD_ACM_MANUFACTURER "Belcarra"
+   string 'iProduct (string)' CONFIG_USBD_ACM_PRODUCT_NAME "Belcarra ACM Device"
+
+   string 'iConfiguration (string)' CONFIG_USBD_ACM_DESC "Acm Cfg"
+   string 'Comm Interface iInterface (string)' CONFIG_USBD_ACM_COMM_INTF "Comm Intf"
+   string 'Data Interface iInterface (string)' CONFIG_USBD_ACM_DATA_INTF "Data Intf"
+
+   bool    '  ACM Tracing' CONFIG_USBD_ACM_TRACE
+   comment ''
+fi
+
+endmenu

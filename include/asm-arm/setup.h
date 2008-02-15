@@ -18,6 +18,12 @@
  *  (2001). This will allow boot loaders to convert to the new struct
  *  tag way.
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by a17400, for EZX platform
+ */
+
 #ifndef __ASMARM_SETUP_H
 #define __ASMARM_SETUP_H
 
@@ -130,8 +136,15 @@ struct tag_ramdisk {
 	u32 start;	/* starting block of floppy-based RAM disk image */
 };
 
-/* describes where the compressed ramdisk image lives */
+/* describes where the compressed ramdisk image lives (virtual address) */
+/*
+ * this one accidentally used virtual addresses - as such,
+ * its depreciated.
+ */
 #define ATAG_INITRD	0x54410005
+
+/* describes where the compressed ramdisk image lives (physical address) */
+#define ATAG_INITRD2	0x54420005
 
 struct tag_initrd {
 	u32 start;	/* physical start address */
@@ -199,6 +212,13 @@ struct tag_memclk {
 	u32 fmemclk;
 };
 
+//a17400: add defination of ezx platform tag
+#define ATAG_EZX	0xf1000401   //??? fix me: how to set it safely?
+
+struct tag_ezx{
+  u32 pow_up_reason;    //power up reason
+};
+
 struct tag {
 	struct tag_header hdr;
 	union {
@@ -221,6 +241,8 @@ struct tag {
 		 * DC21285 specific
 		 */
 		struct tag_memclk	memclk;
+	  //a17400: add ezx platform tag
+	  struct tag_ezx          ezx;
 	} u;
 };
 

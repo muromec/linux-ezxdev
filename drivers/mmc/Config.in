@@ -1,0 +1,50 @@
+#
+# MMC subsystem configuration
+#
+# Copyright (c) 2004-2005 Motorola Inc.
+#
+# Revision History:
+#                    Modification    
+# Changed by            Date             Description of Changes
+#----------------   ------------      -------------------------
+# zhou qiong         2004/1/13            change for ezx
+# jiang Lili         2005/5/11            change for adding new config
+
+mainmenu_option next_comment
+comment 'MMC/SD Card support'
+
+tristate 'MMC support' CONFIG_MMC
+if [ "$CONFIG_MMC" = "y" -o "$CONFIG_MMC" = "m" ]; then
+  bool '  MMC debugging' CONFIG_MMC_DEBUG
+  if [ "$CONFIG_MMC_DEBUG" = "y" ]; then
+    int '  MMC debugging verbosity (0=quiet, 3=noisy)' CONFIG_MMC_DEBUG_VERBOSE 0
+  fi
+fi
+
+comment 'MMC Controllers device drivers'
+
+if [ "$CONFIG_ARCH_OMAP" = "y" ]; then
+   dep_tristate 'OMAP1510/1610/730 MMC' CONFIG_OMAP_MMC $CONFIG_MMC
+fi
+
+if [ "$CONFIG_ARCH_MAINSTONE" = "y" ]; then
+    dep_tristate 'Intel HCDDBBVA0 (Mainstone) MMC/SD' CONFIG_MAINSTONE_MMC $CONFIG_MMC
+fi
+
+if [ "$CONFIG_ARCH_MX2ADS" = "y" ]; then
+   dep_tristate 'MX2 MMC' CONFIG_MX2MMC $CONFIG_MMC
+fi
+
+if [ "$CONFIG_ARCH_EZX" = "y" ]; then
+    dep_tristate 'Motorola EZX MMC/SD' CONFIG_EZX_MMC $CONFIG_MMC
+fi
+
+dep_bool 'Motorola EZX Triflash' CONFIG_ARCH_EZX_TRIFLASH $CONFIG_MMC
+dep_bool 'Motorola EZX SD' CONFIG_ARCH_EZX_SD $CONFIG_MMC
+dep_tristate 'User Block Driver' CONFIG_USR_BLK_DEV $CONFIG_MMC
+
+if [ "$CONFIG_ARCH_S3C24A0" = "y" -o "$CONFIG_ARCH_S3C2440" = "y" ]; then
+   dep_tristate 'S3C24X0 MMC' CONFIG_S3CMMC $CONFIG_MMC
+fi
+
+endmenu

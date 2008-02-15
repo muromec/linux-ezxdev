@@ -1,4 +1,18 @@
 /*
+ * Copyright 2004-2005 Motorola, Inc. All Rights Reserved.
+ */
+/*
+ * Revision History:
+ *                    Modification     Tracking
+ * Author                 Date          Number     Description of Changes
+ * ----------------   ------------    ----------   -------------------------
+ * Zhou Qiong(w20126)  01/12/2004     LIBdd67826    add MMC/SD driver
+ * Jennifer(w4860c)    05/22/2005     LIBgg15666    for update Linux kernel System.
+ * Gu Susan(w15879)    07/04/2005     LIBgg37441    CEE3.1 patch upgrade
+ *
+ */
+
+/*
  * sysctl.h: General linux system control interface
  *
  * Begun 24 March 1995, Stephen Tweedie
@@ -69,7 +83,16 @@ enum
 /* CTL_BUS names: */
 enum
 {
-	BUS_ISA=1		/* ISA */
+	BUS_ISA=1,		/* ISA */
+#if	defined(CONFIG_SA1100_H3XXX)
+	BUS_PCMCIA=2,
+	BUS_SLEEVE=3,		/* ipaq sleeve interface */
+	BUS_MMC=4,              /* SD, MMC interface */
+#endif
+#if     defined(CONFIG_OMAP_INNOVATOR) || defined(CONFIG_MACH_OMAP_PERSEUS2) || defined(CONFIG_ARCH_MAINSTONE) \
+	|| defined(CONFIG_ARCH_MX2ADS) || defined(CONFIG_ARCH_EZX) || defined(CONFIG_ARCH_S3C24A0) || defined(CONFIG_ARCH_S3C2440)
+        BUS_MMC=4,
+#endif
 };
 
 /* CTL_KERN names: */
@@ -143,8 +166,11 @@ enum
 	VM_MAX_MAP_COUNT=11,	/* int: Maximum number of active map areas */
 	VM_MIN_READAHEAD=12,    /* Min file readahead */
 	VM_MAX_READAHEAD=13,    /* Max file readahead */
+#if defined(CONFIG_XFS_FS) || defined(CONFIG_XFS_FS_MODULE)
+	VM_PAGEBUF=14,		/* struct: Control pagebuf parameters */
+#endif
+	VM_OVERCOMMIT_RATIO=15,	/* percent of RAM to allow overcommit in */
 };
-
 
 /* CTL_NET names: */
 enum
@@ -536,7 +562,7 @@ enum
 	FS_STATINODE=2,
 	FS_MAXINODE=3,	/* int:maximum number of inodes that can be allocated */
 	FS_NRDQUOT=4,	/* int:current number of allocated dquots */
-	FS_MAXDQUOT=5,	/* int:maximum number of dquots that can be allocated */
+	/* was FS_MAXDQUOT */
 	FS_NRFILE=6,	/* int:current number of allocated filedescriptors */
 	FS_MAXFILE=7,	/* int:maximum number of filedescriptors that can be allocated */
 	FS_DENTRY=8,
@@ -547,6 +573,9 @@ enum
 	FS_LEASES=13,	/* int: leases enabled */
 	FS_DIR_NOTIFY=14,	/* int: directory notification enabled */
 	FS_LEASE_TIME=15,	/* int: maximum time to wait for a lease break */
+#if defined(CONFIG_XFS_FS) || defined(CONFIG_XFS_FS_MODULE)
+	FS_XFS=16,	/* struct: control xfs parameters */
+#endif
 };
 
 /* CTL_DEBUG names: */
@@ -627,6 +656,12 @@ enum
 	ABI_DEFHANDLER_LIBCSO=4,/* default handler for an libc.so ELF interp */
 	ABI_TRACE=5,		/* tracing flags */
 	ABI_FAKE_UTSNAME=6,	/* fake target utsname information */
+};
+
+enum {
+	CPU_NR_FREQ_MAX = 1,
+	CPU_NR_FREQ_MIN = 2,
+	CPU_NR_FREQ = 3
 };
 
 #ifdef __KERNEL__

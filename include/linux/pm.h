@@ -17,6 +17,14 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+/*  Copyright (C) 2005 Motorola, Inc.
+ *
+ * Revision History:
+ *                    Modification     Tracking
+ * Author                 Date          Number     Description of Changes
+ * ----------------   ------------    ----------   -------------------------
+ * Gu Susan(w15849)     07/04/2005     LIBgg37441   CEE3.1 patch upgrade
+ */
 
 #ifndef _LINUX_PM_H
 #define _LINUX_PM_H
@@ -33,6 +41,7 @@ enum
 {
 	PM_SUSPEND, /* enter D1-D3 */
 	PM_RESUME,  /* enter D0 */
+	PM_STANDBY,
 
 	PM_SAVE_STATE,  /* save device's state */
 
@@ -46,6 +55,18 @@ enum
 	/* base station management */
 	PM_EJECT,
 	PM_LOCK,
+};
+
+enum
+{
+  CPUMODE_RUN,
+  CPUMODE_IDLE,
+  CPUMODE_STANDBY,
+  CPUMODE_SLEEP,
+  CPUMODE_RESERVED,
+  CPUMODE_SENSE,
+  CPUMODE_RESERVED2,
+  CPUMODE_DEEPSLEEP,
 };
 
 typedef int pm_request_t;
@@ -62,6 +83,10 @@ enum
 	PM_SCSI_DEV,	    /* SCSI device */
 	PM_ISA_DEV,	    /* ISA device */
 	PM_MTD_DEV,	    /* Memory Technology Device */
+	PM_ILLUMINATION_DEV,	/* Display back or front light */
+	PM_USER_DEV,	/* when wakeup, user must be handle this */
+	PM_DEBUG_DEV, 	/* for DEBUGGING purpose */
+	PM_GP_DEV,		/* for OS switching */
 };
 
 typedef int pm_dev_t;
@@ -78,6 +103,14 @@ enum
 	PM_SYS_FDC =	 0x41d00700, /* floppy controller */
 	PM_SYS_VGA =	 0x41d00900, /* VGA controller */
 	PM_SYS_PCMCIA =	 0x41d00e00, /* PCMCIA controller */
+	PM_USER_LCD =    0x12340100, /* LCD */
+	PM_USER_LIGHT =  0x12340101, /* Front/Back Light */
+	PM_USER_INPUT =  0x12340200, /* INPUT device */
+	PM_DEBUG_0 =     0x12380100,
+	PM_DEBUG_1 =     0x12380101,
+	PM_DEBUG_2 =     0x12380102,
+	PM_SYS_MISC =    0x41d00b00,
+	PM_SYS_ARCH_SPECIFIC,        /* arch-specific */
 };
 
 /*

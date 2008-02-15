@@ -8,6 +8,14 @@
  *  Moan early if gcc is old, avoiding bogus kernels - Paul Gortmaker, May '96
  *  Simplified starting of init:  Michael A. Griffith <grif@acm.org> 
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ ************************************ history *****************************
+ *    author          date         CR          title
+ *    weiqiang lin    2005-06-30  LIBgg39140   update pcap interface to spi mode
+ *    Jili Ni         2005-05-04               Add security patch
+ */
 
 #define __KERNEL_SYSCALLS__
 
@@ -27,6 +35,7 @@
 #include <linux/iobuf.h>
 #include <linux/bootmem.h>
 #include <linux/tty.h>
+#include <linux/security.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
@@ -69,6 +78,12 @@ extern int irda_device_init(void);
 #include <asm/smp.h>
 #endif
 
+#ifdef CONFIG_ARCH_EZX
+extern void ssp_pcap_init(void);
+extern void pulldown_usb(void);
+extern void pullup_usb(void);
+#endif
+
 /*
  * Versions of gcc older than that listed below may actually compile
  * and link okay, but the end product can have subtle run time bugs.
@@ -107,6 +122,10 @@ extern void ecard_init(void);
 extern void ipc_init(void);
 #endif
 
+#ifdef CONFIG_EVENT_BROKER
+extern int event_init(void);
+#endif
+
 /*
  * Boot command-line arguments
  */
@@ -114,7 +133,12 @@ extern void ipc_init(void);
 #define MAX_INIT_ENVS 8
 
 extern void time_init(void);
+extern void update_xtime(void);
 extern void softirq_init(void);
+
+#ifdef CONFIG_CPU_XSCALE
+extern int xscale_locking_init(void);
+#endif
 
 int rows, cols;
 
@@ -132,9 +156,12 @@ static int __init profile_setup(char *str)
 
 __setup("profile=", profile_setup);
 
-static int __init checksetup(char *line)
+int __init checksetup(char *line)
 {
 	struct kernel_param *p;
+
+	if (line == NULL)
+		return 0;
 
 	p = &__setup_start;
 	do {
@@ -288,8 +315,6 @@ static void __init parse_options(char *line)
 extern void setup_arch(char **);
 extern void cpu_idle(void);
 
-unsigned long wait_init_idle;
-
 #ifndef CONFIG_SMP
 
 #ifdef CONFIG_X86_LOCAL_APIC
@@ -298,33 +323,23 @@ static void __init smp_init(void)
 	APIC_init_uniprocessor();
 }
 #else
-#define smp_init()	do { } while (0)
+#define smp_init()      do { } while (0)
 #endif
 
 #else
-
 
 /* Called by boot processor to activate the rest. */
 static void __init smp_init(void)
 {
 	/* Get other processors into their bootup holding patterns. */
 	smp_boot_cpus();
-	wait_init_idle = cpu_online_map;
-	clear_bit(current->processor, &wait_init_idle); /* Don't wait on me! */
 
 	smp_threads_ready=1;
 	smp_commence();
-
-	/* Wait for the other cpus to set up their idle processes */
-	printk("Waiting on wait_init_idle (map = 0x%lx)\n", wait_init_idle);
-	while (wait_init_idle) {
-		cpu_relax();
-		barrier();
-	}
-	printk("All processors have done init_idle\n");
 }
 
 #endif
+
 
 /*
  * We need to finalize in a non-__init function or else race conditions
@@ -337,14 +352,16 @@ static void rest_init(void)
 {
 	kernel_thread(init, NULL, CLONE_FS | CLONE_FILES | CLONE_SIGNAL);
 	unlock_kernel();
-	current->need_resched = 1;
- 	cpu_idle();
-} 
+	cpu_idle();
+}
 
 /*
  *	Activate the first processor.
  */
 
+#if defined(CONFIG_MIPS) && defined(CONFIG_NEW_TIME_C)
+extern void calibrate_mips_counter(void);
+#endif
 asmlinkage void __init start_kernel(void)
 {
 	char * command_line;
@@ -358,10 +375,21 @@ asmlinkage void __init start_kernel(void)
 	setup_arch(&command_line);
 	printk("Kernel command line: %s\n", saved_command_line);
 	parse_options(command_line);
+#ifdef CONFIG_ARCH_EZX
+#ifndef CONFIG_MOT_POWER_IC	//CONFIG_ARCH_EZX_BARBADOS
+        pulldown_usb();
+#endif
+#endif
 	trap_init();
 	init_IRQ();
 	sched_init();
 	softirq_init();
+
+#ifdef CONFIG_ARCH_EZX
+        /* this must be done before time_init() --e12051 */
+        //ssp_pcap_init();
+#endif
+
 	time_init();
 
 	/*
@@ -386,6 +414,9 @@ asmlinkage void __init start_kernel(void)
 	kmem_cache_init();
 	sti();
 	calibrate_delay();
+#if defined(CONFIG_MIPS) && defined(CONFIG_NEW_TIME_C)
+	calibrate_mips_counter();
+#endif
 #ifdef CONFIG_BLK_DEV_INITRD
 	if (initrd_start && !initrd_below_start_ok &&
 			initrd_start < min_low_pfn << PAGE_SHIFT) {
@@ -399,6 +430,14 @@ asmlinkage void __init start_kernel(void)
 	pgtable_cache_init();
 
 	/*
+	 * This is called early on so that all drivers/subsystems
+	 * can do cache/tlb
+	 */
+#ifdef CONFIG_CPU_XSCALE
+	xscale_locking_init();
+#endif
+
+	/*
 	 * For architectures that have highmem, num_mappedpages represents
 	 * the amount of memory the kernel can use.  For other architectures
 	 * it's the same as the total pages.  We need both numbers because
@@ -410,6 +449,7 @@ asmlinkage void __init start_kernel(void)
   
 	fork_init(num_mappedpages);
 	proc_caches_init();
+	security_scaffolding_startup();
 	vfs_caches_init(num_physpages);
 	buffer_init(num_physpages);
 	page_cache_init(num_physpages);
@@ -424,14 +464,18 @@ asmlinkage void __init start_kernel(void)
 	ipc_init();
 #endif
 	check_bugs();
+
 	printk("POSIX conformance testing by UNIFIX\n");
 
-	/* 
-	 *	We count on the initial thread going ok 
-	 *	Like idlers init is an unlocked kernel thread, which will
-	 *	make syscalls (and thus be locked).
+	init_idle(current, smp_processor_id());
+	/*
+	 *      We count on the initial thread going ok
+	 *      Like idlers init is an unlocked kernel thread, which will
+	 *      make syscalls (and thus be locked).
 	 */
 	smp_init();
+
+	/* Do the rest non-__init'ed, we're now alive */
 	rest_init();
 }
 
@@ -460,6 +504,10 @@ static void __init do_initcalls(void)
  */
 static void __init do_basic_setup(void)
 {
+	/* Start the per-CPU migration threads */
+#if CONFIG_SMP
+	migration_init();
+#endif
 
 	/*
 	 * Tell the world that we're going to be the grim
@@ -492,6 +540,36 @@ static void __init do_basic_setup(void)
 	s390_init_machine_check();
 #endif
 
+#if defined(CONFIG_ARCH_EZX) || defined(CONFIG_ARCH_MAINSTONE) \
+	|| defined(CONFIG_OMAP_INNOVATOR) || defined(CONFIG_405LP) /* MVL-CEE */
+	{
+		extern int device_subsys_init(void);
+#if defined(CONFIG_OMAP_INNOVATOR)
+		extern void innovator_ldm_setup(void);
+#elif defined(CONFIG_405LP)
+		extern void ocp_ldm_init();
+#elif defined(CONFIG_ARCH_MAINSTONE) || defined(CONFIG_ARCH_EZX)
+		extern void pxa_ldm_init(void);
+#endif
+
+		printk("Initializing the Linux Driver Model...\n");
+		device_subsys_init();
+
+#if defined(CONFIG_OMAP_INNOVATOR)
+		innovator_ldm_setup();
+#elif defined(CONFIG_405LP)
+		ocp_ldm_init();
+#elif defined(CONFIG_SH_MOBILE_SOLUTION_ENGINE)
+		shmse_ldm_init();
+#elif defined(CONFIG_ARCH_MAINSTONE) || defined(CONFIG_ARCH_EZX)
+		pxa_ldm_init();
+#elif defined(CONFIG_ARCH_MX2ADS)
+		mx21_ldm_init();
+#endif
+	}
+#endif /* MVL-CEE */
+
+
 #ifdef CONFIG_PCI
 	pci_init();
 #endif
@@ -500,6 +578,9 @@ static void __init do_basic_setup(void)
 #endif
 #if defined(CONFIG_PPC)
 	ppc_init();
+#endif
+#ifdef CONFIG_EVENT_BROKER
+	event_init();
 #endif
 #ifdef CONFIG_MCA
 	mca_init();
@@ -528,6 +609,13 @@ static void __init do_basic_setup(void)
 
 	start_context_thread();
 	do_initcalls();
+#ifdef CONFIG_ARCH_EZX
+        /* 
+         * update xtime, this must be done after power_ic initialization 
+         * finished. --kai
+         */
+        update_xtime();
+#endif
 
 #ifdef CONFIG_IRDA
 	irda_proto_init();
@@ -538,7 +626,35 @@ static void __init do_basic_setup(void)
 #endif
 }
 
+#ifdef CONFIG_TRACE_BOOT
+static int execve_ltt_boot_trace(void *dummy)
+{
+	static char *argv[]  = { "ltt_boot_trace", "start", NULL, };
+	int status;
+
+	close(0);
+	close(1);
+	close(2);
+	setsid();
+	(void) open("/dev/console",O_RDWR,0);
+	(void) dup(0);
+	(void) dup(0);
+	status = execve("/sbin/ltt_boot_trace",argv,envp_init);
+	if (status <= 0) {
+		printk(KERN_ERR "execve of /sbin/ltt_boot_trace failed\n");
+	}
+	return status;
+}
+
+#endif
+
 extern void prepare_namespace(void);
+
+#ifdef CONFIG_KFI_STATIC_RUN
+void to_userspace()
+{
+}
+#endif /* CONFIG_KFI_STATIC_RUN */
 
 static int init(void * unused)
 {
@@ -561,6 +677,22 @@ static int init(void * unused)
 	(void) dup(0);
 	(void) dup(0);
 	
+#ifdef CONFIG_TRACE_BOOT
+	{
+		/*
+		 * Start a Linux Trace Toolkit (LTT) data collection of the
+		 * init process.
+		 */
+		int pid;
+		int status;
+		pid = kernel_thread(execve_ltt_boot_trace, NULL, SIGCHLD);
+		if (pid > 0) {
+			while (pid != wait(&status))
+				yield();
+		}
+	}
+#endif
+
 	/*
 	 * We try each of these until one succeeds.
 	 *
@@ -568,6 +700,15 @@ static int init(void * unused)
 	 * trying to recover a really broken machine.
 	 */
 
+#ifdef CONFIG_KFI_STATIC_RUN
+	to_userspace();
+#endif /* CONFIG_KFI_STATIC_RUN */
+
+#ifdef CONFIG_ARCH_EZX
+#ifndef CONFIG_MOT_POWER_IC	//CONFIG_ARCH_EZX_BARBADOS
+        pullup_usb();
+#endif
+#endif
 	if (execute_command)
 		execve(execute_command,argv_init,envp_init);
 	execve("/sbin/init",argv_init,envp_init);

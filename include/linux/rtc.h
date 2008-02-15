@@ -1,4 +1,33 @@
 /*
+ * Copyright 2005 Motorola, Inc. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+ * 02111-1307, USA
+ *
+ */
+/*
+ * Revision History:
+ *                    Modification     Tracking
+ * Author                 Date          Number     Description of Changes
+ * ----------------   ------------    ----------   -------------------------
+ * Yin Kangkai(e12051) 02/25/2005     LIBff60770   RTC Stopwatch
+ * Yin Kangkai(e12051) 05/12/2005     LIBgg10374   RTC Stopwatch timer sync
+ *
+ */
+
+/*
  * Generic RTC interface.
  * This version contains the part of the user interface to the Real Time Clock
  * service. It is used with both the legacy mc146818 and also  EFI
@@ -28,6 +57,18 @@ struct rtc_time {
 	int tm_yday;
 	int tm_isdst;
 };
+
+/* The struct used to pass data via the following ioctl. Used by rtc stopwatch.
+ * 2005-01-20 e12051@motorola.com
+ */
+
+struct rtc_sw_time {
+        int hours;
+        int minutes;
+        int seconds;
+        int hundredths;
+};
+
 
 /*
  * This data structure is inspired by the EFI (v0.92) wakeup
@@ -65,5 +106,16 @@ struct rtc_wkalrm {
 
 #define RTC_WKALM_SET	_IOW('p', 0x0f, struct rtc_wkalrm)/* Set wakeup alarm*/
 #define RTC_WKALM_RD	_IOR('p', 0x10, struct rtc_wkalrm)/* Get wakeup alarm*/
+
+/* Set RTC Stopwatch request */
+#define RTC_SW_SETTIME          _IOW('p', 0x11, struct rtc_sw_time *) 
+/* Set RTC Stopwatch fuzzy request */
+#define RTC_SW_SETTIME_FUZZ     _IOW('p', 0x12, struct rtc_sw_time *) 
+/* Del RTC Stopwatch request */
+#define RTC_SW_DELTIME          _IOW('p', 0x13, struct rtc_sw_time *) 
+/* RTC Stopwatch, App job done. */
+#define RTC_SW_JOB_DONE         _IO('p', 0x14)
+/* RTC Stopwatch, App exit */
+#define RTC_SW_APP_EXIT         _IO('p', 0x15)
 
 #endif /* _LINUX_RTC_H_ */

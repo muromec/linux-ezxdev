@@ -1,0 +1,26 @@
+#
+# Mouse Function Driver
+#
+# Copyright (C) 2003 Belcarra
+#
+
+
+mainmenu_option next_comment
+
+comment "Random Mouse Function"
+dep_tristate '  Mouse Function' CONFIG_USBD_MOUSE $CONFIG_USBD
+
+if [ "$CONFIG_USBD_MOUSE" = "y" -o "$CONFIG_USBD_MOUSE" = "m" ]; then
+   hex     'VendorID (hex value)' CONFIG_USBD_MOUSE_VENDORID "12b9"
+   hex     'ProductID (hex value)' CONFIG_USBD_MOUSE_PRODUCTID "f003"
+   hex     'bcdDevice (binary-coded decimal)' CONFIG_USBD_MOUSE_BCDDEVICE "0100"
+
+   string 'iManufacturer (string)' CONFIG_USBD_MOUSE_MANUFACTURER "Belcarra"
+   #string 'iProduct (string)' CONFIG_USBD_MOUSE_PRODUCT_NAME "Belcarra Mouse"
+
+   string 'iConfiguration (string)' CONFIG_USBD_MOUSE_DESC "Acm Cfg"
+   string 'Comm Interface iInterface (string)' CONFIG_USBD_MOUSE_COMM_INTF "Comm Intf"
+   bool   'Mouse BH Test'  CONFIG_USBD_MOUSE_BH
+
+fi
+endmenu

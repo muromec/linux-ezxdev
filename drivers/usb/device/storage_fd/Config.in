@@ -1,0 +1,26 @@
+#
+# Generic Mass Storage Function Driver
+#
+# Copyright (C) 2001 Lineo, Inc.
+# Copyright (C) 2001 Hewlett-Packard Co.
+
+mainmenu_option next_comment
+
+comment "Mass Storage Function"
+
+dep_tristate '  Generic Mass Storage Function' CONFIG_USBD_STORAGE $CONFIG_USBD
+
+if [ ! "$CONFIG_USBD_STORAGE" = "n" ]; then
+
+	hex     '     Overide VendorID (hex value)' CONFIG_USBD_STORAGE_VENDORID "0000"
+	hex     '     Overide ProductID (hex value)' CONFIG_USBD_STORAGE_PRODUCTID "0000"
+
+	int     '    OUT Endpoint (0-15)' CONFIG_USBD_STORAGE_OUT_ENDPOINT "1"
+	int     '    OUT PacketSize (16, 32, 64)' CONFIG_USBD_STORAGE_OUT_PKTSIZE "64"
+	int     '    IN Endpoint (0-15)' CONFIG_USBD_STORAGE_IN_ENDPOINT "2"
+	int     '    IN PacketSize (16, 32, 64)' CONFIG_USBD_STORAGE_IN_PKTSIZE "64"
+fi
+
+
+endmenu
+

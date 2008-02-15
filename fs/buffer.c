@@ -20,6 +20,7 @@
  * hash table, use SLAB cache for buffer heads. -DaveM
  */
 
+
 /* Added 32k buffer block sizes - these are required older ARM systems.
  * - RMK
  */
@@ -27,6 +28,10 @@
 /* Thread it... -DaveM */
 
 /* async buffer flushing, 1999 Andrea Arcangeli <andrea@suse.de> */
+
+/*
+ *  2005-Apr-05 Motorola  Add security patch
+ */
 
 #include <linux/config.h>
 #include <linux/sched.h>
@@ -47,6 +52,9 @@
 #include <linux/highmem.h>
 #include <linux/module.h>
 #include <linux/completion.h>
+#include <linux/security.h>
+
+#include <linux/trace.h>
 
 #include <asm/uaccess.h>
 #include <asm/io.h>
@@ -87,6 +95,8 @@ static DECLARE_WAIT_QUEUE_HEAD(buffer_wait);
 static int grow_buffers(kdev_t dev, unsigned long block, int size);
 static int osync_buffers_list(struct list_head *);
 static void __refile_buffer(struct buffer_head *);
+static void __insert_into_lru_list(struct buffer_head *, int);
+static void __remove_from_lru_list(struct buffer_head *);
 
 /* This is used by some architectures to estimate available memory. */
 atomic_t buffermem_pages = ATOMIC_INIT(0);
@@ -123,6 +133,46 @@ union bdflush_param {
 int bdflush_min[N_PARAM] = {  0,  1,    0,   0,  0,   1*HZ,   0, 0, 0};
 int bdflush_max[N_PARAM] = {100,50000, 20000, 20000,10000*HZ, 10000*HZ, 100, 100, 0};
 
+
+static void 
+write_buffer_delay(struct buffer_head *bh)
+{
+	struct page *page = bh->b_page;
+
+	if (TryLockPage(page)) {
+		__remove_from_lru_list(bh);
+		__insert_into_lru_list(bh, BUF_DIRTY);
+		spin_unlock(&lru_list_lock);
+		unlock_buffer(bh);
+		if (current->need_resched) {
+			schedule();
+		}
+	} else {
+		spin_unlock(&lru_list_lock);
+		unlock_buffer(bh);
+		page->mapping->a_ops->writepage(page);
+	}
+}
+
+static void
+write_buffer(struct buffer_head *bh)
+{
+	if (!buffer_delay(bh))
+		ll_rw_block(WRITE, 1, &bh);
+	else {
+		struct page *page = bh->b_page;
+
+		lock_page(page);
+		if (buffer_delay(bh)) {
+			page->mapping->a_ops->writepage(page);
+		} else {
+			UnlockPage(page);
+			ll_rw_block(WRITE, 1, &bh);
+		}
+	}
+}
+
+
 void unlock_buffer(struct buffer_head *bh)
 {
 	clear_bit(BH_Wait_IO, &bh->b_state);
@@ -153,13 +203,28 @@ void __wait_on_buffer(struct buffer_head * bh)
 	get_bh(bh);
 	add_wait_queue(&bh->b_wait, &wait);
 	do {
-		run_task_queue(&tq_disk);
+		TRACE_FILE_SYSTEM(TRACE_EV_FILE_SYSTEM_BUF_WAIT_START, 0, 0, NULL);
 		set_task_state(tsk, TASK_UNINTERRUPTIBLE);
 		if (!buffer_locked(bh))
 			break;
+		/*
+		 * We must read tq_disk in TQ_ACTIVE after the
+		 * add_wait_queue effect is visible to other cpus.
+		 * We could unplug some line above it wouldn't matter
+		 * but we can't do that right after add_wait_queue
+		 * without an smp_mb() in between because spin_unlock
+		 * has inclusive semantics.
+		 * Doing it here is the most efficient place so we
+		 * don't do a suprious unplug if we get a racy
+		 * wakeup that make buffer_locked to return 0, and
+		 * doing it here avoids an explicit smp_mb() we
+		 * rely on the implicit one in set_task_state.
+		 */
+		run_task_queue(&tq_disk);
 		schedule();
 	} while (buffer_locked(bh));
 	tsk->state = TASK_RUNNING;
+	TRACE_FILE_SYSTEM(TRACE_EV_FILE_SYSTEM_BUF_WAIT_END, 0, 0, NULL);
 	remove_wait_queue(&bh->b_wait, &wait);
 	put_bh(bh);
 }
@@ -213,6 +278,12 @@ static int write_some_buffers(kdev_t dev)
 			continue;
 		if (test_and_set_bit(BH_Lock, &bh->b_state))
 			continue;
+		if (buffer_delay(bh)) {
+			write_buffer_delay(bh);
+			if (count)
+				write_locked_buffers(array, count);
+			return -EAGAIN;
+		}
 		if (atomic_set_buffer_clean(bh)) {
 			__refile_buffer(bh);
 			get_bh(bh);
@@ -255,6 +326,7 @@ static int wait_for_buffers(kdev_t dev, int index, int refile)
 	struct buffer_head * next;
 	int nr;
 
+ repeat:
 	next = lru_list[index];
 	nr = nr_buffers_type[index];
 	while (next && --nr >= 0) {
@@ -268,6 +340,11 @@ static int wait_for_buffers(kdev_t dev, int index, int refile)
 		}
 		if (dev != NODEV && bh->b_dev != dev)
 			continue;
+		if (conditional_schedule_needed()) {
+			debug_lock_break(2);
+			break_spin_lock_and_resched(&lru_list_lock);
+			goto repeat;
+		}
 
 		get_bh(bh);
 		spin_unlock(&lru_list_lock);
@@ -328,6 +405,8 @@ int fsync_super(struct super_block *sb)
 	if (sb->s_dirt && sb->s_op && sb->s_op->write_super)
 		sb->s_op->write_super(sb);
 	unlock_super(sb);
+	if (sb->s_op && sb->s_op->sync_fs)
+		sb->s_op->sync_fs(sb);
 	unlock_kernel();
 
 	return sync_buffers(dev, 1);
@@ -346,7 +425,7 @@ int fsync_dev(kdev_t dev)
 	lock_kernel();
 	sync_inodes(dev);
 	DQUOT_SYNC(dev);
-	sync_supers(dev);
+	sync_supers(dev, 1);
 	unlock_kernel();
 
 	return sync_buffers(dev, 1);
@@ -682,6 +761,13 @@ void invalidate_bdev(struct block_device *bdev, int destroy_dirty_buffers)
 			/* Not hashed? */
 			if (!bh->b_pprev)
 				continue;
+			if (conditional_schedule_needed()) {
+				debug_lock_break(2); /* bkl is held too */
+				get_bh(bh);
+				break_spin_lock_and_resched(&lru_list_lock);
+				put_bh(bh);
+				slept = 1;
+			}
 			if (buffer_locked(bh)) {
 				get_bh(bh);
 				spin_unlock(&lru_list_lock);
@@ -695,14 +781,11 @@ void invalidate_bdev(struct block_device *bdev, int destroy_dirty_buffers)
 			/* All buffers in the lru lists are mapped */
 			if (!buffer_mapped(bh))
 				BUG();
-			if (buffer_dirty(bh))
-				printk("invalidate: dirty buffer\n");
 			if (!atomic_read(&bh->b_count)) {
 				if (destroy_dirty_buffers || !buffer_dirty(bh)) {
 					remove_inode_queue(bh);
 				}
-			} else
-				printk("invalidate: busy buffer\n");
+			}
 
 			write_unlock(&hash_table_lock);
 			if (slept)
@@ -833,6 +916,8 @@ int fsync_buffers_list(struct list_head *list)
 	struct buffer_head *bh;
 	struct inode tmp;
 	int err = 0, err2;
+
+	DEFINE_LOCK_COUNT();
 	
 	INIT_LIST_HEAD(&tmp.i_dirty_buffers);
 	
@@ -858,10 +943,16 @@ int fsync_buffers_list(struct list_head *list)
 			 * a noop)
 			 */
 				wait_on_buffer(bh);
-				ll_rw_block(WRITE, 1, &bh);
+				write_buffer(bh);
 				brelse(bh);
 				spin_lock(&lru_list_lock);
 			}
+		}
+		/* haven't hit this code path ... */
+		debug_lock_break(551);
+		if (TEST_LOCK_COUNT(32)) {
+			RESET_LOCK_COUNT();
+			break_spin_lock(&lru_list_lock);
 		}
 	}
 
@@ -902,11 +993,24 @@ static int osync_buffers_list(struct list_head *list)
 	struct list_head *p;
 	int err = 0;
 
+	DEFINE_LOCK_COUNT();
+
 	spin_lock(&lru_list_lock);
 	
  repeat:
 	list_for_each_prev(p, list) {
 		bh = BH_ENTRY(p);
+		/* untested code path ... */
+		debug_lock_break(551);
+ 
+		if (TEST_LOCK_COUNT(32)) {
+			RESET_LOCK_COUNT();
+			if (conditional_schedule_needed()) {
+				break_spin_lock(&lru_list_lock);
+				goto repeat;
+			}
+		}
+ 
 		if (buffer_locked(bh)) {
 			get_bh(bh);
 			spin_unlock(&lru_list_lock);
@@ -1310,6 +1414,7 @@ static void discard_buffer(struct buffer_head * bh)
 		clear_bit(BH_Mapped, &bh->b_state);
 		clear_bit(BH_Req, &bh->b_state);
 		clear_bit(BH_New, &bh->b_state);
+		clear_bit(BH_Delay, &bh->b_state);
 		remove_from_queues(bh);
 		unlock_buffer(bh);
 	}
@@ -2707,7 +2812,7 @@ void show_buffers(void)
 {
 #ifdef CONFIG_SMP
 	struct buffer_head * bh;
-	int found = 0, locked = 0, dirty = 0, used = 0, lastused = 0;
+	int delalloc = 0, found = 0, locked = 0, dirty = 0, used = 0, lastused = 0;
 	int nlist;
 	static char *buf_types[NR_LIST] = { "CLEAN", "LOCKED", "DIRTY", };
 #endif
@@ -2722,7 +2827,7 @@ void show_buffers(void)
 	if (!spin_trylock(&lru_list_lock))
 		return;
 	for(nlist = 0; nlist < NR_LIST; nlist++) {
-		found = locked = dirty = used = lastused = 0;
+		delalloc = found = locked = dirty = used = lastused = 0;
 		bh = lru_list[nlist];
 		if(!bh) continue;
 
@@ -2732,6 +2837,8 @@ void show_buffers(void)
 				locked++;
 			if (buffer_dirty(bh))
 				dirty++;
+			if (buffer_delay(bh))
+				delalloc++;
 			if (atomic_read(&bh->b_count))
 				used++, lastused = found;
 			bh = bh->b_next_free;
@@ -2742,10 +2849,10 @@ void show_buffers(void)
 				printk("%9s: BUG -> found %d, reported %d\n",
 				       buf_types[nlist], found, tmp);
 		}
-		printk("%9s: %d buffers, %lu kbyte, %d used (last=%d), "
-		       "%d locked, %d dirty\n",
+		printk("%7s: %d buffers, %lu kbyte, %d used (last=%d), "
+		       "%d locked, %d dirty %d delay\n",
 		       buf_types[nlist], found, size_buffers_type[nlist]>>10,
-		       used, lastused, locked, dirty);
+		       used, lastused, locked, dirty, delalloc);
 	}
 	spin_unlock(&lru_list_lock);
 #endif
@@ -2833,7 +2940,7 @@ static int sync_old_buffers(void)
 {
 	lock_kernel();
 	sync_unlocked_inodes();
-	sync_supers(0);
+	sync_supers(0, 0);
 	unlock_kernel();
 
 	for (;;) {
@@ -2864,8 +2971,14 @@ int block_sync_page(struct page *page)
 
 asmlinkage long sys_bdflush(int func, long data)
 {
+	int error;
+
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
+
+	error = security_bdflush(func, data);
+	if( error )
+		return error;
 
 	if (func == 1) {
 		/* do_exit directly and let kupdate to do its work alone. */

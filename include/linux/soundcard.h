@@ -1,3 +1,17 @@
+/*
+ * Copyright 2005 Motorola, Inc. All Rights Reserved.
+ */
+/*
+ * Revision History:
+ *                    Modification     Tracking
+ * Author                 Date          Number     Description of Changes
+ * ----------------   ------------    ----------   -------------------------
+ * Jiang Lili(w14359) 04/20/2005    LIBff90609     change MMC detect accoding to new GPIO assignment
+ * Lv Yunguang(a21682) 06/16/2005    LIBgg31018    update audio driver based on power_ic driver
+ * Jiang Lili(w14359) 07/06/2005    LIBgg39169    emu stereo headset support
+ *
+ */
+
 #ifndef SOUNDCARD_H
 #define SOUNDCARD_H
 /*
@@ -22,6 +36,9 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ *  History:
+ *
  */
 
 
@@ -38,6 +55,33 @@
 
 /* In Linux we need to be prepared for cross compiling */
 #include <linux/ioctl.h>
+
+/* ezx platform specific definitions */
+typedef enum{
+    DIA25_STEREO_HS_OUT,	/* normal stereo headset */
+    LOUDERSPEAKER_OUT,
+    EARPIECE_OUT,
+    CARKIT_OUT,
+    DIA25_MONO_HS_OUT,		/* normal mono headset */
+    STEREO_EMUHS_MEDIA_OUT,	/* stereo emu hs, stereo output */
+    MONO_EMUHS_OUT,
+    DIA35_HS_MIC_MEDIA_OUT,    /* MOTO 3.5mm headset that with MIC output the multimedia sound */
+    DIA35_HS_MIC_CALL_OUT,     /* MOTO 3.5mm headset that with MIC output the call voice  */
+    DIA35_HS_NOMIC_MEDIA_OUT,  /* Normal 3.5mm headset that without MIC output the multimedia sound */
+    DIA35_HS_NOMIC_CALL_OUT,   /* Normal 3.5mm headset that without MIC output the call voice */
+    STEREO_EMUHS_CALL_OUT      /* stereo emu hs, mono output */
+}output_enum;
+#define STEREO_EMUHS_OUT STEREO_EMUHS_MEDIA_OUT
+
+typedef enum{
+    CARKIT_INPUT,
+    HANDSET_INPUT,		/* phone mic */
+    DIA25_HEADSET_INPUT,	/* normal headset mic */
+    EMUHS_INPUT,
+    DIA35_HS_MIC_CALL_INPUT     /*  MOTO 3.5mm headset that with MIC input the call voice  */
+}input_enum;
+
+
 
 /*
  *	Supported card ID numbers (Should be somewhere else?)
@@ -522,7 +566,7 @@ typedef struct {
 #define SNDCTL_MIDI_MPUCMD		_SIOWR('m', 2, mpu_command_rec)
 
 /********************************************
- * IOCTL commands for /dev/dsp and /dev/audio
+ * IOCTL commands for /dev/dsp and /dev/audio and /dev/phone
  */
 
 #define SNDCTL_DSP_RESET		_SIO  ('P', 0)
@@ -531,16 +575,16 @@ typedef struct {
 #define SNDCTL_DSP_STEREO		_SIOWR('P', 3, int)
 #define SNDCTL_DSP_GETBLKSIZE		_SIOWR('P', 4, int)
 #define SNDCTL_DSP_SAMPLESIZE		SNDCTL_DSP_SETFMT
+#define SNDCTL_DSP_SETFMT		_SIOWR('P',5, int) /* Selects ONE fmt*/
 #define SNDCTL_DSP_CHANNELS		_SIOWR('P', 6, int)
 #define SOUND_PCM_WRITE_CHANNELS	SNDCTL_DSP_CHANNELS
 #define SOUND_PCM_WRITE_FILTER		_SIOWR('P', 7, int)
 #define SNDCTL_DSP_POST			_SIO  ('P', 8)
 #define SNDCTL_DSP_SUBDIVIDE		_SIOWR('P', 9, int)
 #define SNDCTL_DSP_SETFRAGMENT		_SIOWR('P',10, int)
-
 /*	Audio data formats (Note! U8=8 and S16_LE=16 for compatibility) */
 #define SNDCTL_DSP_GETFMTS		_SIOR ('P',11, int) /* Returns a mask */
-#define SNDCTL_DSP_SETFMT		_SIOWR('P',5, int) /* Selects ONE fmt*/
+
 #	define AFMT_QUERY		0x00000000	/* Return current fmt */
 #	define AFMT_MU_LAW		0x00000001
 #	define AFMT_A_LAW		0x00000002
@@ -609,6 +653,12 @@ typedef struct buffmem_desc {
 #define SNDCTL_DSP_SETSYNCRO		_SIO  ('P', 21)
 #define SNDCTL_DSP_SETDUPLEX		_SIO  ('P', 22)
 #define SNDCTL_DSP_GETODELAY		_SIOR ('P', 23, int)
+#define BLUETOOTH_AUDIO_ON		_SIO  ('P', 24)
+#define BLUETOOTH_AUDIO_OFF		_SIO  ('P', 25)
+#define EZX_START_VA			_SIO  ('P', 26)
+#define EZX_STOP_VA			_SIO  ('P', 27)
+#define EZX_BTVR_NSSP_TX_ON		_SIO  ('P', 28)
+#define EZX_BTVR_NSSP_TX_OFF            _SIO  ('P', 29)
 
 #define SNDCTL_DSP_GETCHANNELMASK		_SIOWR('P', 64, int)
 #define SNDCTL_DSP_BIND_CHANNEL		_SIOWR('P', 65, int)
@@ -777,7 +827,6 @@ typedef struct copr_msg {
  * Use SOUND_MIXER_PRIVATE# macros in future.
  */
 #define SOUND_MIXER_ENHANCE	SOUND_MIXER_NONE
-#define SOUND_MIXER_MUTE	SOUND_MIXER_NONE
 #define SOUND_MIXER_LOUD	SOUND_MIXER_NONE
 
 
@@ -793,15 +842,38 @@ typedef struct copr_msg {
 
 /*	Device bitmask identifiers	*/
 
-#define SOUND_MIXER_RECSRC	0xff	/* Arg contains a bit for each recording source */
-#define SOUND_MIXER_DEVMASK	0xfe	/* Arg contains a bit for each supported device */
-#define SOUND_MIXER_RECMASK	0xfd	/* Arg contains a bit for each supported recording source */
-#define SOUND_MIXER_CAPS	0xfc
-#	define SOUND_CAP_EXCL_INPUT	0x00000001	/* Only one recording source at a time */
-#define SOUND_MIXER_STEREODEVS	0xfb	/* Mixer channels supporting stereo */
-#define SOUND_MIXER_OUTSRC	0xfa	/* Arg contains a bit for each input source to output */
-#define SOUND_MIXER_OUTMASK	0xf9	/* Arg contains a bit for each supported input source to output */
+#define SOUND_MIXER_RECSRC			0xff		/* Arg contains a bit for each recording source */
+#define SOUND_MIXER_DEVMASK			0xfe		/* Arg contains a bit for each supported device */
+#define SOUND_MIXER_RECMASK			0xfd		/* Arg contains a bit for each supported recording source */
+#define SOUND_MIXER_CAPS			0xfc
+#define SOUND_CAP_EXCL_INPUT		0x00000001	/* Only one recording source at a time */
+#define SOUND_MIXER_STEREODEVS		0xfb		/* Mixer channels supporting stereo */
+#define SOUND_MIXER_OUTSRC			0xfa		/* Arg contains a bit for each input source to output */
+#define SOUND_MIXER_OUTMASK			0xf9		/* Arg contains a bit for each supported input source to output */
+#define SOUND_MIXER_3D_STATUS		0xf8		/* e680 sound 3D state control */
+#define SOUND_MIXER_HAPTICS_FIL		0xf7		/* e680 sound haptics filter control gpio state interface */
+#define SOUND_MIXER_HW_ATTENU		0xf6		/* a780 sound hw noise attenuate used or bypassed switch */
 
+#define SOUND_MIXER_EMU_TEST		0xe2				 
+#define SOUND_MIXER_EIHF_MUX		0xe4
+#define SOUND_MIXER_EIHF_MUTE		0xe3
+
+#define SOUND_MIXER_CODEC_SLAVE		0xe5
+
+#ifdef MAKE_FTR_HAPTICS
+#define SOUND_MIXER_HAPTICS_ON		0xe6
+#define SOUND_MIXER_HAPTICS_OFF		0xe7
+#endif
+
+#define SOUND_MIXER_MUTE			0xe8
+#define SOUND_MIXER_INPUTMUTE		0xe9
+#define SOUND_MIXER_LOOPBACK		0xea
+#define SOUND_MIXER_AUDOHPF			0xeb
+#define SOUND_MIXER_AUDIHPF			0xec
+#define SOUND_MIXER_HEADSET_STATUS	0xed
+#define SOUND_MIXER_INPATH			0xee	
+#define SOUND_MIXER_OUTPATH			0xef	
+				 
 /*	Device mask bits	*/
 
 #define SOUND_MASK_VOLUME	(1 << SOUND_MIXER_VOLUME)
@@ -844,7 +916,7 @@ typedef struct copr_msg {
 #define SOUND_MIXER_READ_SPEAKER	MIXER_READ(SOUND_MIXER_SPEAKER)
 #define SOUND_MIXER_READ_LINE		MIXER_READ(SOUND_MIXER_LINE)
 #define SOUND_MIXER_READ_MIC		MIXER_READ(SOUND_MIXER_MIC)
-#define SOUND_MIXER_READ_CD		MIXER_READ(SOUND_MIXER_CD)
+#define SOUND_MIXER_READ_CD			MIXER_READ(SOUND_MIXER_CD)
 #define SOUND_MIXER_READ_IMIX		MIXER_READ(SOUND_MIXER_IMIX)
 #define SOUND_MIXER_READ_ALTPCM		MIXER_READ(SOUND_MIXER_ALTPCM)
 #define SOUND_MIXER_READ_RECLEV		MIXER_READ(SOUND_MIXER_RECLEV)
@@ -859,11 +931,23 @@ typedef struct copr_msg {
 #define SOUND_MIXER_READ_ENHANCE	MIXER_READ(SOUND_MIXER_ENHANCE)
 #define SOUND_MIXER_READ_LOUD		MIXER_READ(SOUND_MIXER_LOUD)
 
+#if defined(MAKE_FTR_HAPTICS)
+#define SOUND_MIXER_WRITE_HAPTICS_ON    MIXER_WRITE(SOUND_MIXER_HAPTICS_ON)
+#define SOUND_MIXER_WRITE_HAPTICS_OFF   MIXER_WRITE(SOUND_MIXER_HAPTICS_OFF)
+#endif
+
 #define SOUND_MIXER_READ_RECSRC		MIXER_READ(SOUND_MIXER_RECSRC)
 #define SOUND_MIXER_READ_DEVMASK	MIXER_READ(SOUND_MIXER_DEVMASK)
 #define SOUND_MIXER_READ_RECMASK	MIXER_READ(SOUND_MIXER_RECMASK)
 #define SOUND_MIXER_READ_STEREODEVS	MIXER_READ(SOUND_MIXER_STEREODEVS)
 #define SOUND_MIXER_READ_CAPS		MIXER_READ(SOUND_MIXER_CAPS)
+
+#define SOUND_MIXER_READ_OUTSRC		MIXER_READ(SOUND_MIXER_OUTSRC)
+#define SOUND_MIXER_READ_INPATH		MIXER_READ(SOUND_MIXER_INPATH)
+#define SOUND_MIXER_READ_OUTPATH	MIXER_READ(SOUND_MIXER_OUTPATH)
+#define SOUND_MIXER_READ_3D_STATUS	MIXER_READ(SOUND_MIXER_3D_STATUS)		/* read E680 sound 3D status */
+#define SOUND_MIXER_READ_HEADSET_STATUS	MIXER_READ(SOUND_MIXER_HEADSET_STATUS)
+#define SOUND_MIXER_READ_HAPTICS_FIL	MIXER_READ(SOUND_MIXER_HAPTICS_FIL)	/* read E680 sound haptics filter status */
 
 #define MIXER_WRITE(dev)		_SIOWR('M', dev, int)
 #define SOUND_MIXER_WRITE_VOLUME	MIXER_WRITE(SOUND_MIXER_VOLUME)
@@ -884,12 +968,28 @@ typedef struct copr_msg {
 #define SOUND_MIXER_WRITE_LINE2		MIXER_WRITE(SOUND_MIXER_LINE2)
 #define SOUND_MIXER_WRITE_LINE3		MIXER_WRITE(SOUND_MIXER_LINE3)
 
+#define SOUND_MIXER_WRITE_RECSRC	MIXER_WRITE(SOUND_MIXER_RECSRC)
+#define SOUND_MIXER_WRITE_OUTSRC 	MIXER_WRITE(SOUND_MIXER_OUTSRC)
+#define SOUND_MIXER_WRITE_3D_STATUS	MIXER_WRITE(SOUND_MIXER_3D_STATUS)		/* write E680 sound 3D status */
+#define SOUND_MIXER_WRITE_HW_ATTENU	MIXER_WRITE(SOUND_MIXER_HW_ATTENU)		/* write a780 hw noise attenuation switch */
+
+#define SOUND_MIXER_WRITE_INPATH 	MIXER_WRITE(SOUND_MIXER_INPATH)
+#define SOUND_MIXER_WRITE_OUTPATH 	MIXER_WRITE(SOUND_MIXER_OUTPATH)
+#define SOUND_MIXER_WRITE_INPUTMUTE	MIXER_WRITE(SOUND_MIXER_INPUTMUTE)
+#define SOUND_MIXER_WRITE_LOOPBACK	MIXER_WRITE(SOUND_MIXER_LOOPBACK)
+
+#define SOUND_MIXER_WRITE_AUDOHPF	MIXER_WRITE(SOUND_MIXER_AUDOHPF)
+#define SOUND_MIXER_WRITE_AUDIHPF	MIXER_WRITE(SOUND_MIXER_AUDIHPF)
+#define SOUND_MIXER_WRITE_CODEC_SLAVE   MIXER_WRITE(SOUND_MIXER_CODEC_SLAVE)
+#define SOUND_MIXER_WRITE_EIHF_MUX      MIXER_WRITE(SOUND_MIXER_EIHF_MUX)
+#define SOUND_MIXER_WRITE_EIHF_MUTE     MIXER_WRITE(SOUND_MIXER_EIHF_MUTE)		
+#define SOUND_MIXER_WRITE_EMU_TEST      MIXER_WRITE(SOUND_MIXER_EMU_TEST)			 
+				 
 /* Obsolete macros */
 #define SOUND_MIXER_WRITE_MUTE		MIXER_WRITE(SOUND_MIXER_MUTE)
 #define SOUND_MIXER_WRITE_ENHANCE	MIXER_WRITE(SOUND_MIXER_ENHANCE)
 #define SOUND_MIXER_WRITE_LOUD		MIXER_WRITE(SOUND_MIXER_LOUD)
 
-#define SOUND_MIXER_WRITE_RECSRC	MIXER_WRITE(SOUND_MIXER_RECSRC)
 
 typedef struct mixer_info
 {
@@ -1258,8 +1358,8 @@ extern int OSS_write_patch2(int fd, unsigned char *buf, int len);
  */
 
 #define _LOCAL_EVENT(ev, parm)		{_SEQ_NEEDBUF(8);\
-				 	_seqbuf[_seqbufptr+0] = EV_SEQ_LOCAL; \
-				 	_seqbuf[_seqbufptr+1] = (ev); \
+	                                _seqbuf[_seqbufptr+0] = EV_SEQ_LOCAL; \
+		                        _seqbuf[_seqbufptr+1] = (ev); \
 					_seqbuf[_seqbufptr+2] = 0;\
 					_seqbuf[_seqbufptr+3] = 0;\
 				 	*(unsigned int *)&_seqbuf[_seqbufptr+4] = (parm); \

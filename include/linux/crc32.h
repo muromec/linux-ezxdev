@@ -7,7 +7,25 @@
 #ifndef _LINUX_CRC32_H
 #define _LINUX_CRC32_H
 
-#include <linux/types.h>
+#include <linux/types.h> 
+
+#ifndef CRC32_H
+#define CRC32_H
+
+extern const uint32_t crc32_table[256];
+
+/* Return a 32-bit CRC of the contents of the buffer. */
+
+static inline uint32_t 
+crc32(uint32_t val, const void *ss, int len)
+{
+	const unsigned char *s = ss;
+        while (--len >= 0)
+                val = crc32_table[(val ^ *s++) & 0xff] ^ (val >> 8);
+        return val;
+}
+
+#endif
 
 /* The little-endian AUTODIN II ethernet CRC calculation.
    N.B. Do not use for bulk data, use a table-based routine instead.

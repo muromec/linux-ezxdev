@@ -12,6 +12,7 @@ typedef struct {
 	unsigned int __local_bh_count;
 	unsigned int __syscall_count;
 	struct task_struct * __ksoftirqd_task; /* waitqueue is too large */
+	unsigned long idle_timestamp;          
 	unsigned int __nmi_count;	/* arch dependent */
 } ____cacheline_aligned irq_cpustat_t;
 
@@ -19,12 +20,16 @@ typedef struct {
 
 /*
  * Are we in an interrupt context? Either doing bottom half
- * or hardware interrupt processing?
+ * or hardware interrupt processing?  Note the preempt check,
+ * this is both a bugfix and an optimization.  If we are
+ * preemptible, we cannot be in an interrupt.
  */
-#define in_interrupt() ({ int __cpu = smp_processor_id(); \
-	(local_irq_count(__cpu) + local_bh_count(__cpu) != 0); })
+#define in_interrupt() (preempt_is_disabled() && \
+	({unsigned long __cpu = smp_processor_id(); \
+	(local_irq_count(__cpu) + local_bh_count(__cpu) != 0); }))
 
-#define in_irq() (local_irq_count(smp_processor_id()) != 0)
+#define in_irq() (preempt_is_disabled() && \
+        (local_irq_count(smp_processor_id()) != 0))
 
 #ifndef CONFIG_SMP
 
@@ -35,6 +40,8 @@ typedef struct {
 #define irq_exit(cpu, irq)	(local_irq_count(cpu)--)
 
 #define synchronize_irq()	barrier()
+
+#define release_irqlock(cpu)	do { } while (0)
 
 #else
 

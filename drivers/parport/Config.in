@@ -32,7 +32,7 @@ if [ "$CONFIG_PARPORT" != "n" ]; then
          fi
       fi
    fi
-   if [ "$CONFIG_ARM" = "y" ]; then
+   if [ "$CONFIG_ARM" = "y" -a "$CONFIG_ARCH_ARC" = "y" ]; then
       dep_tristate '  Archimedes hardware' CONFIG_PARPORT_ARC $CONFIG_PARPORT
    fi
    if [ "$CONFIG_AMIGA" = "y" ]; then

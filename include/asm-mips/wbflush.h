@@ -6,30 +6,29 @@
  * for more details.
  *
  * Copyright (c) 1998 Harald Koerfgen
- * Copyright (C) 2002 Maciej W. Rozycki
  */
 #ifndef __ASM_MIPS_WBFLUSH_H
 #define __ASM_MIPS_WBFLUSH_H
 
 #include <linux/config.h>
 
-#ifdef CONFIG_CPU_HAS_WB
+#if defined(CONFIG_CPU_HAS_WB)
+/*
+ * R2000 or R3000
+ */
+extern void (*__wbflush) (void);
 
-extern void (*__wbflush)(void);
+#define wbflush() __wbflush()
+
+#else
+/*
+ * we don't need no stinkin' wbflush
+ */
+
+#define wbflush()  do { } while(0)
+
+#endif
+
 extern void wbflush_setup(void);
-
-#define wbflush()			\
-	do {				\
-		__sync();		\
-		__wbflush();		\
-	} while (0)
-
-#else /* !CONFIG_CPU_HAS_WB */
-
-#define wbflush_setup() do { } while (0)
-
-#define wbflush() fast_iob()
-
-#endif /* !CONFIG_CPU_HAS_WB */
 
 #endif /* __ASM_MIPS_WBFLUSH_H */

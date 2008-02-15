@@ -1,3 +1,31 @@
+/*
+ * Copyright 2004 Motorola, Inc. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+ * 02111-1307, USA
+ *
+ */
+/*
+ * Revision History:
+ *                    Modification     Tracking
+ * Author                 Date          Number     Description of Changes
+ * ----------------   ------------    ----------   -------------------------
+ * Gu Susan(w15879)    01/16/2004     LIBdd65293    Add VFM auto-reclaim in kernel thread kupdated
+ *
+ */
+
 /* rwsem.h: R/W semaphores, public interface
  *
  * Written by David Howells (dhowells@redhat.com).
@@ -36,6 +64,16 @@ extern void FASTCALL(rwsemtrace(struct rw_semaphore *sem, const char *str));
 #define rwsemtrace(SEM,FMT)
 #endif
 #endif
+
+/*
+ * Added by Susan -- try to lock for reading
+ */
+static inline void try_down_read(struct rw_semaphore *sem, unsigned int *result)
+{
+	rwsemtrace(sem,"Entering down_read");
+	__try_down_read(sem, result);
+	rwsemtrace(sem,"Leaving down_read");
+}
 
 /*
  * lock for reading

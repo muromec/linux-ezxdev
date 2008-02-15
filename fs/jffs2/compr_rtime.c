@@ -1,43 +1,21 @@
 /*
  * JFFS2 -- Journalling Flash File System, Version 2.
  *
- * Copyright (C) 2001 Red Hat, Inc.
+ * Copyright (C) 2001-2003 Red Hat, Inc.
+ * Copyright (c) 2005 Motorola Inc.
  *
  * Created by Arjan van de Ven <arjanv@redhat.com>
+ * Modified by Jiang jun <a21079@motorola.com>
  *
- * The original JFFS, from which the design for JFFS2 was derived,
- * was designed and implemented by Axis Communications AB.
+ * For licensing information, see the file 'LICENCE' in this directory.
  *
- * The contents of this file are subject to the Red Hat eCos Public
- * License Version 1.1 (the "Licence"); you may not use this file
- * except in compliance with the Licence.  You may obtain a copy of
- * the Licence at http://www.redhat.com/
- *
- * Software distributed under the Licence is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied.
- * See the Licence for the specific language governing rights and
- * limitations under the Licence.
- *
- * The Original Code is JFFS2 - Journalling Flash File System, version 2
- *
- * Alternatively, the contents of this file may be used under the
- * terms of the GNU General Public License version 2 (the "GPL"), in
- * which case the provisions of the GPL are applicable instead of the
- * above.  If you wish to allow the use of your version of this file
- * only under the terms of the GPL and not to allow others to use your
- * version of this file under the RHEPL, indicate your decision by
- * deleting the provisions above and replace them with the notice and
- * other provisions required by the GPL.  If you do not delete the
- * provisions above, a recipient may use your version of this file
- * under either the RHEPL or the GPL.
- *
- * $Id: compr_rtime.c,v 1.5 2001/03/15 15:38:23 dwmw2 Exp $
+ * $Id: compr_rtime.c,v 1.15 2005/03/17 20:23:06 gleixner Exp $
  *
  *
  * Very simple lz77-ish encoder.
  *
  * Theory of operation: Both encoder and decoder have a list of "last
- * occurances" for every possible source-value; after sending the
+ * occurrences" for every possible source-value; after sending the
  * first source-byte, the second byte indicated the "run" length of
  * matches
  *
@@ -49,12 +27,16 @@
 #include <linux/types.h>
 #include <linux/errno.h>
 #include <linux/string.h> 
+#include <linux/jffs2.h> 
+#include "compr.h"
 
 /* _compress returns the compressed size, -1 if bigger */
-int rtime_compress(unsigned char *data_in, unsigned char *cpage_out, 
-		   __u32 *sourcelen, __u32 *dstlen)
+static int jffs2_rtime_compress(unsigned char *data_in,
+				unsigned char *cpage_out,
+				uint32_t *sourcelen, uint32_t *dstlen,
+				void *model)
 {
-	int positions[256];
+	short positions[256];
 	int outpos = 0;
 	int pos=0;
 
@@ -91,10 +73,12 @@ int rtime_compress(unsigned char *data_in, unsigned char *cpage_out,
 }		   
 
 
-void rtime_decompress(unsigned char *data_in, unsigned char *cpage_out,
-		      __u32 srclen, __u32 destlen)
+static int jffs2_rtime_decompress(unsigned char *data_in,
+				  unsigned char *cpage_out,
+				  uint32_t srclen, uint32_t destlen,
+				  void *model)
 {
-	int positions[256];
+	short positions[256];
 	int outpos = 0;
 	int pos=0;
 	
@@ -122,7 +106,29 @@ void rtime_decompress(unsigned char *data_in, unsigned char *cpage_out,
 				outpos+=repeat;		
 			}
 		}
-	}		
+	}
+        return 0;
 }		   
 
+static struct jffs2_compressor jffs2_rtime_comp = {
+    .priority = JFFS2_RTIME_PRIORITY,
+    .name = "rtime",
+    .compr = JFFS2_COMPR_RTIME,
+    .compress = &jffs2_rtime_compress,
+    .decompress = &jffs2_rtime_decompress,
+#ifdef JFFS2_RTIME_DISABLED
+    .disabled = 1,
+#else
+    .disabled = 0,
+#endif
+};
 
+int jffs2_rtime_init(void)
+{
+    return jffs2_register_compressor(&jffs2_rtime_comp);
+}
+
+void jffs2_rtime_exit(void)
+{
+    jffs2_unregister_compressor(&jffs2_rtime_comp);
+}

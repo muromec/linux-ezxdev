@@ -1,4 +1,4 @@
-// $Id: octagon-5066.c,v 1.19 2001/10/02 15:05:14 dwmw2 Exp $
+// $Id: octagon-5066.c,v 1.26 2004/07/12 22:38:29 dwmw2 Exp $
 /* ######################################################################
 
    Octagon 5066 MTD Driver. 
@@ -31,6 +31,7 @@
 #include <asm/io.h>
 
 #include <linux/mtd/map.h>
+#include <linux/mtd/mtd.h>
 
 #define WINDOW_START 0xe8000
 #define WINDOW_LENGTH 0x8000
@@ -61,32 +62,12 @@ static inline void oct5066_page(struct map_info *map, unsigned long ofs)
 }
 
 
-static __u8 oct5066_read8(struct map_info *map, unsigned long ofs)
+static map_word oct5066_read8(struct map_info *map, unsigned long ofs)
 {
-	__u8 ret;
+	map_word ret;
 	spin_lock(&oct5066_spin);
 	oct5066_page(map, ofs);
-	ret = readb(iomapadr + (ofs & WINDOW_MASK));
-	spin_unlock(&oct5066_spin);
-	return ret;
-}
-
-static __u16 oct5066_read16(struct map_info *map, unsigned long ofs)
-{
-	__u16 ret;
-	spin_lock(&oct5066_spin);
-	oct5066_page(map, ofs);
-	ret = readw(iomapadr + (ofs & WINDOW_MASK));
-	spin_unlock(&oct5066_spin);
-	return ret;
-}
-
-static __u32 oct5066_read32(struct map_info *map, unsigned long ofs)
-{
-	__u32 ret;
-	spin_lock(&oct5066_spin);
-	oct5066_page(map, ofs);
-	ret = readl(iomapadr + (ofs & WINDOW_MASK));
+	ret.x[0] = readb(iomapadr + (ofs & WINDOW_MASK));
 	spin_unlock(&oct5066_spin);
 	return ret;
 }
@@ -108,27 +89,11 @@ static void oct5066_copy_from(struct map_info *map, void *to, unsigned long from
 	}
 }
 
-static void oct5066_write8(struct map_info *map, __u8 d, unsigned long adr)
+static void oct5066_write8(struct map_info *map, map_word d, unsigned long adr)
 {
 	spin_lock(&oct5066_spin);
 	oct5066_page(map, adr);
-	writeb(d, iomapadr + (adr & WINDOW_MASK));
-	spin_unlock(&oct5066_spin);
-}
-
-static void oct5066_write16(struct map_info *map, __u16 d, unsigned long adr)
-{
-	spin_lock(&oct5066_spin);
-	oct5066_page(map, adr);
-	writew(d, iomapadr + (adr & WINDOW_MASK));
-	spin_unlock(&oct5066_spin);
-}
-
-static void oct5066_write32(struct map_info *map, __u32 d, unsigned long adr)
-{
-	spin_lock(&oct5066_spin);
-	oct5066_page(map, adr);
-	writel(d, iomapadr + (adr & WINDOW_MASK));
+	writeb(d.x[0], iomapadr + (adr & WINDOW_MASK));
 	spin_unlock(&oct5066_spin);
 }
 
@@ -151,32 +116,26 @@ static void oct5066_copy_to(struct map_info *map, unsigned long to, const void *
 
 static struct map_info oct5066_map[2] = {
 	{
-		name: "Octagon 5066 Socket",
-		size: 512 * 1024,
-		buswidth: 1,
-		read8: oct5066_read8,
-		read16: oct5066_read16,
-		read32: oct5066_read32,
-		copy_from: oct5066_copy_from,
-		write8: oct5066_write8,
-		write16: oct5066_write16,
-		write32: oct5066_write32,
-		copy_to: oct5066_copy_to,
-		map_priv_1: 1<<6
+		.name = "Octagon 5066 Socket",
+		.phys = NO_XIP,
+		.size = 512 * 1024,
+		.bankwidth = 1,
+		.read = oct5066_read8,
+		.copy_from = oct5066_copy_from,
+		.write = oct5066_write8,
+		.copy_to = oct5066_copy_to,
+		.map_priv_1 = 1<<6
 	},
 	{
-		name: "Octagon 5066 Internal Flash",
-		size: 2 * 1024 * 1024,
-		buswidth: 1,
-		read8: oct5066_read8,
-		read16: oct5066_read16,
-		read32: oct5066_read32,
-		copy_from: oct5066_copy_from,
-		write8: oct5066_write8,
-		write16: oct5066_write16,
-		write32: oct5066_write32,
-		copy_to: oct5066_copy_to,
-		map_priv_1: 2<<6
+		.name = "Octagon 5066 Internal Flash",
+		.phys = NO_XIP,
+		.size = 2 * 1024 * 1024,
+		.bankwidth = 1,
+		.read = oct5066_read8,
+		.copy_from = oct5066_copy_from,
+		.write = oct5066_write8,
+		.copy_to = oct5066_copy_to,
+		.map_priv_1 = 2<<6
 	}
 };
 
@@ -223,33 +182,32 @@ void cleanup_oct5066(void)
 		}
 	}
 	iounmap((void *)iomapadr);
-	release_region(PAGE_IO,1);
+	release_region(PAGE_IO, 1);
 }
 
 int __init init_oct5066(void)
 {
 	int i;
-	
+	int ret = 0;
+
 	// Do an autoprobe sequence
-	if (check_region(PAGE_IO,1) != 0)
-		{
-			printk("5066: Page Register in Use\n");
-			return -EAGAIN;
-		}
+	if (!request_region(PAGE_IO,1,"Octagon SSD")) {
+		printk(KERN_NOTICE "5066: Page Register in Use\n");
+		return -EAGAIN;
+	}
 	iomapadr = (unsigned long)ioremap(WINDOW_START, WINDOW_LENGTH);
 	if (!iomapadr) {
-		printk("Failed to ioremap memory region\n");
-		return -EIO;
+		printk(KERN_NOTICE "Failed to ioremap memory region\n");
+		ret = -EIO;
+		goto out_rel;
 	}
-	if (OctProbe() != 0)
-		{
-			printk("5066: Octagon Probe Failed, is this an Octagon 5066 SBC?\n");
-			iounmap((void *)iomapadr);
-			return -EAGAIN;
-		}
-	
-	request_region(PAGE_IO,1,"Octagon SSD");
-	
+	if (OctProbe() != 0) {
+		printk(KERN_NOTICE "5066: Octagon Probe Failed, is this an Octagon 5066 SBC?\n");
+		iounmap((void *)iomapadr);
+		ret = -EAGAIN;
+		goto out_unmap;
+	}
+      	
 	// Print out our little header..
 	printk("Octagon 5066 SSD IO:0x%x MEM:0x%x-0x%x\n",PAGE_IO,WINDOW_START,
 	       WINDOW_START+WINDOW_LENGTH);
@@ -263,7 +221,7 @@ int __init init_oct5066(void)
 		if (!oct5066_mtd[i])
 			oct5066_mtd[i] = do_map_probe("map_rom", &oct5066_map[i]);
 		if (oct5066_mtd[i]) {
-			oct5066_mtd[i]->module = THIS_MODULE;
+			oct5066_mtd[i]->owner = THIS_MODULE;
 			add_mtd_device(oct5066_mtd[i]);
 		}
 	}
@@ -272,8 +230,14 @@ int __init init_oct5066(void)
 		cleanup_oct5066();
 		return -ENXIO;
 	}	  
-	
+
 	return 0;
+
+ out_unmap:
+	iounmap((void *)iomapadr);
+ out_rel:
+	release_region(PAGE_IO, 1);
+	return ret;
 }
 
 module_init(init_oct5066);

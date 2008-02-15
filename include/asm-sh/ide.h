@@ -40,7 +40,11 @@ static __inline__ int ide_default_irq(ide_ioreg_t base)
 		return ide_default_irq_hp600(base);
 	}
 	switch (base) {
+#if defined(CONFIG_SH_SOLUTION_ENGINE) && defined(CONFIG_CF_ENABLER)
+                case 0x01f0: return 7;
+#else
 		case 0x01f0: return 14;
+#endif
 		case 0x0170: return 15;
 		default:
 			return 0;
@@ -100,6 +104,7 @@ static __inline__ void ide_init_default_hwifs(void)
 	int index;
 
 	for(index = 0; index < MAX_HWIFS; index++) {
+		memset(&hw, 0, sizeof hw);
 		ide_init_hwif_ports(&hw, ide_default_io_base(index), 0, NULL);
 		hw.irq = ide_default_irq(ide_default_io_base(index));
 		ide_register_hw(&hw, NULL);
@@ -110,23 +115,40 @@ static __inline__ void ide_init_default_hwifs(void)
 typedef union {
 	unsigned all			: 8;	/* all of the bits together */
 	struct {
+#ifdef __LITTLE_ENDIAN__
 		unsigned head		: 4;	/* always zeros here */
 		unsigned unit		: 1;	/* drive select number, 0 or 1 */
 		unsigned bit5		: 1;	/* always 1 */
 		unsigned lba		: 1;	/* using LBA instead of CHS */
 		unsigned bit7		: 1;	/* always 1 */
+#else
+		unsigned bit7           : 1;    /* always 1 */
+		unsigned lba            : 1;    /* using LBA instead of CHS */
+		unsigned bit5           : 1;    /* always 1 */
+		unsigned unit           : 1;    /* drive select number, 0 or 1 */
+		unsigned head           : 4;    /* always zeros here */
+#endif
 	} b;
 } select_t;
 
 typedef union {
 	unsigned all			: 8;	/* all of the bits together */
 	struct {
+#ifdef __LITTLE_ENDIAN__
 		unsigned bit0		: 1;
 		unsigned nIEN		: 1;	/* device INTRQ to host */
 		unsigned SRST		: 1;	/* host soft reset bit */
 		unsigned bit3		: 1;	/* ATA-2 thingy */
 		unsigned reserved456	: 3;
 		unsigned HOB		: 1;	/* 48-bit address ordering */
+#else
+		unsigned HOB            : 1;    /* 48-bit address ordering */
+		unsigned reserved456    : 3;
+		unsigned bit3           : 1;    /* ATA-2 thingy */
+		unsigned SRST           : 1;    /* host soft reset bit */
+		unsigned nIEN           : 1;    /* device INTRQ to host */
+		unsigned bit0           : 1;
+#endif
 	} b;
 } control_t;
 

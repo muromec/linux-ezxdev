@@ -1,6 +1,3 @@
-/*
- * BK Id: %F% %I% %G% %U% %#%
- */
 #ifdef __KERNEL__
 #ifndef _PPC_MACHDEP_H
 #define _PPC_MACHDEP_H
@@ -39,6 +36,8 @@ struct machdep_calls {
 	void		(*power_off)(void);
 	void		(*halt)(void);
 
+        void            (*power_save)(void);
+
 	long		(*time_init)(void); /* Optional, may be NULL */
 	int		(*set_rtc_time)(unsigned long nowtime);
 	unsigned long	(*get_rtc_time)(void);
@@ -48,6 +47,7 @@ struct machdep_calls {
 	unsigned long	(*find_end_of_memory)(void);
 	void		(*setup_io_mappings)(void);
 
+	void		(*early_serial_map)(void);
   	void		(*progress)(char *, unsigned short);
 
 	unsigned char 	(*nvram_read_val)(int addr);
@@ -133,8 +133,8 @@ extern sys_ctrler_t sys_ctrler;
 struct smp_ops_t {
 	void  (*message_pass)(int target, int msg, unsigned long data, int wait);
 	int   (*probe)(void);
-	void  (*kick_cpu)(int nr);
-	void  (*setup_cpu)(int nr);
+	void  (*kick_cpu)(int nr);	/* Start a CPU */
+	void  (*setup_cpu)(int nr);	/* Setup for online CPU */
 };
 #endif /* CONFIG_SMP */
 

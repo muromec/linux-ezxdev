@@ -652,9 +652,8 @@ int search_by_key (struct super_block * p_s_sb,
                                        stop at leaf level - set to
                                        DISK_LEAF_NODE_LEVEL */
     ) {
-    int  n_block_number = SB_ROOT_BLOCK (p_s_sb),
-      expected_level = SB_TREE_HEIGHT (p_s_sb),
-      n_block_size    = p_s_sb->s_blocksize;
+    int n_block_number, expected_level;
+    int n_block_size    = p_s_sb->s_blocksize;
     struct buffer_head  *       p_s_bh;
     struct path_element *       p_s_last_element;
     int				n_node_level, n_retval;
@@ -666,7 +665,10 @@ int search_by_key (struct super_block * p_s_sb,
 #endif
     
     PROC_INFO_INC( p_s_sb, search_by_key );
-    
+
+    debug_lock_break(1);
+    conditional_schedule();
+
     /* As we add each node to a path we increase its count.  This means that
        we must be careful to release all nodes in a path before we either
        discard the path struct or re-use the path struct, as we do here. */
@@ -678,6 +680,8 @@ int search_by_key (struct super_block * p_s_sb,
     /* With each iteration of this loop we search through the items in the
        current node, and calculate the next current node(next path element)
        for the next iteration of this loop.. */
+    n_block_number = SB_ROOT_BLOCK (p_s_sb);
+    expected_level = SB_TREE_HEIGHT (p_s_sb);
     while ( 1 ) {
 
 #ifdef CONFIG_REISERFS_CHECK
@@ -1103,6 +1107,9 @@ static char  prepare_for_delete_or_cut(
 
 	    for (n_counter = *p_n_removed;
 		 n_counter < n_unfm_number; n_counter++, p_n_unfm_pointer-- ) {
+
+		debug_lock_break(1);
+		conditional_schedule();
 
 		if (item_moved (&s_ih, p_s_path)) {
 		    need_research = 1 ;

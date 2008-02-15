@@ -1,0 +1,97 @@
+#
+# Network Function
+#
+# Copyright (C) 2002-2003 Belcarra
+#
+
+mainmenu_option next_comment
+comment "Network Function"
+
+dep_tristate '  Network Function Driver' CONFIG_USBD_NETWORK $CONFIG_USBD
+
+if [ "$CONFIG_USBD_NETWORK" = "y" -o "$CONFIG_USBD_NETWORK" = "m" ]; then
+
+   hex     'VendorID (hex value)'             CONFIG_USBD_NETWORK_VENDORID "12b9"
+   hex     'ProductID (hex value)'            CONFIG_USBD_NETWORK_PRODUCTID "f001"
+   hex     'bcdDevice (binary-coded decimal)' CONFIG_USBD_NETWORK_BCDDEVICE "0100"
+
+   string 'iManufacturer (string)' CONFIG_USBD_NETWORK_MANUFACTURER "Belcarra"
+   string 'iProduct (string)'      CONFIG_USBD_NETWORK_PRODUCT_NAME "Belcarra BLAN Device"
+
+
+   comment ''
+   bool " MDLM-BLAN Networking mode (Personal Devices)"  CONFIG_USBD_NETWORK_BLAN
+   if [ "$CONFIG_USBD_NETWORK_BLAN" = "y" ]; then
+      string '    iConfiguration (string)' CONFIG_USBD_NETWORK_BLAN_DESC "BLAN Net Cfg"
+      string '    iInterface (string)'     CONFIG_USBD_NETWORK_BLAN_INTF "Comm/Data Intf"
+   fi
+
+   if [ "$CONFIG_USBD_NETWORK_BLAN" = "y" ]; then
+      bool " CRC"  CONFIG_USBD_NETWORK_BLAN_CRC
+
+      if [ "$CONFIG_USBD_NETWORK_BLAN_CRC" = "y" ]; then
+
+         bool "     Pad Before CRC (to wMaxPacketSize-1)"  CONFIG_USBD_NETWORK_BLAN_PADBEFORE
+         bool "     Pad After CRC"  CONFIG_USBD_NETWORK_BLAN_PADAFTER
+         if [ "$CONFIG_USBD_NETWORK_BLAN" = "y" -a "$CONFIG_USBD_NETWORK_BLAN_PADAFTER" = "y" ]; then
+              int '        Pad multiple' CONFIG_USBD_NETWORK_BLAN_PADBYTES "8"
+         fi
+         bool "     Fermat Randomizer"  CONFIG_USBD_NETWORK_BLAN_FERMAT
+      fi
+      bool " Do not Set Time"  CONFIG_USBD_NETWORK_BLAN_DO_NOT_SETTIME
+      bool " Request Hostname"  CONFIG_USBD_NETWORK_BLAN_HOSTNAME
+      bool " Infrastructure Device"  CONFIG_USBD_NETWORK_BLAN_NONBRIDGED
+      comment ''
+   fi
+
+   bool " MDLM-SAFE Networking mode (Bridge/Routers)" CONFIG_USBD_NETWORK_SAFE
+   if [ "$CONFIG_USBD_NETWORK_SAFE" = "y" ]; then
+      string '    Data Interface iConfiguration (string)' CONFIG_USBD_NETWORK_SAFE_DESC "SAFE Net Cfg"
+      string '    Data Interface iInterface (string)'     CONFIG_USBD_NETWORK_SAFE_INTF "Data Intf"
+   fi
+
+
+   if [ "$CONFIG_USBD_NETWORK_SAFE" = "y" ]; then
+      bool " Do not Set Time"  CONFIG_USBD_NETWORK_SAFE_DO_NOT_SETTIME
+      bool " CRC"  CONFIG_USBD_NETWORK_SAFE_CRC
+      if [ "$CONFIG_USBD_NETWORK_SAFE_CRC" = "y" ]; then
+         bool "     Pad Before CRC (to wMaxPacketSize-1)"  CONFIG_USBD_NETWORK_SAFE_PADBEFORE
+      fi
+      bool " Infrastructure Device"  CONFIG_USBD_NETWORK_SAFE_NONBRIDGED
+      comment ''
+   fi
+
+   bool " CDC Networking mode (Bridge/Routers)" CONFIG_USBD_NETWORK_CDC
+   if [ "$CONFIG_USBD_NETWORK_CDC" = "y" ]; then
+      string '    iConfiguration (string)'            CONFIG_USBD_NETWORK_CDC_DESC "SAFE Net Cfg"
+      string '    Data Interface iInterface (string)' CONFIG_USBD_NETWORK_CDC_COMM_INTF "Comm Intf"
+      string '    Data (diabled) iInterface (string)' CONFIG_USBD_NETWORK_CDC_NODATA_INTF "Data (Disabled) Intf"
+      string '    Comm Interface iInterface (string)' CONFIG_USBD_NETWORK_CDC_DATA_INTF "Dat Intf"
+   fi
+
+   if [ "$CONFIG_USBD_NETWORK_SAFE" = "y" -a "$CONFIG_USBD_NETWORK_CDC" = "y" ]; then
+      comment 'Warning: CDC and MDLM-SAFE not allowed'
+   fi
+
+   
+   bool " Failsafe BASIC Networking mode" CONFIG_USBD_NETWORK_BASIC
+   if [ "$CONFIG_USBD_NETWORK_BASIC" = "y" ]; then
+      string '    Data Interface iConfiguration (string)' CONFIG_USBD_NETWORK_BASIC_DESC "BASIC Net Cfg"
+      string '    Data Interface iInterface (string)'     CONFIG_USBD_NETWORK_BASIC_INTF "Data Intf"
+   fi
+
+   bool " Failsafe BASIC2 Networking mode" CONFIG_USBD_NETWORK_BASIC2
+   if [ "$CONFIG_USBD_NETWORK_BASIC2" = "y" ]; then
+      string '    Data Interface iConfiguration (string)' CONFIG_USBD_NETWORK_BASIC2_DESC "BASIC Net Cfg"
+      string '    Comm Interface iInterface (string)'     CONFIG_USBD_NETWORK_BASIC2_COMM_INTF "Comm Intf"
+      string '    Data Interface iInterface (string)'     CONFIG_USBD_NETWORK_BASIC2_DATA_INTF "Data Intf"
+   fi
+
+
+   comment ''
+   bool    ' Start Single Urb Test' CONFIG_USBD_NETWORK_START_SINGLE
+   bool    ' EP0 Test' CONFIG_USBD_NETWORK_EP0TEST
+
+fi
+
+endmenu

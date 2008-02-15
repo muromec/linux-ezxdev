@@ -10,6 +10,11 @@
  *	- Support for tasks which re-add themselves
  *	- flush_scheduled_tasks.
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by w20146, for EZX platform
+ */
 
 #define __KERNEL_SYSCALLS__
 
@@ -19,7 +24,9 @@
 #include <linux/init.h>
 #include <linux/unistd.h>
 #include <linux/signal.h>
+#include <linux/sched.h>
 #include <linux/completion.h>
+#include <linux/dpm.h>
 
 static DECLARE_TASK_QUEUE(tq_context);
 static DECLARE_WAIT_QUEUE_HEAD(context_task_wq);
@@ -67,13 +74,28 @@ int schedule_task(struct tq_struct *task)
 static int context_thread(void *startup)
 {
 	struct task_struct *curtask = current;
+#ifndef CONFIG_ARCH_EZX
+	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
+#endif
 	DECLARE_WAITQUEUE(wait, curtask);
 	struct k_sigaction sa;
 
 	daemonize();
+	
+#ifndef CONFIG_ARCH_EZX
+	// Formal Linux release doesn't have the code and MontaVista add it.
+	// To EZX, it will impact the performancec of HOTPLUG
+	setscheduler(0, SCHED_RR, &param);
+#endif
+	
 	strcpy(curtask->comm, "keventd");
 	keventd_running = 1;
 	keventd_task = curtask;
+
+	/* Identify as a system task for DPM purposes */
+	curtask->dpm_state = DPM_NO_STATE;
+
+
 
 	spin_lock_irq(&curtask->sigmask_lock);
 	siginitsetinv(&curtask->blocked, sigmask(SIGCHLD));

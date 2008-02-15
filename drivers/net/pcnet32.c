@@ -575,7 +575,7 @@ pcnet32_probe1(unsigned long ioaddr, unsigned int irq_line, int shared,
 	break;
     case 0x2625:
 	chipname = "PCnet/FAST III 79C973"; /* PCI */
-	fdx = 1; mii = 1;
+	fdx = 1; mii = 1; fset = 1;
 	break;
     case 0x2626:
 	chipname = "PCnet/Home 79C978"; /* PCI */
@@ -619,11 +619,19 @@ pcnet32_probe1(unsigned long ioaddr, unsigned int irq_line, int shared,
     if(fset)
     {
 	a->write_bcr(ioaddr, 18, (a->read_bcr(ioaddr, 18) | 0x0800));
-	a->write_csr(ioaddr, 80, (a->read_csr(ioaddr, 80) & 0x0C00) | 0x0c00);
+	a->write_csr(ioaddr, 80, (a->read_csr(ioaddr, 80) & ~0x0C00) | 0x0c00);
 	dxsuflo = 1;
 	ltint = 1;
     }
     
+#if defined(CONFIG_SH_7751_SOLUTION_ENGINE)
+    a->write_bcr(ioaddr, 18, (a->read_bcr(ioaddr, 18) | 0x0060));
+#if 0 /* May want to try these in case of Tx FIFO underrun */
+    a->write_csr(ioaddr, 80, (a->read_csr(ioaddr, 80) & ~0x0C00) | 0x0C00);
+    a->write_bcr(ioaddr, 25, 0x16);
+    a->write_bcr(ioaddr, 26, 0x08);
+#endif
+#endif
     dev = alloc_etherdev(0);
     if(!dev)
 	return -ENOMEM;
@@ -666,6 +674,22 @@ pcnet32_probe1(unsigned long ioaddr, unsigned int irq_line, int shared,
     /* if the ethernet address is not valid, force to 00:00:00:00:00:00 */
     if( !is_valid_ether_addr(dev->dev_addr) )
 	memset(dev->dev_addr, 0, sizeof(dev->dev_addr));
+
+#ifdef CONFIG_SH_7751_SOLUTION_ENGINE
+    /* There is no address in the PROM: generate a MAC address */
+    /* (Also... maybe should check if BIOS is available for it?) */
+    for (i = 0; i < 6; i++) {
+	    if (dev->dev_addr[i] != 0)
+		    break;
+    }
+    if (i >= 6) {
+	    dev->dev_addr[0] = 0x02;
+	    dev->dev_addr[1] = dev->dev_addr[2] = 0;
+	    dev->dev_addr[3] = dev->dev_addr[4] = 0;
+	    dev->dev_addr[5] = *(unsigned short*)0xB9000002;
+    }
+    printk("\nGenerating MAC address of ");
+#endif /* CONFIG_SH_7751_SOLUTION_ENGINE */    
 
     for (i = 0; i < 6; i++)
 	printk(" %2.2x", dev->dev_addr[i] );

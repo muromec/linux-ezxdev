@@ -1,7 +1,47 @@
 #
-# Misc strange devices
+# Copyright (C) 2005 Motorola Inc.
+#
+# modified by w20091, for EZX platform
+#
+
+#
+# MCP drivers
 #
 mainmenu_option next_comment
-comment 'Misc devices'
+comment 'Multimedia Capabilities Port drivers'
+
+bool 'Multimedia drivers' CONFIG_MCP
+
+# Interface drivers
+dep_bool 'Support SA1100 MCP interface' CONFIG_MCP_SA1100 $CONFIG_MCP $CONFIG_ARCH_SA1100
+
+# Chip drivers
+dep_tristate 'Support for UCB1200 / UCB1300' CONFIG_MCP_UCB1200 $CONFIG_MCP
+dep_tristate '  Audio / Telephony interface support' CONFIG_MCP_UCB1200_AUDIO $CONFIG_MCP_UCB1200 $CONFIG_SOUND
+dep_tristate '  Touchscreen interface support' CONFIG_MCP_UCB1200_TS $CONFIG_MCP_UCB1200
+dep_tristate '  UCB1400 Touchscreen support' CONFIG_MCP_UCB1400_TS $CONFIG_ARCH_PXA
+dep_bool ' Motorola EZX Touchscreen support' CONFIG_ARCH_EZX_TS $CONFIG_ARCH_EZXBASE 
+
+if [ "$CONFIG_OMAP_INNOVATOR" = "y" ]; then
+   tristate 'Innovator Touchscreen support' CONFIG_INNOVATOR_TS
+fi
+
+# keypad
+dep_bool ' Motorola E680 Keypad' CONFIG_KEYPAD_E680 $CONFIG_ARCH_EZX_E680
+dep_bool ' Motorola A780 Keypad' CONFIG_KEYPAD_A780 $CONFIG_ARCH_EZX_A780
+dep_bool ' Motorola A780 Keylight' CONFIG_KEYLIGHT_A780 $CONFIG_ARCH_EZX_A780
+dep_bool ' Motorola E680 FMRadio' CONFIG_FMRADIO_E680 $CONFIG_ARCH_EZX_E680
+dep_bool ' Motorola Barbados Keypad' CONFIG_KEYPAD_BARBADOS $CONFIG_ARCH_EZX_BARBADOS
+dep_bool ' Motorola Sumatra Keypad' CONFIG_KEYPAD_SUMATRA $CONFIG_ARCH_EZX_SUMATRA
+dep_bool ' Motorola Hainan Keypad' CONFIG_KEYPAD_HAINAN $CONFIG_ARCH_EZX_HAINAN
+dep_bool ' Motorola Martinique Keypad' CONFIG_KEYPAD_MARTINIQUE $CONFIG_ARCH_EZX_MARTINIQUE
+
+# PCAP RTC
+dep_bool ' PCAP RTC' CONFIG_MOT_POWER_IC_PCAP_RTC $CONFIG_MOT_POWER_IC
+# keylight
+dep_bool ' Motorola Keylight' CONFIG_MOT_POWER_IC_KEYLIGHT $CONFIG_MOT_POWER_IC
+
+dep_bool ' HaiNan led' CONFIG_HAINAN_LED $CONFIG_MOT_POWER_IC
+dep_bool ' Sumatra led' CONFIG_SUMATRA_LED $CONFIG_MOT_POWER_IC
 
 endmenu

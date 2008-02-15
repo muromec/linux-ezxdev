@@ -1,0 +1,14 @@
+
+# USB device configuration from the device viewpoint (e.g. Linux running inside a USB device, not as host)
+#
+# Copyright (c) 2002-2003 Belcarra
+#
+# BVD - Bulverde
+
+if [ "$CONFIG_ARCH_PXA" = "y" -a "$CONFIG_CPU_BULVERDE" = "y" ]; then
+
+   mainmenu_option next_comment
+   comment 'Bulverde (Xscale) support'
+   dep_tristate '  WMMX (Xscale) support' CONFIG_USBD_WMMX_BUS $CONFIG_USBD
+   endmenu
+fi

@@ -24,6 +24,10 @@ struct real_driver {
   void                    (*close) (void*);
   void                    (*hungup) (void*);
   void                    (*getserial) (void*, struct serial_struct *sp);
+  int                     (*read_proc_port_count) (void*);
+  char*                   (*read_proc_driver_name) (void*);
+  char*                   (*read_proc_driver_version) (void*);
+  int                     (*read_proc_line) (void*,char*,int,int);
 };
 
 
@@ -77,6 +81,21 @@ struct gs_port {
 #define GS_DEBUG_CLOSE   0x00000010
 #define GS_DEBUG_FLOW    0x00000020
 
+#define GS_SPRINTF(tmpbuf,tmplen,max,buf,len,fmtargs...) \
+{ \
+  tmplen = sprintf( tmpbuf, fmtargs ); \
+  if ( len + tmplen < max ) \
+  { \
+    len += sprintf( buf+len, "%s", tmpbuf ); \
+  } \
+  /* \
+  printk( "tmpbuf=[%s]\n", tmpbuf ); \
+  printk( "   buf=[%s]\n", buf ); \
+  printk( "tmplen=[%d]\n", tmplen ); \
+  printk( "   len=[%d]\n", len ); \
+  printk( "   max=[%d]\n", max ); \
+  */ \
+}
 
 void gs_put_char(struct tty_struct *tty, unsigned char ch);
 int  gs_write(struct tty_struct *tty, int from_user, 
@@ -97,6 +116,7 @@ int  gs_init_port(struct gs_port *port);
 int  gs_setserial(struct gs_port *port, struct serial_struct *sp);
 int  gs_getserial(struct gs_port *port, struct serial_struct *sp);
 void gs_got_break(struct gs_port *port);
+int gs_read_proc(char *page, char **start, off_t off, int count, int *eof, void *data);
 
 extern int gs_debug;
 

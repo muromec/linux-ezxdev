@@ -9,8 +9,6 @@
 #ifndef _ASM_TYPES_H
 #define _ASM_TYPES_H
 
-#include <linux/config.h>
-
 typedef unsigned short umode_t;
 
 /*
@@ -33,12 +31,12 @@ typedef __signed__ long __s64;
 typedef unsigned long __u64;
 
 #else
-
+ 
 #if defined(__GNUC__) && !defined(__STRICT_ANSI__)
 typedef __signed__ long long __s64;
 typedef unsigned long long __u64;
 #endif
-
+ 
 #endif
 
 /*
@@ -71,18 +69,8 @@ typedef unsigned long long u64;
 
 #define BITS_PER_LONG _MIPS_SZLONG
 
-#if defined(CONFIG_HIGHMEM) && defined(CONFIG_64BIT_PHYS_ADDR)
-typedef u64 dma_addr_t;
-#else
 typedef u32 dma_addr_t;
-#endif
 typedef u64 dma64_addr_t;
-
-#ifdef CONFIG_64BIT_PHYS_ADDR
-typedef unsigned long long phys_t;
-#else
-typedef unsigned long phys_t;
-#endif
 
 #endif /* __KERNEL__ */
 

@@ -90,6 +90,14 @@
  *		as published by the Free Software Foundation; either version
  *		2 of the License, or (at your option) any later version.
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * Motorola EzX changes:
+ *    remove admin priority requirement for SO_BINDTODEVICE
+ *
+ *    add security patch for EzX by Jili Ni 200504
+ */
 
 #include <linux/config.h>
 #include <linux/errno.h>
@@ -110,6 +118,7 @@
 #include <linux/poll.h>
 #include <linux/tcp.h>
 #include <linux/init.h>
+#include <linux/security.h>
 
 #include <asm/uaccess.h>
 #include <asm/system.h>
@@ -335,10 +344,17 @@ int sock_setsockopt(struct socket *sock, int level, int optname,
 			char devname[IFNAMSIZ]; 
 
 			/* Sorry... */ 
+            /*
+             * we need to call bind to interface for all client
+             * thus remove this permission check
+             * by Xia Weizhong
+             */
+#if 0
 			if (!capable(CAP_NET_RAW)) {
 				ret = -EPERM;
 				break;
 			}
+#endif
 
 			/* Bind this socket to a particular device like "eth0",
 			 * as specified in the passed interface name. If the
@@ -584,10 +600,16 @@ struct sock *sk_alloc(int family, int priority, int zero_it)
 {
 	struct sock *sk = kmem_cache_alloc(sk_cachep, priority);
 
-	if(sk && zero_it) {
-		memset(sk, 0, sizeof(struct sock));
-		sk->family = family;
-		sock_lock_init(sk);
+	if (sk) {
+		if (zero_it) {
+			memset(sk, 0, sizeof(struct sock));
+			sk->family = family;
+			sock_lock_init(sk);
+		}
+		if (security_sock_alloc(sk, priority)) {
+			kmem_cache_free(sk_cachep, sk);
+			return NULL;
+		}
 	}
 
 	return sk;
@@ -612,6 +634,8 @@ void sk_free(struct sock *sk)
 
 	if (atomic_read(&sk->omem_alloc))
 		printk(KERN_DEBUG "sk_free: optmem leakage (%d bytes) detected.\n", atomic_read(&sk->omem_alloc));
+
+	security_sock_free(sk);
 
 	kmem_cache_free(sk_cachep, sk);
 }

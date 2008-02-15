@@ -1700,6 +1700,7 @@ static int i810_mmap(struct file *file, struct vm_area_struct *vma)
 	if (remap_page_range(vma->vm_start, virt_to_phys(dmabuf->rawbuf),
 			     size, vma->vm_page_prot))
 		goto out;
+	vma->vm_flags &= ~VM_IO;
 	dmabuf->mapped = 1;
 	dmabuf->trigger = 0;
 	ret = 0;

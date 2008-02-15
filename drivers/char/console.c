@@ -107,8 +107,57 @@
 #include <asm/uaccess.h>
 #include <asm/bitops.h>
 
-#include "console_macros.h"
 
+#ifdef CONFIG_ARCH_MX2ADS
+#include <linux/device.h>
+
+extern void mx21_ldm_bus_register(struct device *device,
+                          struct device_driver *driver);
+extern void mx21_ldm_bus_unregister(struct device *device,
+                          struct device_driver *driver);
+static int
+console_ldm_suspend(struct device *dev, u32 state, u32 level)
+{
+
+	switch (level) {
+	case SUSPEND_POWER_DOWN:
+		do_blank_screen(0);
+		break;
+	}
+	return 0;
+}
+
+static int
+console_ldm_resume(struct device *dev, u32 level)
+{
+
+	switch (level) {
+	case RESUME_POWER_ON:
+		unblank_screen();
+		break;
+	}
+	return 0;
+}
+
+static struct device_driver console_driver_ldm = {
+	.name = "console",
+	.devclass = NULL,
+	.probe = NULL,
+	.suspend = console_ldm_suspend,
+	.resume = console_ldm_resume,
+	.scale = NULL,
+	.remove = NULL,
+};
+
+static struct device console_device_ldm = {
+	.name = "console",
+	.bus_id = "tty_con",
+	.driver = &console_driver_ldm,
+	.power_state = DPM_POWER_ON,
+};
+#endif
+
+#include "console_macros.h"
 
 const struct consw *conswitchp;
 
@@ -692,6 +741,9 @@ int vc_allocate(unsigned int currcons)	/* return 0 on success */
 					 PM_SYS_VGA,
 					 pm_con_request);
 	    }
+#ifdef CONFIG_ARCH_MX2ADS
+		mx21_ldm_bus_register(&console_device_ldm, &console_driver_ldm);
+#endif
 	}
 	return 0;
 }

@@ -9,8 +9,8 @@
 
 #include <asm/cache.h>
 
-/* Assigned Company values for bits 23:16 of the PRId Register
-   (CP0 register 15, select 0).  As of the MIPS32 and MIPS64 specs from
+/* Assigned Company values for bits 23:16 of the PRId Register  
+   (CP0 register 15, select 0).  As of the MIPS32 and MIPS64 specs from 
    MTI, the PRId register is defined in this (backwards compatible)
    way:
 
@@ -21,7 +21,7 @@
 
    I don't have docs for all the previous processors, but my impression is
    that bits 16-23 have been 0 for all MIPS processors before the MIPS32/64
-   spec.
+   spec.  
 */
 
 #define PRID_COMP_LEGACY       0x000000
@@ -62,7 +62,6 @@
 #define PRID_IMP_R5500		0x5500
 #define PRID_IMP_4KC		0x8000
 #define PRID_IMP_5KC		0x8100
-#define PRID_IMP_20KC		0x8200
 #define PRID_IMP_4KEC		0x8400
 #define PRID_IMP_4KSC		0x8600
 
@@ -87,12 +86,9 @@
 #define PRID_REV_TX3912 	0x0010
 #define PRID_REV_TX3922 	0x0030
 #define PRID_REV_TX3927 	0x0040
-#define PRID_REV_VR4111		0x0050
-#define PRID_REV_VR4181		0x0050	/* Same as VR4111 */
-#define PRID_REV_VR4121		0x0060
-#define PRID_REV_VR4122		0x0070
-#define PRID_REV_VR4181A	0x0070	/* Same as VR4122 */
-#define PRID_REV_VR4131		0x0080
+#define PRID_REV_TX3927B 	0x0041
+#define PRID_REV_TX3927C 	0x0042
+#define PRID_REV_TX39H3TEG 	0x0050
 
 /*
  * FPU implementation/revision register (CP1 control register 0).
@@ -105,11 +101,7 @@
 
 #define FPIR_IMP_NONE		0x0000
 
-#ifndef __ASSEMBLY__
-
-extern void cpu_probe(void);
-extern void cpu_report(void);
-
+#ifndef  _LANGUAGE_ASSEMBLY
 /*
  * Capability and feature descriptor structure for MIPS CPU
  */
@@ -128,21 +120,7 @@ struct mips_cpu {
 
 extern struct mips_cpu mips_cpu;
 
-enum cputype {
-	CPU_UNKNOWN,
-	CPU_R2000, CPU_R3000, CPU_R3000A, CPU_R3041, CPU_R3051, CPU_R3052,
-	CPU_R3081, CPU_R3081E, CPU_R4000PC, CPU_R4000SC, CPU_R4000MC,
-	CPU_R4200, CPU_R4400PC, CPU_R4400SC, CPU_R4400MC, CPU_R4600,
-	CPU_R6000, CPU_R6000A, CPU_R8000, CPU_R10000, CPU_R12000, CPU_R4300,
-	CPU_R4650, CPU_R4700, CPU_R5000, CPU_R5000A, CPU_R4640, CPU_NEVADA,
-	CPU_RM7000, CPU_R5432, CPU_4KC, CPU_5KC, CPU_R4310, CPU_SB1,
-	CPU_TX3912, CPU_TX3922, CPU_TX3927, CPU_AU1000, CPU_4KEC, CPU_4KSC,
-	CPU_VR41XX, CPU_R5500, CPU_TX49XX, CPU_TX39XX, CPU_AU1500, CPU_20KC,
-	CPU_VR4111, CPU_VR4121, CPU_VR4122, CPU_VR4131, CPU_VR4181, CPU_VR4181A,
-	CPU_AU1100, CPU_LAST
-};
-
-#endif /* !__ASSEMBLY__ */
+#endif
 
 /*
  * ISA Level encodings
@@ -172,6 +150,5 @@ enum cputype {
 #define MIPS_CPU_CACHE_CDEX	0x00000800 /* Create_Dirty_Exclusive CACHE op */
 #define MIPS_CPU_MCHECK		0x00001000 /* Machine check exception */
 #define MIPS_CPU_EJTAG		0x00002000 /* EJTAG exception */
-#define MIPS_CPU_NOFPUEX	0x00000000 /* no FPU exception; never set */
 
 #endif /* _ASM_CPU_H */

@@ -21,6 +21,15 @@
  *
  * ==FILEVERSION 20020217==
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * Motorola EzX Changes :
+ *      change ppp major number to 109, this is inherit from A760, avoiding 
+ *      conflicts with Vibrate
+ *      add one ioctl for CSD idle timer, also correct a bug in ppp_generic.c
+ *      (start time not initialized)
+ */
 
 #include <linux/config.h>
 #include <linux/module.h>
@@ -772,7 +781,15 @@ static struct file_operations ppp_device_fops = {
 	release:	ppp_release
 };
 
-#define PPP_MAJOR	108
+#ifdef CONFIG_ARCH_EZX_A780
+#define PPP_MAJOR	109
+#else
+#ifdef CONFIG_ARCH_EZXBASE
+#define PPP_MAJOR	109
+#else
+#define PPP_MAJOR   108
+#endif
+#endif
 
 static devfs_handle_t devfs_handle;
 
@@ -2283,6 +2300,11 @@ ppp_create_interface(int unit, int *retp)
 	cardmap_set(&all_ppp_units, unit, ppp);
 	up(&all_ppp_sem);
 	*retp = 0;
+
+	/* Initialize the last_xmit and last_recv to calculate idle timer*/
+        ppp->last_xmit = jiffies;
+        ppp->last_recv = jiffies;
+
 	return ppp;
 
  err_unlock:
@@ -2621,6 +2643,22 @@ static void cardmap_destroy(struct cardmap **pmap)
 	*pmap = NULL;
 }
 
+int ppp_idle_time( struct ppp_channel * chan, struct ppp_idle * idle )
+{
+    struct channel *pch = chan->ppp;
+
+    if(  NULL == chan || NULL == idle )
+        return -1;
+    
+    if (pch == 0)
+	return -1;		/* should never happen */
+   printk(KERN_INFO "[ppp_idle_time] jiffies:%d, last_xmit:%d,last_recv%d,HZ:%d \n ", jiffies,pch->ppp->last_xmit,pch->ppp->last_recv, HZ);
+   idle->xmit_idle = (jiffies - pch->ppp->last_xmit) / HZ;
+   idle->recv_idle = (jiffies - pch->ppp->last_recv) / HZ;
+ 
+    return 0;
+}
+
 /* Module/initialization stuff */
 
 module_init(ppp_init);
@@ -2635,6 +2673,7 @@ EXPORT_SYMBOL(ppp_input_error);
 EXPORT_SYMBOL(ppp_output_wakeup);
 EXPORT_SYMBOL(ppp_register_compressor);
 EXPORT_SYMBOL(ppp_unregister_compressor);
+EXPORT_SYMBOL(ppp_idle_time);
 EXPORT_SYMBOL(all_ppp_units); /* for debugging */
 EXPORT_SYMBOL(all_channels); /* for debugging */
 MODULE_LICENSE("GPL");

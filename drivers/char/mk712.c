@@ -489,11 +489,11 @@ static void __exit mk712_exit(void)
 
 MODULE_AUTHOR("Daniel Quinlan");
 MODULE_DESCRIPTION("MK712 touch screen driver");
+MODULE_LICENSE("GPL");
 MODULE_PARM(io, "i");
 MODULE_PARM_DESC(io, "I/O base address of MK712 touch screen controller");
 MODULE_PARM(irq, "i");
 MODULE_PARM_DESC(irq, "IRQ of MK712 touch screen controller");
-MODULE_LICENSE("GPL");
 
 module_init(mk712_init);
 module_exit(mk712_exit);

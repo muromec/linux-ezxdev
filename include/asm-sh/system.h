@@ -100,8 +100,60 @@ extern void __xchg_called_with_bad_pointer(void);
 #define smp_wmb()	barrier()
 #endif
 
-#define set_mb(var, value) do { xchg(&var, value); } while (0)
+#define set_mb(var, value)  do { var = value; mb(); } while (0)
 #define set_wmb(var, value) do { var = value; wmb(); } while (0)
+
+#ifdef CONFIG_ILATENCY
+extern void intr_cli(const char *, unsigned);
+extern void intr_sti(const char *, unsigned, int);
+extern void intr_restore_flags(const char *, unsigned, unsigned);
+
+#define __cli() intr_cli(__BASE_FILE__, __LINE__)
+#define __sti() intr_sti(__BASE_FILE__, __LINE__,0)
+
+/* Interrupt Control */
+static __inline__ void __intr_sti(void)
+{
+	unsigned long __dummy0, __dummy1;
+
+	__asm__ __volatile__("stc	sr, %0\n\t"
+			     "and	%1, %0\n\t"
+			     "stc	r6_bank, %1\n\t"
+			     "or	%1, %0\n\t"
+			     "ldc	%0, sr"
+			     : "=&r" (__dummy0), "=r" (__dummy1)
+			     : "1" (~0x000000f0)
+			     : "memory");
+}
+
+static __inline__ void __intr_cli(void)
+{
+	unsigned long __dummy;
+	__asm__ __volatile__("stc	sr, %0\n\t"
+			     "or	#0xf0, %0\n\t"
+			     "ldc	%0, sr"
+			     : "=&z" (__dummy)
+			     : /* no inputs */
+			     : "memory");
+}
+
+#define __save_flags(x) \
+	__asm__ __volatile__("stc sr, %0\n\t" \
+			     "and #0xf0, %0"  \
+			     : "=&z" (x) :/**/: "memory" )
+
+#define __save_and_cli(void)\
+({                           \
+	unsigned long flags; \
+                             \
+	__save_flags(flags); \
+	__cli();             \
+	flags;               \
+})
+
+#define __intr_restore_flags(x)  __restore_flags(x)
+
+#else /* !CONFIG_ILATENCY */
 
 /* Interrupt Control */
 static __inline__ void __sti(void)
@@ -130,7 +182,9 @@ static __inline__ void __cli(void)
 }
 
 #define __save_flags(x) \
-	__asm__("stc sr, %0; and #0xf0, %0" : "=&z" (x) :/**/: "memory" )
+	__asm__ __volatile__("stc sr, %0\n\t" \
+			     "and #0xf0, %0"  \
+			     : "=&z" (x) :/**/: "memory" )
 
 static __inline__ unsigned long __save_and_cli(void)
 {
@@ -148,6 +202,8 @@ static __inline__ unsigned long __save_and_cli(void)
 	return flags;
 }
 
+#endif /* CONFIG_ILATENCY */
+
 #ifdef DEBUG_CLI_STI
 static __inline__ void  __restore_flags(unsigned long x)
 {
@@ -158,9 +214,9 @@ static __inline__ void  __restore_flags(unsigned long x)
 		__save_flags(flags);
 
 		if (flags == 0) {
-			extern void dump_stack(void);
+			extern void show_trace_task(struct task_struct *);
 			printk(KERN_ERR "BUG!\n");
-			dump_stack();
+			show_trace_task(current);
 			__cli();
 		}
 	}
@@ -285,4 +341,17 @@ static __inline__ unsigned long __xchg(unsigned long x, volatile void * ptr, int
 void disable_hlt(void);
 void enable_hlt(void);
 
-#endif
+/*
+ * irqs_disabled - are interrupts disabled?
+ */
+static inline int irqs_disabled(void) 
+{
+	unsigned long flags;
+
+	__save_flags(flags);
+	if (flags & 0x000000f0)
+		return 1;
+	return 0;
+}
+
+#endif /* __ASM_SH_SYSTEM_H */

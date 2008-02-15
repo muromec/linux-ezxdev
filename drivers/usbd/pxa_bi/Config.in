@@ -1,0 +1,16 @@
+
+# USB device configuration from the device viewpoint (e.g. Linux running inside a USB device, not as host)
+#
+# Copyright (c) 2002-2003 Belcarra
+#
+# PXA250 - Xscale
+
+if [ "$CONFIG_ARCH_PXA" = "y" -o "$CONFIG_CPU_XSCALE" = "y" ]; then
+
+   mainmenu_option next_comment
+   comment 'Cottula/Dalhart (Xscale) support'
+
+   dep_tristate '  PXA (Xscale) support' CONFIG_USBD_PXA_BUS $CONFIG_USBD
+
+   endmenu
+fi

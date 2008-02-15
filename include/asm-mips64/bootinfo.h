@@ -49,7 +49,7 @@
 #define MACH_OLIVETTI_M700      2	/* Olivetti M700-10 (-15 ??)    */
 
 /*
- * Valid machtype for group DEC
+ * Valid machtype for group DEC 
  */
 #define MACH_DSUNKNOWN		0
 #define MACH_DS23100		1	/* DECstation 2100 or 3100	*/
@@ -62,139 +62,148 @@
 #define MACH_DS5500		8	/* DECstation 5500		*/
 #define MACH_DS5800		9	/* DECstation 5800		*/
 
+#define GROUP_DEC_NAMES { "unknown", "DECstation 2100/3100", "DECstation 5100", \
+	"DECstation 5000/200", "DECstation 5000/1xx", "Personal DECstation 5000/xx", \
+	"DECstation 5000/2x0", "DECstation 5400", "DECstation 5500", \
+	"DECstation 5800" }
+
 /*
  * Valid machtype for group ARC
  */
 #define MACH_DESKSTATION_RPC44  0	/* Deskstation rPC44 */
 #define MACH_DESKSTATION_TYNE	1	/* Deskstation Tyne */
 
+#define GROUP_ARC_NAMES { "Deskstation rPC44", "Deskstation Tyne" }
+
 /*
  * Valid machtype for group SNI_RM
  */
 #define MACH_SNI_RM200_PCI	0	/* RM200/RM300/RM400 PCI series */
+
+#define GROUP_SNI_RM_NAMES { "RM200 PCI" }
 
 /*
  * Valid machtype for group ACN
  */
 #define MACH_ACN_MIPS_BOARD	0       /* ACN MIPS single board        */
 
+#define GROUP_ACN_NAMES { "ACN" }
+
 /*
  * Valid machtype for group SGI
  */
 #define MACH_SGI_INDY		0	/* R4?K and R5K Indy workstations */
-#define MACH_SGI_CHALLENGE_S	1	/* The Challenge S server */
+#define MACH_SGI_CHALLENGE_S	1       /* The Challenge S server */
 #define MACH_SGI_INDIGO2	2	/* The Indigo2 system */
 #define MACH_SGI_IP27		3	/* Origin 200, Origin 2000, Onyx 2 */
-#define MACH_SGI_IP28		4	/* Indigo2 Impact */
-#define MACH_SGI_IP32		5	/* O2 */
+#define MACH_SGI_IP32		4	/* O2 */
+
+#define GROUP_SGI_NAMES { "Indy", "Challenge S", "Indigo2", "IP27", "O2" }
+
 
 /*
  * Valid machtype for group COBALT
  */
 #define MACH_COBALT_27 		 0	/* Proto "27" hardware */
 
-/*
- * Valid machtype for group NEC DDB
- */
-#define MACH_NEC_DDB5074	0	/* NEC DDB Vrc-5074 */
-#define MACH_NEC_DDB5476	1	/* NEC DDB Vrc-5476 */
-#define MACH_NEC_DDB5477	2	/* NEC DDB Vrc-5477 */
-#define MACH_NEC_ROCKHOPPER	3	/* Rockhopper base board */
-#define MACH_NEC_ROCKHOPPERII	4	/* Rockhopper II base board */
+#define GROUP_COBALT_NAMES { "Microserver 27" }
 
 /*
- * Valid machtype for group BAGET
+ * Valid cputype values
  */
-#define MACH_BAGET201		0	/* BT23-201 */
-#define MACH_BAGET202		1	/* BT23-202 */
+#define CPU_UNKNOWN		0
+#define CPU_R2000		1
+#define CPU_R3000		2
+#define CPU_R3000A		3
+#define CPU_R3041		4
+#define CPU_R3051		5
+#define CPU_R3052		6
+#define CPU_R3081		7
+#define CPU_R3081E		8
+#define CPU_R4000PC		9
+#define CPU_R4000SC		10
+#define CPU_R4000MC		11
+#define CPU_R4200		12
+#define CPU_R4400PC		13
+#define CPU_R4400SC		14
+#define CPU_R4400MC		15
+#define CPU_R4600		16
+#define CPU_R6000		17
+#define CPU_R6000A		18
+#define CPU_R8000		19
+#define CPU_R10000		20
+#define CPU_R4300		21
+#define CPU_R4650		22
+#define CPU_R4700		23
+#define CPU_R5000		24
+#define CPU_R5000A		25
+#define CPU_R4640		26
+#define CPU_NEVADA		27	/* RM5230, RM5260 */
+#define CPU_RM7000		28
+#define CPU_R5432		29
+#define CPU_4KC			30
+#define CPU_5KC			31
+#define CPU_R4310		32
+#define CPU_SB1			33
+#define CPU_TX3912		34
+#define CPU_TX3922		35
+#define CPU_TX3927		36
+#define CPU_AU1000		37
+#define CPU_4KEC		38
+#define CPU_4KSC		39
+#define CPU_VR41XX		40
+#define CPU_R5500		41
+#define CPU_TX49XX		42
+#define CPU_TX39XX		43
+#define CPU_LAST		43
+
+#define CPU_NAMES { "unknown", "R2000", "R3000", "R3000A", "R3041", "R3051", \
+        "R3052", "R3081", "R3081E", "R4000PC", "R4000SC", "R4000MC",         \
+        "R4200", "R4400PC", "R4400SC", "R4400MC", "R4600", "R6000",          \
+        "R6000A", "R8000", "R10000", "R4300", "R4650", "R4700", "R5000",     \
+        "R5000A", "R4640", "Nevada", "RM7000", "R5432", "MIPS 4Kc",          \
+        "MIPS 5Kc", "R4310", "SiByte SB1", "TX3912", "TX3922", "TX3927",     \
+	"Au1000", "MIPS 4KEc", "MIPS 4KSc", "NEC Vr41xx", "R5500", "TX49xx", \
+	"TX39xx" }
+
+#define CL_SIZE      (80)
+
+#define BOOT_MEM_MAP_MAX        32
+#define BOOT_MEM_RAM            1
+#define BOOT_MEM_ROM_DATA       2
+#define BOOT_MEM_RESERVED       3
+
+#ifndef _LANGUAGE_ASSEMBLY
 
 /*
- * Cosine boards.
+ * Some machine parameters passed by the bootloaders. 
  */
-#define MACH_COSINE_ORION	0
 
-/*
- * Valid machtype for group GALILEO
- */
-#define MACH_EV96100		0	/* EV96100 */
-#define MACH_EV64120A		1	/* EV64120A */
-
-/*
- * Valid machtype for group MOMENCO
- */
-#define MACH_MOMENCO_OCELOT		0
-#define MACH_MOMENCO_OCELOT_G		1
-
-/*
- * Valid machtype for group ITE
- */
-#define MACH_QED_4N_S01B	0	/* ITE8172 based eval board */
-
-/*
- * Valid machtype for group Globespan
- */
-#define MACH_IVR		0	/* IVR eval board */
-
-/*
- * Valid machtype for group PHILIPS
- */
-#define MACH_PHILIPS_NINO	0	/* Nino */
-#define MACH_PHILIPS_VELO	1	/* Velo */
-
-/*
- * Valid machtype for group SIBYTE
- */
-#define MACH_SWARM              0
-
-/*
- * Valid machtypes for group Toshiba
- */
-#define MACH_PALLAS		0
-#define MACH_TOPAS		1
-#define MACH_JMR		2
-#define MACH_TOSHIBA_JMR3927	3	/* JMR-TX3927 CPU/IO board */
-
-/*
- * Valid machtype for group Alchemy
- */
-#define MACH_PB1000		0	/* Au1000-based eval board */
-#define MACH_PB1100		1	/* Au1100-based eval board */
-#define MACH_PB1500		2	/* Au1500-based eval board */
-
-/*
- * Valid machtype for group NEC_VR41XX
- */
-#define MACH_NEC_OSPREY		0	/* Osprey eval board */
-#define MACH_NEC_EAGLE		1	/* NEC Eagle/Hawk board */
-#define MACH_ZAO_CAPCELLA	2	/* ZAO Networks Capcella */
-
-#define CL_SIZE			(256)
-
-const char *get_system_type(void);
+struct drive_info_struct {
+	char dummy[32];
+};
 
 extern unsigned long mips_machtype;
 extern unsigned long mips_machgroup;
-
-#define BOOT_MEM_MAP_MAX	32
-#define BOOT_MEM_RAM		1
-#define BOOT_MEM_ROM_DATA	2
-#define BOOT_MEM_RESERVED	3
 
 /*
  * A memory map that's built upon what was determined
  * or specified on the command line.
  */
 struct boot_mem_map {
-	int nr_map;
-	struct {
-		phys_t addr;	/* start of memory segment */
-		phys_t size;	/* size of memory segment */
-		long type;		/* type of memory segment */
-	} map[BOOT_MEM_MAP_MAX];
+        int nr_map;
+        struct {
+                unsigned long addr;     /* start of memory segment */
+                unsigned long size;     /* size of memory segment */
+                long type;              /* type of memory segment */
+        } map[BOOT_MEM_MAP_MAX];
 };
 
 extern struct boot_mem_map boot_mem_map;
 
-extern void add_memory_region(phys_t start, phys_t size, long type);
+extern void add_memory_region(unsigned long start, unsigned long size,
+                              long type);
+
+#endif /* _LANGUAGE_ASSEMBLY */
 
 #endif /* _ASM_BOOTINFO_H */

@@ -1,5 +1,8 @@
 /*
  *  linux/drivers/video/fbmem.c
+ *  Linux Frame Buffer Device interface
+ * 
+ * Copyright (C) 2004 - Motorola
  *
  *  Copyright (C) 1994 Martin Schaller
  *
@@ -9,6 +12,10 @@
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file COPYING in the main directory of this archive
  * for more details.
+ *
+ * 2004/11/25  Susan
+ *      - Update to CEE3.1
+ *	 - Support overlay2 double FB mem map;
  */
 
 #include <linux/config.h>
@@ -61,7 +68,9 @@ extern int pm2fb_init(void);
 extern int pm2fb_setup(char*);
 extern int pm3fb_init(void);
 extern int pm3fb_setup(char*);
+extern int clps711xfb_init(void);
 extern int cyber2000fb_init(void);
+extern int cyber2000fb_setup(char*);
 extern int retz3fb_init(void);
 extern int retz3fb_setup(char*);
 extern int clgenfb_init(void);
@@ -76,6 +85,8 @@ extern int aty128fb_init(void);
 extern int aty128fb_setup(char*);
 extern int neofb_init(void);
 extern int neofb_setup(char*);
+extern int x220fb_init(void);
+extern int x220fb_setup(char*);
 extern int igafb_init(void);
 extern int igafb_setup(char*);
 extern int imsttfb_init(void);
@@ -107,6 +118,7 @@ extern int valkyriefb_setup(char*);
 extern int chips_init(void);
 extern int g364fb_init(void);
 extern int sa1100fb_init(void);
+extern int pxafb_init(void);
 extern int fm2fb_init(void);
 extern int fm2fb_setup(char*);
 extern int q40fb_init(void);
@@ -132,12 +144,26 @@ extern int radeonfb_init(void);
 extern int radeonfb_setup(char*);
 extern int e1355fb_init(void);
 extern int e1355fb_setup(char*);
+extern int e1356fb_init(void);
+extern int e1356fb_setup(char*);
 extern int au1100fb_init(void);
 extern int au1100fb_setup(char*);
+extern int it8181fb_init(void);
+extern int it8181fb_setup(char*);
 extern int pvr2fb_init(void);
 extern int pvr2fb_setup(char*);
+extern int mq200fb_init(void);
+extern int mq200fb_setup(char*);
 extern int sstfb_init(void);
 extern int sstfb_setup(char*);
+extern int anakinfb_init(void);
+extern int rpxfb_init(void);
+extern int rpxfb_setup(char*);
+extern int ibmlcdfb_init(void);
+extern int ibmlcdfb_setup(char*);
+extern int hd66776fb_init(void);
+extern int dbmx21fb_init(void);
+extern int dbmx21fb_setup(char *);
 
 static struct {
 	const char *name;
@@ -163,6 +189,9 @@ static struct {
 #ifdef CONFIG_FB_AMIGA
 	{ "amifb", amifb_init, amifb_setup },
 #endif
+#ifdef CONFIG_FB_CLPS711X
+	{ "clps711xfb", clps711xfb_init, NULL },
+#endif
 #ifdef CONFIG_FB_CYBER
 	{ "cyber", cyberfb_init, cyberfb_setup },
 #endif
@@ -186,6 +215,9 @@ static struct {
 #endif
 #ifdef CONFIG_FB_ATY128
 	{ "aty128fb", aty128fb_init, aty128fb_setup },
+#endif
+#ifdef CONFIG_FB_X220
+        { "x220fb", x220fb_init, x220fb_setup },
 #endif
 #ifdef CONFIG_FB_NEOMAGIC
 	{ "neo", neofb_init, neofb_setup },
@@ -226,8 +258,17 @@ static struct {
 #ifdef CONFIG_FB_TRIDENT
 	{ "trident", tridentfb_init, tridentfb_setup },
 #endif
+#ifdef CONFIG_FB_RPX
+	{ "rpxfb", rpxfb_init, rpxfb_setup },
+#endif
 #ifdef CONFIG_FB_VOODOO1
 	{ "sst", sstfb_init, sstfb_setup },
+#endif
+#ifdef CONFIG_FB_HD66776
+	{ "hd66776", hd66776fb_init, NULL },
+#endif
+#ifdef CONFIG_FB_DBMX21
+       { "DBMX21", dbmx21fb_init, dbmx21fb_setup },
 #endif
 
 	/*
@@ -288,11 +329,17 @@ static struct {
 #ifdef CONFIG_FB_SA1100
 	{ "sa1100", sa1100fb_init, NULL },
 #endif
+#ifdef CONFIG_FB_PXA
+//	{ "pxa", pxafb_init, NULL },
+#endif
 #ifdef CONFIG_FB_SUN3
 	{ "sun3", sun3fb_init, sun3fb_setup },
 #endif
 #ifdef CONFIG_FB_HIT
 	{ "hitfb", hitfb_init, NULL },
+#endif
+#ifdef CONFIG_FB_ANAKIN
+	{ "anakinfb", anakinfb_init, NULL },
 #endif
 #ifdef CONFIG_FB_TX3912
 	{ "tx3912", tx3912fb_init, NULL },
@@ -312,10 +359,27 @@ static struct {
 #ifdef CONFIG_FB_MAXINE
 	{ "maxinefb", maxinefb_init, NULL },
 #endif
+#ifdef CONFIG_FB_E1356
+        { "e1356fb", e1356fb_init, e1356fb_setup },
+#endif
+#ifdef CONFIG_FB_IT8181
+        { "it8181fb", it8181fb_init, it8181fb_setup },
+#endif
+#ifdef CONFIG_FB_MQ200
+	{ "mq200fb", mq200fb_init, mq200fb_setup },
+#endif
+#ifdef CONFIG_FB_PVR2
+	{ "pvr2", pvr2fb_init, pvr2fb_setup },
+#endif
+#ifdef CONFIG_FB_VOODOO1
+	{ "sst", sstfb_init, sstfb_setup },
+#endif
 #ifdef CONFIG_FB_AU1100
 	{ "au1100fb", au1100fb_init, au1100fb_setup },
-#endif 
-
+#endif
+#ifdef CONFIG_FB_IBMLCDC
+        { "ibmlcdfb", ibmlcdfb_init, ibmlcdfb_setup },
+#endif
 
 	/*
 	 * Generic drivers that don't use resource management (yet)
@@ -396,6 +460,7 @@ fb_read(struct file *file, char *buf, size_t count, loff_t *ppos)
 		return -ENODEV;
 
 	fb->fb_get_fix(&fix,PROC_CONSOLE(info), info);
+
 	if (p >= fix.smem_len)
 	    return 0;
 	if (count >= fix.smem_len)
@@ -406,7 +471,9 @@ fb_read(struct file *file, char *buf, size_t count, loff_t *ppos)
 	    char *base_addr;
 
 	    base_addr = info->disp->screen_base;
+
 	    count -= copy_to_user(buf, base_addr+p, count);
+
 	    if (!count)
 		return -EFAULT;
 	    *ppos += count;
@@ -498,6 +565,21 @@ fb_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
 			return i;
 		return copy_to_user((void *) arg, &fix, sizeof(fix)) ?
 			-EFAULT : 0;
+	case FBIOGET_OVL2_MAPINFO:
+	{
+			struct fb_ovl2_mapinfo ovl2_mapinfo;
+			int ret;
+
+			ret = fb->fb_ioctl((struct inode *)NULL,(struct file *)NULL, FBIOGET_OVL2_MAPINFO, (unsigned long)(&ovl2_mapinfo), 0, (struct fb_info *)info);
+			if (ret)
+				return ret;
+
+			//newprintk3(KERN_NOTICE "FB_IOCTL: pxafb_ioctl(FBIOGET_OVL2_MAPINFO) return %d\n", ret);
+			ret = copy_to_user((void *)arg, &ovl2_mapinfo, sizeof(struct fb_ovl2_mapinfo))? -EFAULT:0;
+			//newprintk3(KERN_NOTICE "fb_ioctl: FBIOGET_OVL2_MAPINFO return(%d)\n", ret);
+			return ret;
+	}
+		
 	case FBIOPUTCMAP:
 		if (copy_from_user(&cmap, (void *) arg, sizeof(cmap)))
 			return -EFAULT;
@@ -570,12 +652,37 @@ fb_mmap(struct file *file, struct vm_area_struct * vma)
 	unsigned long start;
 	u32 len;
 #endif
+	int ret;
+	unsigned long secondfb_screen_dma = 0;
+
+	//newprintk3(KERN_NOTICE "fb_mmap: enter\n");
 
 	if (vma->vm_pgoff > (~0UL >> PAGE_SHIFT))
 		return -EINVAL;
 	off = vma->vm_pgoff << PAGE_SHIFT;
 	if (!fb)
 		return -ENODEV;
+
+	if (off)
+	{
+		struct fb_ovl2_mapinfo ovl2_mapinfo;
+	
+		//newprintk3(KERN_NOTICE "fb_mmap: vma->vm_pgoff(%d)\n", vma->vm_pgoff);
+
+		ret = fb->fb_ioctl((struct inode *)NULL, (struct file *)NULL, FBIOGET_OVL2_MAPINFO, (unsigned long)(&ovl2_mapinfo), 0, (struct fb_info *)info);
+		if (ret)
+			return ret;
+		
+		//newprintk3(KERN_NOTICE "fb_mmap: vma->pgoff(0x%x), actual ovl2_offset(0x%x), actual ovl2_size(0x%x)\n",off, ovl2_mapinfo.ovl2_offset, ovl2_mapinfo.ovl2_size);
+
+		if ( (off == ovl2_mapinfo.ovl2_offset) && ((vma->vm_end - vma->vm_start) == ovl2_mapinfo.ovl2_size) )//This is the request for overlay2fb mmap //
+		{
+			if (io_remap_page_range(vma->vm_start, ovl2_mapinfo.ovl2_priv, ovl2_mapinfo.ovl2_size, vma->vm_page_prot))
+				return -EAGAIN;
+			return 0;
+		}
+	}
+
 	if (fb->fb_mmap) {
 		int res;
 		lock_kernel();
@@ -598,7 +705,11 @@ fb_mmap(struct file *file, struct vm_area_struct * vma)
 
 	/* frame buffer memory */
 	start = fix.smem_start;
+	//newprintk3(KERN_NOTICE "fb_mmap:fix.id(%d),start(0x%x)\n",fix.id[0],fix.smem_start);
+	
 	len = PAGE_ALIGN((start & ~PAGE_MASK)+fix.smem_len);
+	//newprintk3(KERN_NOTICE "fb_mmap:len(%d),fix.smem_len(%d),off(%d),vma->vm_end(0x%x),vma->vm_start(0x%x)\n",len,fix.smem_len,off,vma->vm_end, vma->vm_start);
+		
 	if (off >= len) {
 		/* memory mapped io */
 		off -= len;
@@ -612,6 +723,7 @@ fb_mmap(struct file *file, struct vm_area_struct * vma)
 	}
 	unlock_kernel();
 	start &= PAGE_MASK;
+			
 	if ((vma->vm_end - vma->vm_start + off) > len)
 		return -EINVAL;
 	off += start;
@@ -643,20 +755,53 @@ fb_mmap(struct file *file, struct vm_area_struct * vma)
 #elif defined(__i386__) || defined(__x86_64__)
 	if (boot_cpu_data.x86 > 3)
 		pgprot_val(vma->vm_page_prot) |= _PAGE_PCD;
-#elif defined(__arm__) || defined(__mips__)
+#elif defined(__mips__)
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 #elif defined(__sh__)
 	pgprot_val(vma->vm_page_prot) &= ~_PAGE_CACHABLE;
-#elif defined(__ia64__)
+#elif defined(__ia64__) || defined(__arm__)
 	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
 #elif defined(__hppa__)
 	pgprot_val(vma->vm_page_prot) |= _PAGE_NO_CACHE; 
 #else
 #warning What do we have to do here??
 #endif
-	if (io_remap_page_range(vma->vm_start, off,
-			     vma->vm_end - vma->vm_start, vma->vm_page_prot))
-		return -EAGAIN;
+	
+	ret = fb->fb_ioctl(NULL, NULL, FBIOCHECK2BFS, (unsigned long)(&secondfb_screen_dma), 0, info);
+	
+	if (ret == 1)  //double buffers are enabled && firstfb is in SRAM && secondfb is in SDRAM //
+	{
+
+//newprintk3(KERN_NOTICE "fb_mmap: double_buffers(1),fix.smem_start(0x%x),fix.smem_len(%d),vm_start(0x%x),vm_end(0x%x)\n",fix.smem_start, fix.smem_len, vma->vm_start, vma->vm_end);
+
+		if ( (vma->vm_end - vma->vm_start) <= (fix.smem_len / 2) )
+		{
+			if (io_remap_page_range(vma->vm_start, fix.smem_start, (vma->vm_end - vma->vm_start), vma->vm_page_prot))
+			return -EAGAIN;
+		}
+		else // mmap region exceeds the first framebuffer //
+		{
+			unsigned long length = vma->vm_end - vma->vm_start;
+			
+			if (io_remap_page_range(vma->vm_start, fix.smem_start, fix.smem_len/2, vma->vm_page_prot))
+				return -EAGAIN;
+			if (io_remap_page_range((vma->vm_start + fix.smem_len/2), secondfb_screen_dma, (length - fix.smem_len/2), vma->vm_page_prot))
+				return -EAGAIN;
+
+//DBPRINTK("fb_mmap: double_buffers(1),complete OK\n", fix.smem_len);
+
+		}
+	}
+	else
+	{
+
+//DBPRINTK("fb_mmap: double_buffers(0),invoke io_remap page range\n");
+
+		if (io_remap_page_range(vma->vm_start, off,
+				     vma->vm_end - vma->vm_start, vma->vm_page_prot))
+			return -EAGAIN;
+	}
+	
 #endif /* !__sparc_v9__ */
 	return 0;
 #endif /* !sparc32 */
@@ -748,10 +893,12 @@ static devfs_handle_t devfs_handle;
 int
 register_framebuffer(struct fb_info *fb_info)
 {
-	int i, j;
+	int i, j, ret;
 	char name_buf[8];
 	static int fb_ever_opened[FB_MAX];
 	static int first = 1;
+
+	//newprintk3(KERN_NOTICE "register_framebuffer: fb_info->modename[0](%d)\n",fb_info->modename[0]);
 
 	if (num_registered_fb == FB_MAX)
 		return -ENXIO;
@@ -763,6 +910,8 @@ register_framebuffer(struct fb_info *fb_info)
 	registered_fb[i] = fb_info;
 	if (!fb_ever_opened[i]) {
 		struct module *owner = fb_info->fbops->owner;
+
+		//newprintk3(KERN_NOTICE "register_framebuffer: get owner=fb_info->fbops->owner(0x%x)\n",owner);
 		/*
 		 *  We assume initial frame buffer devices can be opened this
 		 *  many times
@@ -772,19 +921,38 @@ register_framebuffer(struct fb_info *fb_info)
 				if (owner)
 					__MOD_INC_USE_COUNT(owner);
 				if (!fb_info->fbops->fb_open)
-					continue;
+					goto trynext;
+
+				//newprintk3(KERN_NOTICE "register_framebuffer:fb_info(%d)->fbops->fb_open(0x%x)\n",fb_info->modename[0],fb_info->fbops->fb_open);
 				if (!fb_info->fbops->fb_open(fb_info,0))
-					continue;
+					/* nothing */;
+
+				//newprintk3(KERN_NOTICE "register_framebuffer:after fb_info->fbops->fb_open()\n");
+
+			trynext:
 				if (owner)
 					__MOD_DEC_USE_COUNT(owner);
 			}
 		fb_ever_opened[i] = 1;
 	}
 
-	if (first) {
-		first = 0;
-		take_over_console(&fb_con, first_fb_vc, last_fb_vc, fbcon_is_default);
+	if (first) 
+	{
+		//newprintk3(KERN_NOTICE "register_framebuffer: Before FBIOCKMAINVALIDFB\n");
+
+		if ((ret = fb_info->fbops->fb_ioctl(NULL,NULL,FBIOCKMAINVALIDFB,0,0,fb_info)) == 1)
+		{
+			//newprintk3(KERN_NOTICE "register_framebuffer: FBIOCKMAINVALIDFB is 1,before take_over_console\n");
+
+			first = 0;
+			take_over_console(&fb_con, first_fb_vc, last_fb_vc, fbcon_is_default);
+
+			//newprintk3(KERN_NOTICE "register_framebuffer: after take_over_console\n");
+		}
+		//else
+			//newprintk3(KERN_NOTICE "register_framebuffer: FBIOCKMAINVALIDFB is 0\n");
 	}
+
 	sprintf (name_buf, "%d", i);
 	fb_info->devfs_handle =
 	    devfs_register (devfs_handle, name_buf, DEVFS_FL_DEFAULT,

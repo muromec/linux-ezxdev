@@ -1,3 +1,7 @@
+/*
+ *
+ *  2005-Apr-04 Motorola   Add security patch 
+ */
 #ifndef _LINUX_BINFMTS_H
 #define _LINUX_BINFMTS_H
 
@@ -27,6 +31,7 @@ struct linux_binprm{
 	struct file * file;
 	int e_uid, e_gid;
 	kernel_cap_t cap_inheritable, cap_permitted, cap_effective;
+	void *security;
 	int argc, envc;
 	char * filename;	/* Name of binary */
 	unsigned long loader, exec;

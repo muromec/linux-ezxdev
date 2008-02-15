@@ -201,6 +201,7 @@ extern struct pcmcia_low_level pangolin_pcmcia_ops;
 extern struct pcmcia_low_level freebird_pcmcia_ops;
 extern struct pcmcia_low_level pfs168_pcmcia_ops;
 extern struct pcmcia_low_level jornada720_pcmcia_ops;
+extern struct pcmcia_low_level jornada56x_pcmcia_ops;
 extern struct pcmcia_low_level flexanet_pcmcia_ops;
 extern struct pcmcia_low_level simpad_pcmcia_ops;
 extern struct pcmcia_low_level graphicsmaster_pcmcia_ops;

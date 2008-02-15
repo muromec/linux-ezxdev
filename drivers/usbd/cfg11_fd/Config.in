@@ -1,0 +1,29 @@
+#
+# Generic Mass Storage Function Driver
+#
+# Copyright (C) 2001 Lineo, Inc.
+# Copyright (C) 2001 Hewlett-Packard Co.
+
+# Copyright (C) 2003 Motorola
+# 2003-Dec-06 - Modified for EZXBASE By Zhao Liang <w20146@motorola.com>
+
+mainmenu_option next_comment
+
+comment "cfg11 Function"
+
+dep_tristate '  Motorola Cfg11 Function' CONFIG_USBD_CFG11 $CONFIG_USBD 
+
+if [ ! "$CONFIG_USBD_CFG11" = "n" ]; then
+
+	hex     '     Overide VendorID (hex value)' CONFIG_USBD_CFG11_VENDORID "22b8"
+	hex     '     Overide ProductID (hex value)' CONFIG_USBD_CFG11_PRODUCTID "6004"
+	hex     '     bcdDevice (binary-coded decimal)' CONFIG_USBD_CFG11_BCDDEVICE "0001"
+
+	string 'iManufacturer (string)' CONFIG_USBD_CFG11_MANUFACTURER "Belcarra"
+	string 'iProduct (string)' CONFIG_USBD_CFG11_PRODUCT_NAME "Belcarra"
+
+fi
+
+
+endmenu
+

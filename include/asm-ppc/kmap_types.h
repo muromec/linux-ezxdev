@@ -1,5 +1,5 @@
 /*
- * BK Id: SCCS/s.kmap_types.h 1.9 08/29/01 14:03:05 paulus
+ * BK Id: SCCS/s.kmap_types.h 1.13 08/18/02 12:43:04 paulus
  */
 #ifdef __KERNEL__
 #ifndef _ASM_KMAP_TYPES_H

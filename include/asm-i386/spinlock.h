@@ -6,9 +6,6 @@
 #include <asm/page.h>
 #include <linux/config.h>
 
-extern int printk(const char * fmt, ...)
-	__attribute__ ((format (printf, 1, 2)));
-
 /* It seems that people are forgetting to
  * initialize their spinlocks properly, tsk tsk.
  * Remember to turn this off in 2.4. -ben
@@ -77,7 +74,7 @@ typedef struct {
 		:"=m" (lock->lock) : : "memory"
 
 
-static inline void spin_unlock(spinlock_t *lock)
+static inline void _raw_spin_unlock(spinlock_t *lock)
 {
 #if SPINLOCK_DEBUG
 	if (lock->magic != SPINLOCK_MAGIC)
@@ -97,7 +94,7 @@ static inline void spin_unlock(spinlock_t *lock)
 		:"=q" (oldval), "=m" (lock->lock) \
 		:"0" (oldval) : "memory"
 
-static inline void spin_unlock(spinlock_t *lock)
+static inline void _raw_spin_unlock(spinlock_t *lock)
 {
 	char oldval = 1;
 #if SPINLOCK_DEBUG
@@ -113,7 +110,7 @@ static inline void spin_unlock(spinlock_t *lock)
 
 #endif
 
-static inline int spin_trylock(spinlock_t *lock)
+static inline int _raw_spin_trylock(spinlock_t *lock)
 {
 	char oldval;
 	__asm__ __volatile__(
@@ -123,7 +120,7 @@ static inline int spin_trylock(spinlock_t *lock)
 	return oldval > 0;
 }
 
-static inline void spin_lock(spinlock_t *lock)
+static inline void _raw_spin_lock(spinlock_t *lock)
 {
 #if SPINLOCK_DEBUG
 	__label__ here;
@@ -179,7 +176,7 @@ typedef struct {
  */
 /* the spinlock helpers are in arch/i386/kernel/semaphore.c */
 
-static inline void read_lock(rwlock_t *rw)
+static inline void _raw_read_lock(rwlock_t *rw)
 {
 #if SPINLOCK_DEBUG
 	if (rw->magic != RWLOCK_MAGIC)
@@ -188,7 +185,7 @@ static inline void read_lock(rwlock_t *rw)
 	__build_read_lock(rw, "__read_lock_failed");
 }
 
-static inline void write_lock(rwlock_t *rw)
+static inline void _raw_write_lock(rwlock_t *rw)
 {
 #if SPINLOCK_DEBUG
 	if (rw->magic != RWLOCK_MAGIC)
@@ -197,10 +194,10 @@ static inline void write_lock(rwlock_t *rw)
 	__build_write_lock(rw, "__write_lock_failed");
 }
 
-#define read_unlock(rw)		asm volatile("lock ; incl %0" :"=m" ((rw)->lock) : : "memory")
-#define write_unlock(rw)	asm volatile("lock ; addl $" RW_LOCK_BIAS_STR ",%0":"=m" ((rw)->lock) : : "memory")
+#define _raw_read_unlock(rw)		asm volatile("lock ; incl %0" :"=m" ((rw)->lock) : : "memory")
+#define _raw_write_unlock(rw)	asm volatile("lock ; addl $" RW_LOCK_BIAS_STR ",%0":"=m" ((rw)->lock) : : "memory")
 
-static inline int write_trylock(rwlock_t *lock)
+static inline int _raw_write_trylock(rwlock_t *lock)
 {
 	atomic_t *count = (atomic_t *)lock;
 	if (atomic_sub_and_test(RW_LOCK_BIAS, count))

@@ -51,11 +51,13 @@ void wait_buffer_until_released (const struct buffer_head * bh)
 struct buffer_head  * reiserfs_bread (struct super_block *super, int n_block, int n_size) 
 {
     struct buffer_head  *result;
-    PROC_EXP( unsigned int ctx_switches = kstat.context_swtch );
+    PROC_EXP( unsigned int ctx_switches = nr_context_switches(); );
 
     result = bread (super -> s_dev, n_block, n_size);
+    debug_lock_break(1);
+    conditional_schedule();
     PROC_INFO_INC( super, breads );
-    PROC_EXP( if( kstat.context_swtch != ctx_switches ) 
+    PROC_EXP( if( nr_context_switches() != ctx_switches ) 
 	      PROC_INFO_INC( super, bread_miss ) );
     return result;
 }

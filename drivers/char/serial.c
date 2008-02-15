@@ -19,7 +19,7 @@
  *
  *  rs_set_termios fixed to look also for changes of the input
  *      flags INPCK, BRKINT, PARMRK, IGNPAR and IGNBRK.
- *                                            Bernd Anh‰upl 05/17/96.
+ *                                            Bernd Anh√§upl 05/17/96.
  *
  *  1/97:  Extended dumb serial ports are a config option now.  
  *         Saves 4k.   Michael A. Griffith <grif@acm.org>
@@ -57,11 +57,21 @@
  * 10/00: add in optional software flow control for serial console.
  *	  Kanoj Sarcar <kanoj@sgi.com>  (Modified by Theodore Ts'o)
  *
+ * 10/00: Added suport for MIPS Atlas board.
+ * 11/00: Hooks for serial kernel debug port support added.
+ *        Kevin D. Kissell, kevink@mips.com and Carsten Langgaard,
+ *        carstenl@mips.com
+ *        Copyright (C) 2000 MIPS Technologies, Inc.  All rights reserved.
  * 02/02: Fix for AMD Elan bug in transmit irq routine, by
  *        Christer Weinigel <wingel@hog.ctrl-c.liu.se>,
  *        Robert Schwebel <robert@schwebel.de>,
  *        Juergen Beisert <jbeisert@eurodsn.de>,
  *        Theodore Ts'o <tytso@mit.edu>
+ */
+/*
+ * Copyright (C) 2003-2005 Motorola Inc.
+ *
+ * modified by A14194, for EZX platform
  */
 
 static char *serial_version = "5.05c";
@@ -99,6 +109,11 @@ static char *serial_revdate = "2001-07-08";
 
 #include <linux/config.h>
 #include <linux/version.h>
+#include <linux/types.h>
+#include "../misc/ssp_pcap.h"
+#ifdef CONFIG_MOT_POWER_IC
+#include <linux/power_ic.h>
+#endif
 
 #undef SERIAL_PARANOIA_CHECK
 #define CONFIG_SERIAL_NOPAUSE_IO
@@ -131,6 +146,16 @@ static char *serial_revdate = "2001-07-08";
 #ifndef ENABLE_SERIAL_PNP
 #define ENABLE_SERIAL_PNP
 #endif
+#endif
+
+#ifdef CONFIG_ARCH_PXA
+#define pxa_port(x) ((x) == PORT_PXA)
+#define pxa_buggy_port(x) ({ \
+	int cpu_ver; asm("mrc%? p15, 0, %0, c0, c0" : "=r" (cpu_ver)); \
+	((x) == PORT_PXA && (cpu_ver & ~1) == 0x69052100); })
+#else
+#define pxa_port(x) (0)
+#define pxa_buggy_port(x) (0)
 #endif
 
 /* Set of debugging defines */
@@ -235,13 +260,75 @@ static char *serial_revdate = "2001-07-08";
 #include <asm/io.h>
 #include <asm/irq.h>
 #include <asm/bitops.h>
+#include <asm/atomic.h>
 
-#if defined(CONFIG_MAC_SERIAL)
-#define SERIAL_DEV_OFFSET	((_machine == _MACH_prep || _machine == _MACH_chrp) ? 0 : 2)
-#else
-#define SERIAL_DEV_OFFSET	0
+#if defined(CONFIG_ARCH_EZX)
+static unsigned int bt_hostwake_state = 1;
+static int bt_hostwake_change = 0;
+static wait_queue_head_t bt_hostwake_wait;
+int btuart_flip_flow_ctl = 0;
+int btuart_circular_flow_ctl = 0; 
+int btuart_ioctl_flow_ctl = 0; 
+static void rs_flip_throttle(struct tty_struct *tty);
+#define BT_ON 0
 #endif
 
+/* For btuart speed control */
+#define CONFIG_BTUART_FLOWCTL 1
+#ifdef CONFIG_BTUART_FLOWCTL
+
+//static unsigned int statistics_out = 0;
+//static unsigned long statistics_jiffies = 0;
+
+
+/* modify bt uart interface;define a new structure and several varibles .by LiangYumin*/
+typedef struct
+{
+int  bt_Sample_Value;
+    int  bt_Step_Value;
+    int  bt_SlopeTime_Value;
+    int  bt_SlopeData_Value;
+} TUNE_PARA_T;
+
+static int bt_SlopeTime_Value;
+static int bt_SlopeData_Value;  
+TUNE_PARA_T  tune_para;
+/***********end of define added by LiangYumin merge 05.8.18 *******/
+
+
+
+static atomic_t btuart_timer_enable;
+static struct timer_list btuart_timer;
+static atomic_t btuart_timer_run;
+static int btuart_cnt_value = 277;
+static atomic_t btuart_cnt;
+static unsigned long pre_jiffies = 0;
+static unsigned long bonus = 0 ;
+static unsigned int stream_start = 0;
+
+unsigned int bt_throttle;
+static unsigned int bonus_step_value = 50;
+static pid_t bt_pid = 0;
+#define COMPENSATE_THRESHOLD 		30
+#define THROTTLE_THRESHOLD 		4000	
+
+#define DEFAULT_16_K_CNT_VALUE 		100 
+#define DEFAULT_32_K_CNT_VALUE 		200 /* 201 */
+#define DEFAULT_44_1_K_CNT_VALUE 	275 /* 276 */
+#define DEFAULT_48_K_CNT_VALUE 		299 /* 301 */
+
+#define DEFAULT_16_K_STEP_VALUE 	50
+#define DEFAULT_32_K_STEP_VALUE 	75
+#define DEFAULT_44_1_K_STEP_VALUE 	100
+#define DEFAULT_48_K_STEP_VALUE 	75
+
+static void btuart_timer_speedctl( unsigned long data );
+#endif
+
+#ifndef SERIAL_DEV_OFFSET
+#define SERIAL_DEV_OFFSET	0
+#endif
+ 
 #ifdef SERIAL_INLINE
 #define _INLINE_ inline
 #else
@@ -251,11 +338,52 @@ static char *serial_revdate = "2001-07-08";
 static char *serial_name = "Serial driver";
 
 static DECLARE_TASK_QUEUE(tq_serial);
+static int rs_pm_callback(struct pm_dev *dev, pm_request_t rqst, void *data);
+
+#if ICL_UART
+/********************************************  
+ *  By Liu Changhui
+*********************************************/
+static int serial_mux_guard = 0;
+/********************************************  
+ *  By Liu Changhui
+*********************************************/
+#endif
 
 static struct tty_driver serial_driver, callout_driver;
 static int serial_refcount;
 
 static struct timer_list serial_timer;
+
+#if ICL_UART
+/********************************************  
+ *  By Liu Xin
+*********************************************/
+
+#define TTY_NO_FOR_MUX  0
+
+struct tty_driver *serial_for_mux_driver = NULL;
+struct tty_struct *serial_for_mux_tty = NULL;
+void (*serial_mux_dispatcher)(struct tty_struct *tty) = NULL;
+void (*serial_mux_sender)(void) = NULL;
+struct list_head *tq_serial_for_mux = NULL;
+
+EXPORT_SYMBOL(serial_for_mux_driver);
+EXPORT_SYMBOL(serial_for_mux_tty);
+EXPORT_SYMBOL(serial_mux_dispatcher);
+EXPORT_SYMBOL(serial_mux_sender);
+EXPORT_SYMBOL(tq_serial_for_mux);
+
+/********************************************  
+ *  By Liu Xin
+*********************************************/
+#endif
+
+#ifdef SERIAL_IRQ0_VALID
+#define IRQ_VALID(irq) ((irq >= 0) && (irq < NR_IRQS))
+#else
+#define IRQ_VALID(irq) ((irq >  0) && (irq < NR_IRQS))
+#endif
 
 /* serial subtype definitions */
 #ifndef SERIAL_TYPE_NORMAL
@@ -311,6 +439,9 @@ static struct serial_uart_config uart_config[] = {
 	{ "XR16850", 128, UART_CLEAR_FIFO | UART_USE_FIFO |
 		  UART_STARTECH },
 	{ "RSA", 2048, UART_CLEAR_FIFO | UART_USE_FIFO }, 
+	{ "PXA UART", 32, UART_CLEAR_FIFO | UART_USE_FIFO },
+	{ "OMAP UART", 64, UART_CLEAR_FIFO | UART_USE_FIFO | 
+		  UART_STARTECH },
 	{ 0, 0}
 };
 
@@ -391,7 +522,6 @@ static DECLARE_MUTEX(tmp_buf_sem);
 static struct semaphore tmp_buf_sem = MUTEX;
 #endif
 
-
 static inline int serial_paranoia_check(struct async_struct *info,
 					kdev_t device, const char *routine)
 {
@@ -413,6 +543,22 @@ static inline int serial_paranoia_check(struct async_struct *info,
 	return 0;
 }
 
+#ifdef CONFIG_MIPS_ATLAS 
+extern unsigned int atlas_serial_in(struct async_struct *info, int offset);
+extern void atlas_serial_out(struct async_struct *info, int offset, int value);
+
+static _INLINE_ unsigned int serial_in(struct async_struct *info, int offset)
+{
+        return (atlas_serial_in(info, offset) & 0xff);   
+}
+
+static _INLINE_ void serial_out(struct async_struct *info, int offset, int value)
+{
+        atlas_serial_out(info, offset, value);
+}
+
+#else
+
 static _INLINE_ unsigned int serial_in(struct async_struct *info, int offset)
 {
 	switch (info->io_type) {
@@ -422,7 +568,11 @@ static _INLINE_ unsigned int serial_in(struct async_struct *info, int offset)
 		return inb(info->port+1);
 #endif
 	case SERIAL_IO_MEM:
-		return readb((unsigned long) info->iomem_base +
+		if (pxa_port(info->state->type))
+			return readl((unsigned long) info->iomem_base +
+		      		(offset<<info->iomem_reg_shift));
+		else
+			return readb((unsigned long) info->iomem_base +
 			     (offset<<info->iomem_reg_shift));
 	default:
 		return inb(info->port + offset);
@@ -440,13 +590,19 @@ static _INLINE_ void serial_out(struct async_struct *info, int offset,
 		break;
 #endif
 	case SERIAL_IO_MEM:
-		writeb(value, (unsigned long) info->iomem_base +
-			      (offset<<info->iomem_reg_shift));
+		if (pxa_port(info->state->type)) 
+			writel(value, (unsigned long) info->iomem_base +
+				       	(offset<<info->iomem_reg_shift));
+		else 
+			writeb(value, (unsigned long) info->iomem_base +
+			 		(offset<<info->iomem_reg_shift));
 		break;
 	default:
 		outb(value, info->port+offset);
 	}
 }
+#endif
+
 
 /*
  * We used to support using pause I/O for certain machines.  We
@@ -477,6 +633,459 @@ unsigned int serial_icr_read(struct async_struct *info, int offset)
 	serial_icr_write(info, UART_ACR, info->ACR);
 	return value;
 }
+/* +++: can this be simply ifdef CONFIG_DPM? */
+#if defined (CONFIG_OMAP_INNOVATOR) || defined(CONFIG_405LP) || defined(CONFIG_ARCH_MAINSTONE) /* linux-pm */
+#include <linux/device.h>
+
+static int serial_suspend(struct device * dev, u32 state, u32 level);
+static int serial_resume(struct device * dev, u32 level);
+
+#ifdef CONFIG_ARCH_MAINSTONE
+#include <asm/arch/bulverde_dpm.h>
+
+static struct constraints serial_constraints = {
+	count: 1,
+	/* the serial devices require the P-PLL be on */
+	param: {{DPM_MD_PLLS_ON, 1, 1},},
+};
+#endif /* CONFIG_ARCH_MAINSTONE */
+
+static struct device_driver serial_driver_ldm = {
+	name:		"serial",
+	devclass:	NULL,
+	probe:		NULL,
+	suspend:	serial_suspend,
+	resume:		serial_resume,
+	remove:		NULL,
+#ifdef CONFIG_ARCH_MAINSTONE
+        constraints:    &serial_constraints,
+#endif
+};
+
+static struct device serial_device_ldm[] = {
+	{
+		name:		"ttyS0 serial",
+		bus_id:		"uart0",
+		driver:		NULL,
+		platform_data:	(void *) &rs_table[0],
+		power_state:	DPM_POWER_ON,
+	},
+	{
+		name:		"ttyS1 serial",
+		bus_id:		"uart1",
+		driver:		NULL,
+		platform_data:	(void *) &rs_table[1],
+		power_state:	DPM_POWER_ON,
+	},
+#if defined(CONFIG_OMAP_INNOVATOR) || defined (CONFIG_ARCH_MAINSTONE)
+	{
+		name:		"ttyS2 serial",
+		bus_id:		"uart2",
+		driver:		NULL,
+		platform_data:	(void *) &rs_table[2],
+		power_state:	DPM_POWER_ON,
+	},
+#endif
+};
+
+static void serial_ldm_driver_register(void)
+{
+#ifdef CONFIG_OMAP_INNOVATOR
+	extern void mpu_public_driver_register(struct device_driver *driver);
+
+	mpu_public_driver_register(&serial_driver_ldm);
+#endif
+#ifdef CONFIG_405LP
+	extern void opb_driver_register(struct device_driver *driver);
+
+	opb_driver_register(&serial_driver_ldm);
+#endif
+#ifdef CONFIG_ARCH_MAINSTONE
+	extern void pxaopb_driver_register(struct device_driver *driver);
+	pxaopb_driver_register(&serial_driver_ldm);
+#endif 
+}
+
+static void serial_ldm_device_register(int port)
+{
+#ifdef CONFIG_OMAP_INNOVATOR
+	extern void mpu_public_device_register(struct device *device);
+			
+	mpu_public_device_register(&serial_device_ldm[port]);
+#endif
+#ifdef CONFIG_405LP
+	extern void opb_device_register(struct device *device);
+			
+	opb_device_register(&serial_device_ldm[port]);
+#endif
+#ifdef CONFIG_ARCH_MAINSTONE
+	extern void pxaopb_device_register(struct device *device);
+			
+	pxaopb_device_register(&serial_device_ldm[port]);
+#endif
+}
+
+#endif /* linux-pm */
+
+#ifdef CONFIG_OMAP_INNOVATOR
+
+/*
+ * serial_out() is to be used only for devices currently open (and have an
+ * async_struct assigned).  We want to power down unopened devices.
+ */
+
+static _INLINE_ void omap_dpm_serial_out(struct serial_state *ss, int offset,
+					 int value)
+{
+	writeb(value, (unsigned long) ss->iomem_base +
+	       (offset<<ss->iomem_reg_shift));
+}
+
+static int serial_suspend(struct device * dev, u32 state, u32 level)
+{
+	struct serial_state *ss =(struct serial_state *) dev->platform_data;
+	struct async_struct *info = ss->info;
+
+	switch (level) {
+	case SUSPEND_POWER_DOWN:
+
+		/*
+		 * Enable wakeup interrupt.
+		 */
+
+		omap_dpm_serial_out(ss, UART_OMAP_SCR, 0x10);
+
+		/*
+		 * Put device to sleep.  If the device is open then use the
+		 * saved IER value, otherwise ensure EFR has extended
+		 * control options on.
+		 */
+
+		if (ss->info) {
+			omap_dpm_serial_out(ss, UART_IER, 
+					    info->IER | UART_IERX_SLEEP );
+		} else {
+			omap_dpm_serial_out(ss, UART_EFR, UART_EFR_ECB);
+			omap_dpm_serial_out(ss, UART_IER, UART_IERX_SLEEP);
+		}
+		
+		break;
+        }
+	
+	return 0;
+}
+
+static int serial_resume(struct device * dev, u32 level)
+{
+	struct serial_state *ss =(struct serial_state *) dev->platform_data;
+	struct async_struct *info = ss->info;
+
+	switch (level) {
+	case RESUME_POWER_ON:
+
+		/*
+		 * Turn off sleep mode.
+		 */
+
+		if (info) {
+			omap_dpm_serial_out(ss, UART_IER, 
+					    info->IER);
+		} else
+			omap_dpm_serial_out(ss, UART_IER, 0);
+
+		/*
+		 * Disable wakeup interrupt.
+		 */
+
+		omap_dpm_serial_out(ss, UART_OMAP_SCR, 0x00);
+		break;
+        }
+	
+	return 0;
+}
+
+static void serial_wokeup(struct async_struct *info)
+{
+	int i;
+
+	for (i = 0; i < NR_PORTS; i++) 
+		if (rs_table[i].info == info)
+			device_powerup(&serial_device_ldm[i]);
+
+	return;
+}
+#endif /* linux-pm */
+
+#ifdef CONFIG_405LP /* linux-pm */
+
+/* IBM 405LP DPM suspend/resume functions.  Note that the serial console UART
+   is redundantly saved/restored here, as the save/restore for the serial
+   console is also done in the shutdown/resume driver. */
+
+enum {
+	Ulcr, Umcr, Uscr, Uier, Udll, Udlm
+};
+
+static u8 Uregs[NR_PORTS][6];
+static void *Ubase[NR_PORTS];
+
+static void dpm_save_uart_state(struct serial_state *ss)
+{
+	unsigned port = ss - rs_table;
+	void *base;
+
+	/*printk("Saving serial port %d (%ld)\n", port, ss->port);*/
+
+	base = Ubase[port] = ioremap((unsigned long)ss->iomem_base, 8);
+
+	if (base) {
+		Uregs[port][Ulcr] = readb(base+3);
+		writeb(Uregs[port][Ulcr] & 0x7f, base+3); /* DLAB=0 */
+		Uregs[port][Umcr] = readb(base+4);
+		Uregs[port][Uscr] = readb(base+7);
+		Uregs[port][Uier] = readb(base+1);
+		writeb(Uregs[port][Ulcr] | 0x80, base+3); /* DLAB=1 */
+		Uregs[port][Udll] = readb(base+0);
+		Uregs[port][Udlm] = readb(base+1);
+		writeb(Uregs[port][Ulcr], base+3); /* DLAB=orig */
+	} else {
+		printk(KERN_ERR 
+		       "dpm_save_uart_state: ioremap failed for port "
+		       "%d at iomem_base 0x%08x\n", port, (unsigned)ss->iomem_base);
+	}
+}
+
+static void dpm_restore_uart_state(struct serial_state *ss)
+{
+	unsigned port = ss - rs_table;
+	void *base = Ubase[port];
+
+	/* printk("Restoring serial port %d (%ld)\n", port, ss->port);*/
+
+	if (base) {
+		writeb(Uregs[port][Ulcr] & 0x7f, base+3); /* DLAB=0 */
+		writeb(Uregs[port][Umcr], base+4);
+		writeb(Uregs[port][Uscr], base+7);
+		writeb(Uregs[port][Uier], base+1);
+		writeb(0x07, base+2);
+		writeb(0x00, base+2);
+		(void)readb(base+0);
+		writeb(0x81, base+2);
+		writeb(Uregs[port][Ulcr] | 0x80, base+3); /* DLAB=1 */
+		writeb(Uregs[port][Udll], base+0);
+		writeb(Uregs[port][Udlm], base+1);
+		writeb(Uregs[port][Ulcr], base+3); /* DLAB=orig */
+		iounmap(base);
+		Ubase[port] = NULL;
+	}
+}
+
+static int serial_suspend(struct device * dev, u32 state, u32 level)
+{
+	struct serial_state *ss =(struct serial_state *) dev->platform_data;
+
+	switch (level) {
+	case SUSPEND_POWER_DOWN:
+
+	  dpm_save_uart_state(ss);
+	  break;
+	}
+
+        return 0;
+}
+ 
+static int serial_resume(struct device * dev, u32 level)
+{
+	struct serial_state *ss =(struct serial_state *) dev->platform_data;
+
+	switch (level) {
+	case RESUME_POWER_ON:
+
+          dpm_restore_uart_state(ss);
+	  break;
+        }
+
+        return 0;
+}
+#endif /* linux-pm */
+
+#ifdef CONFIG_ARCH_MAINSTONE
+
+/*
+ * serial_out() is to be used only for devices currently open (and have an
+ * async_struct assigned).  We want to power down unopened devices.
+ */
+
+static _INLINE_ void pxa_dpm_serial_out(struct serial_state *ss, int offset,
+					int value)
+{
+	writeb(value, (unsigned long) ss->iomem_base +
+	       (offset<<ss->iomem_reg_shift));
+}
+
+#define NUM_REGS 7
+static unsigned int saved_regs[NR_PORTS][NUM_REGS];
+
+static void dpm_save_uart_state(struct serial_state *ss)
+{
+	unsigned port = ss - rs_table;
+
+	switch ((long)ss->iomem_base) {
+	case (long)&FFUART:
+		saved_regs[port][0] = FFIER;
+		saved_regs[port][1] = FFLCR;
+		saved_regs[port][2] = FFMCR;
+		saved_regs[port][3] = FFSPR;
+		saved_regs[port][4] = FFISR;
+		/* enable DLAB to access Divisor Latch registers */
+		FFLCR |= 0x80;
+		saved_regs[port][5] = FFDLL;
+		saved_regs[port][6] = FFDLH;
+		FFLCR &= 0xEF;
+
+		/* disable the clock */
+		CKEN &= ~CKEN6_FFUART;
+		break;
+	case (long)&BTUART:
+		saved_regs[port][0] = BTIER;
+		saved_regs[port][1] = BTLCR;
+		saved_regs[port][2] = BTMCR;
+		saved_regs[port][3] = BTSPR;
+		saved_regs[port][4] = BTISR;
+		/* enable DLAB to access Divisor Latch registers */
+		BTLCR |= 0x80;
+		saved_regs[port][5] = BTDLL;
+		saved_regs[port][6] = BTDLH;
+		BTLCR &= 0xEF;
+
+		/* disable the clock */
+		CKEN &= ~CKEN7_BTUART;
+		break;
+	case (long)&STUART:
+		saved_regs[port][0] = STIER;
+		saved_regs[port][1] = STLCR;
+		saved_regs[port][2] = STMCR;
+		saved_regs[port][3] = STSPR;
+		saved_regs[port][4] = STISR;
+		/* enable DLAB to access Divisor Latch registers */
+		STLCR |= 0x80;
+		saved_regs[port][5] = STDLL;
+		saved_regs[port][6] = STDLH;
+		STLCR &= 0xEF;
+		
+		/* disable the clock */
+		CKEN &= ~CKEN5_STUART;
+		break;
+	}
+}
+
+static void dpm_restore_uart_state(struct serial_state *ss)
+{
+	unsigned port = ss - rs_table;
+
+	switch ((long)ss->iomem_base) {
+	case (long)&FFUART:
+		FFMCR = saved_regs[port][2];
+		FFSPR = saved_regs[port][3];
+		FFLCR = saved_regs[port][1];
+		/* enable DLAB to access Divisor Latch registers */
+		FFLCR |= 0x80;
+		FFDLH = saved_regs[port][6];
+		FFDLL = saved_regs[port][5];
+		FFLCR = saved_regs[port][1];
+		FFISR = saved_regs[port][4];
+		FFFCR = 0x07;
+		FFIER = saved_regs[port][0];
+		/* enable the clock */
+		CKEN |= CKEN6_FFUART;
+		break;
+	case (long)&BTUART:
+		/* BT UART */
+		BTMCR = saved_regs[port][2];
+		BTSPR = saved_regs[port][3];
+		BTLCR = saved_regs[port][1];
+		/* enable DLAB to access Divisor Latch registers */
+		BTLCR |= 0x80;
+		BTDLH = saved_regs[port][6];
+		BTDLL = saved_regs[port][5];
+		BTLCR = saved_regs[port][1];
+		BTISR = saved_regs[port][4];
+		BTFCR = 0x07;
+		BTIER = saved_regs[port][0];
+		/* enable the clock */
+		CKEN |= CKEN7_BTUART;
+		break;
+	case (long)&STUART:
+		/* ST UART */
+		STMCR = saved_regs[port][2];
+		STSPR = saved_regs[port][3];
+		STLCR = saved_regs[port][1];
+		/* enable DLAB to access Divisor Latch registers */
+		STLCR |= 0x80;
+		STDLH = saved_regs[port][6];
+		STDLL = saved_regs[port][5];
+		STLCR = saved_regs[port][1];
+		STISR = saved_regs[port][4];
+		STFCR = 0x07;
+		STIER = saved_regs[port][0];
+		/* enable the clock */
+		CKEN |= CKEN5_STUART;
+		break;
+	}
+}
+
+static int serial_suspend(struct device * dev, u32 state, u32 level)
+{
+	struct serial_state *ss =(struct serial_state *) dev->platform_data;
+	struct async_struct *info = ss->info;
+
+	switch (level) {
+	case SUSPEND_POWER_DOWN:
+		/* save important registers */
+		dpm_save_uart_state(ss);
+		
+		/*
+		 * Put device to sleep.  If the device is open then
+		 * use the saved IER value.
+		 */
+		if (info) {
+			pxa_dpm_serial_out(ss, UART_IER,
+					   info->IER & (~UART_IER_UUE));
+		} else {
+			/* just disable UUE (bit 6) */
+			pxa_dpm_serial_out(ss, UART_IER, 0xBF);
+		}
+		
+		break;
+	}
+	return 0;
+}
+
+static int serial_resume(struct device * dev, u32 level)
+{
+	struct serial_state *ss =(struct serial_state *) dev->platform_data;
+	struct async_struct *info = ss->info;
+
+	switch (level) {
+	case RESUME_POWER_ON:
+		/* restore important registers */
+		dpm_restore_uart_state(ss);
+
+		/* re-enable the device; if the device is open then
+		   use the saved IER value */
+		if (info) {
+			pxa_dpm_serial_out(ss, UART_IER, info->IER);
+		} else {
+			/* should the device be enabled? */
+			pxa_dpm_serial_out(ss, UART_IER, 0);
+		}
+		
+		break;
+	}
+	
+	return 0;
+}
+#endif /* linux-pm */
 
 /*
  * ------------------------------------------------------------
@@ -568,13 +1177,32 @@ static _INLINE_ void receive_chars(struct async_struct *info,
 	unsigned char ch;
 	struct	async_icount *icount;
 	int	max_count = 256;
-
 	icount = &info->state->icount;
 	do {
 		if (tty->flip.count >= TTY_FLIPBUF_SIZE) {
-			tty->flip.tqueue.routine((void *) tty);
-			if (tty->flip.count >= TTY_FLIPBUF_SIZE)
+#if ICL_UART
+/********************************************  
+ *  By Liu Xin
+*********************************************/
+//			tty->flip.tqueue.routine((void *) tty);
+			if(serial_mux_dispatcher && tty == serial_for_mux_tty)
+				serial_mux_dispatcher(tty);
+			else
+				tty->flip.tqueue.routine((void *) tty);
+
+/********************************************  
+ *  By Liu Xin
+*********************************************/
+#else
+		        tty->flip.tqueue.routine((void *) tty);
+#endif			
+			if (tty->flip.count >= TTY_FLIPBUF_SIZE) {
+#if defined(CONFIG_ARCH_EZX)
+				if (tty->driver.btuart) 
+					rs_flip_throttle(tty);
+#endif	
 				return;		// if TTY_DONT_FLIP is set
+			}
 		}
 		ch = serial_inp(info, UART_RX);
 		*tty->flip.char_buf_ptr = ch;
@@ -672,7 +1300,21 @@ static _INLINE_ void receive_chars(struct async_struct *info,
 		*status = serial_inp(info, UART_LSR);
 	} while ((*status & UART_LSR_DR) && (max_count-- > 0));
 #if (LINUX_VERSION_CODE > 131394) /* 2.1.66 */
-	tty_flip_buffer_push(tty);
+#if ICL_UART
+/********************************************
+ *  By Liu Xin
+*********************************************/
+//	tty_flip_buffer_push(tty);
+	if(serial_mux_dispatcher && tty == serial_for_mux_tty)
+		serial_mux_dispatcher(tty);
+	else
+		tty_flip_buffer_push(tty);
+/********************************************
+ *  By Liu Xin
+*********************************************/
+#else
+        tty_flip_buffer_push(tty);
+#endif
 #else
 	queue_task_irq_off(&tty->flip.tqueue, &tq_timer);
 #endif	
@@ -681,7 +1323,6 @@ static _INLINE_ void receive_chars(struct async_struct *info,
 static _INLINE_ void transmit_chars(struct async_struct *info, int *intr_done)
 {
 	int count;
-
 	if (info->x_char) {
 		serial_outp(info, UART_TX, info->x_char);
 		info->state->icount.tx++;
@@ -690,6 +1331,25 @@ static _INLINE_ void transmit_chars(struct async_struct *info, int *intr_done)
 			*intr_done = 0;
 		return;
 	}
+#ifdef CONFIG_BTUART_FLOWCTL
+	if (atomic_read(&btuart_timer_enable) && info->state->iomem_base == (u8 *)&BTUART) {
+              /* aviod timeout because buart_cnt=0 when A2DP */
+		if ( (atomic_read(&btuart_cnt)==0) && (info->xmit.head != info->xmit.tail) )
+                  atomic_set( &btuart_cnt, info->xmit_fifo_size);
+		if (info->xmit.head == info->xmit.tail
+		    || info->tty->stopped || info->tty->hw_stopped
+		    || atomic_read(&btuart_cnt)==0) {
+			info->IER &= ~UART_IER_THRI;
+			serial_out(info, UART_IER, info->IER);
+			if (info->xmit.head==info->xmit.tail) {
+				del_timer_sync(&btuart_timer);
+				atomic_set(&btuart_timer_run, 0);
+			}
+			return;
+		}
+		    
+	} else {
+#endif
 	if (info->xmit.head == info->xmit.tail
 	    || info->tty->stopped
 	    || info->tty->hw_stopped) {
@@ -697,15 +1357,51 @@ static _INLINE_ void transmit_chars(struct async_struct *info, int *intr_done)
 		serial_out(info, UART_IER, info->IER);
 		return;
 	}
+#ifdef CONFIG_BTUART_FLOWCTL
+	}
+#endif
 	
 	count = info->xmit_fifo_size;
+#ifdef CONFIG_BTUART_FLOWCTL
+	if (atomic_read(&btuart_timer_enable) && info->state->iomem_base == (u8 *)&BTUART) {
+		if (count > atomic_read(&btuart_cnt))
+			count = atomic_read(&btuart_cnt);
+	}
+#endif
+
 	do {
 		serial_out(info, UART_TX, info->xmit.buf[info->xmit.tail]);
 		info->xmit.tail = (info->xmit.tail + 1) & (SERIAL_XMIT_SIZE-1);
 		info->state->icount.tx++;
+#ifdef CONFIG_BTUART_FLOWCTL
+	if (atomic_read(&btuart_timer_enable) && 
+		info->state->iomem_base == (u8 *)&BTUART) 
+	{
+		atomic_sub(1, &btuart_cnt);
+		if( (info->xmit.head == info->xmit.tail) || 
+			(atomic_read(&btuart_cnt)==0) )
+		{
+			break;
+		}
+	}
+	else
 		if (info->xmit.head == info->xmit.tail)
+#else
+		if (info->xmit.head == info->xmit.tail )
+#endif
 			break;
 	} while (--count > 0);
+#if ICL_UART
+/********************************************  
+ *  By Liu Changhui
+*********************************************/
+	if(serial_mux_sender && info->tty == serial_for_mux_tty)
+		serial_mux_sender();
+		
+/********************************************  
+ *  By Liu Changhui
+*********************************************/	
+#endif
 	
 	if (CIRC_CNT(info->xmit.head,
 		     info->xmit.tail,
@@ -717,11 +1413,27 @@ static _INLINE_ void transmit_chars(struct async_struct *info, int *intr_done)
 #endif
 	if (intr_done)
 		*intr_done = 0;
-
+#ifdef CONFIG_BTUART_FLOWCTL
+	if (atomic_read(&btuart_timer_enable) && info->state->iomem_base == (u8 *)&BTUART) {
+		if (info->xmit.head == info->xmit.tail
+		    || atomic_read(&btuart_cnt)==0) {
+			info->IER &= ~UART_IER_THRI;
+			serial_out(info, UART_IER, info->IER);
+			if (info->xmit.head==info->xmit.tail) {
+				del_timer_sync(&btuart_timer);
+				atomic_set(&btuart_timer_run, 0);
+			}
+		}
+		    
+	} else {
+#endif
 	if (info->xmit.head == info->xmit.tail) {
 		info->IER &= ~UART_IER_THRI;
 		serial_out(info, UART_IER, info->IER);
 	}
+#ifdef CONFIG_BTUART_FLOWCTL
+	}
+#endif
 }
 
 static _INLINE_ void check_modem_status(struct async_struct *info)
@@ -791,6 +1503,63 @@ static _INLINE_ void check_modem_status(struct async_struct *info)
 		}
 	}
 }
+
+#if defined(CONFIG_ARCH_EZX)
+/* interrupt routine for BT_HOSTWAKE  */
+static void bt_hostwake_interrupt_routine( int irq, void *dev_id, struct pt_regs * regs)
+{	
+	if (GPLR(GPIO_BT_HOSTWAKE) & GPIO_bit(GPIO_BT_HOSTWAKE))
+		bt_hostwake_state = 0;	
+	else
+		bt_hostwake_state = 1;	
+
+	if (GPIO_is_high(GPIO_BT_WAKEUP) && !bt_hostwake_state)
+		ICMR &= 0xffdfffff;
+	else
+		ICMR |= 0x00200000;
+	
+	bt_hostwake_change = 1;
+	wake_up_interruptible(&bt_hostwake_wait);
+}
+
+static int bt_hostwake_read(unsigned int *value)
+{
+	DECLARE_WAITQUEUE(wait, current);
+	
+	enable_irq(BT_HOSTWAKE);
+//	current->state = TASK_INTERRUPTIBLE;
+	add_wait_queue(&bt_hostwake_wait, &wait);
+	
+	while(!bt_hostwake_change) {
+		if(signal_pending(current)) {
+			remove_wait_queue(&bt_hostwake_wait, &wait);
+			current->state = TASK_RUNNING;
+			disable_irq(BT_HOSTWAKE);
+#if BT_ON	
+			printk("signal pending\n");
+#endif			
+			return -ERESTARTSYS;
+		}
+		schedule();
+		current->state = TASK_INTERRUPTIBLE;
+	}
+	
+	remove_wait_queue(&bt_hostwake_wait, &wait);
+	current->state = TASK_RUNNING;
+	
+	bt_hostwake_change = 0;
+	disable_irq(BT_HOSTWAKE);
+	
+	if(copy_to_user(value, &bt_hostwake_state, sizeof(int)))
+	{
+#if BT_ON
+		printk("copy_to_user error.host state is %d\n", bt_hostwake_state);
+#endif
+		return -EFAULT;
+	}
+	return 0;
+}
+#endif
 
 #ifdef CONFIG_SERIAL_SHARE_IRQ
 /*
@@ -876,6 +1645,7 @@ static void rs_interrupt(int irq, void *dev_id, struct pt_regs * regs)
 /*
  * This is the serial driver's interrupt routine for a single port
  */
+#define UART_SIGHTING_45882 1
 static void rs_interrupt_single(int irq, void *dev_id, struct pt_regs * regs)
 {
 	int status, iir;
@@ -899,6 +1669,19 @@ static void rs_interrupt_single(int irq, void *dev_id, struct pt_regs * regs)
 	if (multi->port_monitor)
 		first_multi = inb(multi->port_monitor);
 #endif
+	/* +++: something to do here for MAINSTONE? */
+#ifdef CONFIG_OMAP_INNOVATOR /* linux-pm */
+	/*
+	 * Check for wakeup interrupt, if so the device has powered itself
+	 * back up.  Clear the interrupt and tell DPM that the device's power
+	 * state has changed.
+	 */
+
+	if (serial_inp(info, UART_OMAP_SSR) & 0x2) {
+		serial_outp(info, UART_OMAP_SCR, 0x00);
+		serial_wokeup(info);
+	}
+#endif /* linux-pm */
 
 	iir = serial_in(info, UART_IIR);
 	do {
@@ -906,13 +1689,39 @@ static void rs_interrupt_single(int irq, void *dev_id, struct pt_regs * regs)
 #ifdef SERIAL_DEBUG_INTR
 		printk("status = %x...", status);
 #endif
+#ifdef UART_SIGHTING_45882
+	/*  Disable the Receiver Time-Out interrupt via IER[RTOIE] */
+	info->IER = serial_in(info, UART_IER);
+	info->IER &= ~UART_IER_RTOIE;
+	serial_outp(info, UART_IER, info->IER);
+#endif
 		if (status & UART_LSR_DR)
 			receive_chars(info, &status, regs);
+#ifdef UART_SIGHTING_45882
+	/*  Re-enable the Receiver Time-Out interrupt via IER[RTOIE] */
+    if(( info->state->iomem_base == (u8 *)&BTUART ) && (btuart_flip_flow_ctl+btuart_circular_flow_ctl+btuart_ioctl_flow_ctl) )
+    {
+      	/*if BT UART and upper layer has disabled the flow control and receive and timeout interrupt
+      	 then do not open RTOIE interrupt ; */   
+    }
+    else
+    {
+    	  /*  Re-enable the Receiver Time-Out interrupt via IER[RTOIE] */
+	      info->IER = serial_in(info, UART_IER);
+	      info->IER |=UART_IER_RTOIE;
+	      serial_outp(info, UART_IER, info->IER); /* enable interrupts */
+    }
+#endif
 		check_modem_status(info);
+#ifdef CONFIG_MELAN /* For buggy ELAN processors */
 		if ((status & UART_LSR_THRE) ||
-		    /* For buggy ELAN processors */
-		    ((iir & UART_IIR_ID) == UART_IIR_THRI))
+   		((iir & UART_IIR_ID) == UART_IIR_THRI))
 			transmit_chars(info, 0);
+#else
+		if (status & UART_LSR_THRE)
+			transmit_chars(info, 0);
+#endif
+
 		if (pass_counter++ > RS_ISR_PASS_LIMIT) {
 #if SERIAL_DEBUG_INTR
 			printk("rs_single loop break.\n");
@@ -1210,9 +2019,12 @@ static int startup(struct async_struct * info)
 #endif
 
 	page = get_zeroed_page(GFP_KERNEL);
+//	page = __get_free_pages(GFP_KERNEL, 1);
 	if (!page)
+{
+		printk("Can not allocate page!!!!!!!!!!!!!!!!!!!!!!!!1");
 		return -ENOMEM;
-
+}
 	save_flags(flags); cli();
 
 	if (info->flags & ASYNC_INITIALIZED) {
@@ -1233,6 +2045,28 @@ static int startup(struct async_struct * info)
 
 #ifdef SERIAL_DEBUG_OPEN
 	printk("starting up ttys%d (irq %d)...", info->line, state->irq);
+#endif
+
+#ifdef CONFIG_ARCH_OMAP
+	if (state->type == PORT_OMAP) {
+                serial_outp(info, UART_OMAP_MDR1, 0x07); /* disable UART */
+                serial_outp(info, UART_LCR, 0xBF);	/* select EFR */
+                serial_outp(info, UART_EFR, UART_EFR_ECB);
+                serial_outp(info, UART_LCR, UART_LCR_DLAB); /* set DLAB */
+                serial_outp(info, UART_DLL, 0x00);
+                serial_outp(info, UART_DLM, 0x00);
+                serial_outp(info, UART_LCR, 0x00);	/* reset DLAB */
+                serial_outp(info, UART_OMAP_SCR, 0x00);
+                serial_outp(info, UART_FCR, 0x00);
+                serial_outp(info, UART_MCR, 0x40);	/* enable TCR/TLR */
+                serial_outp(info, UART_OMAP_TCR, 0x0F);
+                serial_outp(info, UART_OMAP_TLR, 0x00);
+                serial_outp(info, UART_MCR, 0x00);
+                serial_outp(info, UART_LCR, 0xBF);	/* select EFR */
+                serial_outp(info, UART_EFR, 0x00);
+                serial_outp(info, UART_LCR, 0x00);	/* reset DLAB */
+                serial_outp(info, UART_OMAP_MDR1, 0x00); /* enable UART */
+        }
 #endif
 
 	if (uart_config[state->type].flags & UART_STARTECH) {
@@ -1296,6 +2130,22 @@ static int startup(struct async_struct * info)
 	}
 #endif
 
+#ifdef CONFIG_ARCH_PXA
+	if (state->type == PORT_PXA) {
+		switch ((long)state->iomem_base) {
+			case (long)&FFUART: 
+				CKEN |= CKEN6_FFUART; 
+				break;
+			case (long)&BTUART: 
+				CKEN |= CKEN7_BTUART; 
+				break;
+			case (long)&STUART:
+				CKEN |= CKEN5_STUART;
+				break;
+		}
+	}
+#endif
+
 	/*
 	 * Clear the FIFO buffers and disable them
 	 * (they will be reenabled in change_speed())
@@ -1335,7 +2185,7 @@ static int startup(struct async_struct * info)
 	/*
 	 * Allocate the IRQ if necessary
 	 */
-	if (state->irq && (!IRQ_ports[state->irq] ||
+	if (IRQ_VALID(state->irq) && (!IRQ_ports[state->irq] ||
 			  !IRQ_ports[state->irq]->next_port)) {
 		if (IRQ_ports[state->irq]) {
 #ifdef CONFIG_SERIAL_SHARE_IRQ
@@ -1393,14 +2243,22 @@ static int startup(struct async_struct * info)
 	{
 		if (state->irq != 0)
 			info->MCR |= UART_MCR_OUT2;
+		if (pxa_buggy_port(state->type) && state->irq != 0)
+			info->MCR ^= UART_MCR_OUT2;
 	}
 	info->MCR |= ALPHA_KLUDGE_MCR; 		/* Don't ask */
+
+	if(info->state->iomem_base != (u8 *)&STUART)
+     		info->MCR |= (UART_MCR_AFE | UART_MCR_RTS);
+
 	serial_outp(info, UART_MCR, info->MCR);
 	
 	/*
 	 * Finally, enable interrupts
 	 */
 	info->IER = UART_IER_MSI | UART_IER_RLSI | UART_IER_RDI;
+	if (pxa_port(state->type))
+		info->IER |= UART_IER_UUE | UART_IER_RTOIE;
 	serial_outp(info, UART_IER, info->IER);	/* enable interrupts */
 	
 #ifdef CONFIG_SERIAL_MANY_PORTS
@@ -1450,6 +2308,22 @@ static int startup(struct async_struct * info)
 	 */
 	change_speed(info, 0);
 
+#if defined(CONFIG_ARCH_EZX)
+	if( info->state->iomem_base == (u8 *)&BTUART ){
+		set_GPIO_mode(GPIO_BT_WAKEUP | GPIO_OUT);
+		set_GPIO_mode(GPIO_BT_RESET | GPIO_OUT);
+		set_GPIO(GPIO_BT_WAKEUP);
+		set_GPIO(GPIO_BT_RESET);
+		set_GPIO_mode(GPIO_BT_HOSTWAKE | GPIO_IN);
+		set_GPIO_IRQ_edge(GPIO_BT_HOSTWAKE, GPIO_BOTH_EDGES);
+		retval = request_irq(BT_HOSTWAKE, bt_hostwake_interrupt_routine, SA_INTERRUPT, "btuart", NULL);
+		if (retval){
+			printk("Couldn't reacquire BT_HOSTWAKE IRQ error is %d.\n", retval);
+			goto errout;
+		}
+	}
+#endif
+
 	info->flags |= ASYNC_INITIALIZED;
 	restore_flags(flags);
 	return 0;
@@ -1481,6 +2355,10 @@ static void shutdown(struct async_struct * info)
 	
 	save_flags(flags); cli(); /* Disable interrupts */
 
+#if defined(CONFIG_ARCH_EZX)
+	if( info->state->iomem_base == (u8 *)&BTUART )
+		free_irq(BT_HOSTWAKE, NULL);
+#endif
 	/*
 	 * clear delta_msr_wait queue to avoid mem leaks: we may free the irq
 	 * here so the queue might never be waken up
@@ -1501,7 +2379,7 @@ static void shutdown(struct async_struct * info)
 	/*
 	 * Free the IRQ, if necessary
 	 */
-	if (state->irq && (!IRQ_ports[state->irq] ||
+	if (IRQ_VALID(state->irq) && (!IRQ_ports[state->irq] ||
 			  !IRQ_ports[state->irq]->next_port)) {
 		if (IRQ_ports[state->irq]) {
 			free_irq(state->irq, &IRQ_ports[state->irq]);
@@ -1532,6 +2410,8 @@ static void shutdown(struct async_struct * info)
 	} else
 #endif
 		info->MCR &= ~UART_MCR_OUT2;
+		if (pxa_buggy_port(state->type))
+			info->MCR ^= UART_MCR_OUT2;
 	info->MCR |= ALPHA_KLUDGE_MCR; 		/* Don't ask */
 	
 	/* disable break condition */
@@ -1539,6 +2419,10 @@ static void shutdown(struct async_struct * info)
 	
 	if (!info->tty || (info->tty->termios->c_cflag & HUPCL))
 		info->MCR &= ~(UART_MCR_DTR|UART_MCR_RTS);
+
+	if (info->state->iomem_base != (u8 *)&STUART)
+		info->MCR &= ~(UART_MCR_AFE | UART_MCR_RTS);
+
 	serial_outp(info, UART_MCR, info->MCR);
 
 	/* disable FIFO's */	
@@ -1557,6 +2441,16 @@ static void shutdown(struct async_struct * info)
 		state->baud_base = SERIAL_RSA_BAUD_BASE_LO;
 #endif
 	
+#ifdef CONFIG_ARCH_PXA
+	if (state->type == PORT_PXA) {
+		switch ((long)state->iomem_base) {
+			case (long)&FFUART: CKEN &= ~CKEN6_FFUART; break;
+			case (long)&BTUART: CKEN &= ~CKEN7_BTUART; break;
+			case (long)&STUART: CKEN &= ~CKEN5_STUART; break;
+		}
+	}
+#endif
+
 
 	(void)serial_in(info, UART_RX);    /* read data port to reset things */
 	
@@ -1580,6 +2474,15 @@ static void shutdown(struct async_struct * info)
 	info->flags &= ~ASYNC_INITIALIZED;
 	restore_flags(flags);
 }
+#ifdef CONFIG_KGDB
+void shutdown_for_kgdb(struct async_struct * info)
+{
+        int irq = info->state->irq;
+        while(IRQ_ports[irq]){
+                shutdown(IRQ_ports[irq]) ;
+        }
+}
+#endif
 
 #if (LINUX_VERSION_CODE < 131394) /* Linux 2.1.66 */
 static int baud_table[] = {
@@ -1623,7 +2526,8 @@ static void change_speed(struct async_struct *info,
 	unsigned cflag, cval, fcr = 0;
 	int	bits;
 	unsigned long	flags;
-
+	unsigned char   save_mcr;
+	
 	if (!info->tty || !info->tty->termios)
 		return;
 	cflag = info->tty->termios->c_cflag;
@@ -1730,7 +2634,21 @@ static void change_speed(struct async_struct *info,
 			fcr = UART_FCR_ENABLE_FIFO | UART_FCR_TRIGGER_14;
 #endif
 		else
-			fcr = UART_FCR_ENABLE_FIFO | UART_FCR_TRIGGER_8;
+        {
+           if( info->state->iomem_base == (u8 *)&BTUART )
+           {
+                /* ezx barbados serial BT UART 64 byte FIFO , 32 bytes interrupt&RTS trigger */
+                fcr = UART_FCR_ENABLE_FIFO | UART_FCR_TRIGGER_4 | UART_FCR_TRIGGER_8;
+                btuart_flip_flow_ctl=0;
+                btuart_circular_flow_ctl=0;
+                btuart_ioctl_flow_ctl=0;
+           }
+           else
+           {
+                fcr = UART_FCR_ENABLE_FIFO | UART_FCR_TRIGGER_8;
+           }   
+        }
+
 	}
 	if (info->state->type == PORT_16750)
 		fcr |= UART_FCR7_64BYTE;
@@ -1789,9 +2707,40 @@ static void change_speed(struct async_struct *info,
 		serial_outp(info, UART_EFR,
 			    (cflag & CRTSCTS) ? UART_EFR_CTS : 0);
 	}
+#ifdef CONFIG_ARCH_OMAP
+	if (info->state->type == PORT_OMAP) {
+		serial_outp(info, UART_LCR, cval);	/* reset DLAB */
+		if (baud ==115200) {
+			quot = 1;
+			serial_outp(info, UART_OMAP_OSC_12M_SEL, 1);
+		} else
+			serial_outp(info, UART_OMAP_OSC_12M_SEL, 0);
+	}
+#endif
 	serial_outp(info, UART_LCR, cval | UART_LCR_DLAB);	/* set DLAB */
-	serial_outp(info, UART_DLL, quot & 0xff);	/* LS of divisor */
-	serial_outp(info, UART_DLM, quot >> 8);		/* MS of divisor */
+#if ICL_UART
+	if (info->state->iomem_base ==(u8*)&FFUART) 
+	{	
+#ifdef CONFIG_ARCH_EZX_A780
+		serial_outp(info, UART_DLL, 0x08);  /* 115200 */
+#endif
+#ifdef CONFIG_ARCH_EZXBASE
+		serial_outp(info, UART_DLL, 0x08);  /* 115200 */
+#endif
+#ifdef CONFIG_ARCH_EZX_E680
+		serial_outp(info, UART_DLL, 0x02);  /* 460800 */
+#endif
+		serial_outp(info, UART_DLM, 0x00);  
+	}
+	else
+	{
+#endif
+
+		serial_outp(info, UART_DLL, quot & 0xff);	/* LS of divisor */
+		serial_outp(info, UART_DLM, quot >> 8);		/* MS of divisor */
+#if ICL_UART
+	}
+#endif
 	if (info->state->type == PORT_16750)
 		serial_outp(info, UART_FCR, fcr); 	/* set fcr */
 	serial_outp(info, UART_LCR, cval);		/* reset DLAB */
@@ -1803,6 +2752,15 @@ static void change_speed(struct async_struct *info,
  		}
 		serial_outp(info, UART_FCR, fcr); 	/* set fcr */
 	}
+
+/* add FFUART autoflow control. After enable fifo, enable autoflow control */
+	save_mcr = serial_in(info, UART_MCR);
+	if (info->state->iomem_base != (u8 *)&STUART) 
+		serial_outp(info, UART_MCR, save_mcr | UART_MCR_AFE | UART_MCR_RTS);
+/*	else	
+		serial_outp(info, UART_MCR, save_mcr);
+*/
+		
 	restore_flags(flags);
 }
 
@@ -1847,6 +2805,8 @@ static void rs_flush_chars(struct tty_struct *tty)
 	save_flags(flags); cli();
 	info->IER |= UART_IER_THRI;
 	serial_out(info, UART_IER, info->IER);
+	if (pxa_buggy_port(info->state->type))
+		rs_interrupt_single(info->state->irq, NULL, NULL);
 	restore_flags(flags);
 }
 
@@ -1862,7 +2822,8 @@ static int rs_write(struct tty_struct * tty, int from_user,
 
 	if (!tty || !info->xmit.buf || !tmp_buf)
 		return 0;
-
+//	printk("from_user = %d, count = %d, k_count = %d", from_user, count, 
+//		CIRC_CNT(info->xmit.head, info->xmit.tail, SERIAL_XMIT_SIZE));
 	save_flags(flags);
 	if (from_user) {
 		down(&tmp_buf_sem);
@@ -1871,6 +2832,7 @@ static int rs_write(struct tty_struct * tty, int from_user,
 			c = CIRC_SPACE_TO_END(info->xmit.head,
 					      info->xmit.tail,
 					      SERIAL_XMIT_SIZE);
+//			printk("buffer size = %d", c);
 			if (count < c)
 				c = count;
 			if (c <= 0)
@@ -1917,13 +2879,40 @@ static int rs_write(struct tty_struct * tty, int from_user,
 		}
 		restore_flags(flags);
 	}
-	if (info->xmit.head != info->xmit.tail
-	    && !tty->stopped
-	    && !tty->hw_stopped
-	    && !(info->IER & UART_IER_THRI)) {
-		info->IER |= UART_IER_THRI;
-		serial_out(info, UART_IER, info->IER);
+#ifdef CONFIG_BTUART_FLOWCTL
+	if (atomic_read(&btuart_timer_enable) && info->state->iomem_base == (u8 *)&BTUART) {
+		save_flags(flags);cli();
+		if (info->xmit.head != info->xmit.tail
+		    && !tty->stopped
+		    && !tty->hw_stopped
+		    && !atomic_read(&btuart_timer_run)) {
+
+			info->IER |= UART_IER_THRI;
+			serial_out( info, UART_IER, info->IER );
+			
+			btuart_timer.expires = jiffies+1;
+			add_timer(&btuart_timer);
+			atomic_set(&btuart_timer_run, 1);
+			
+		}
+		restore_flags(flags);
+	} else {
+#endif
+		if (info->xmit.head != info->xmit.tail
+		    && !tty->stopped
+		    && !tty->hw_stopped
+		    && !(info->IER & UART_IER_THRI)) {
+			info->IER |= UART_IER_THRI;
+			serial_out(info, UART_IER, info->IER);
+			if (pxa_buggy_port(info->state->type)) {
+				save_flags(flags); cli();
+				rs_interrupt_single(info->state->irq, NULL, NULL);
+				restore_flags(flags);
+			}
+		}
+#ifdef CONFIG_BTUART_FLOWCTL
 	}
+#endif
 	return ret;
 }
 
@@ -1980,8 +2969,67 @@ static void rs_send_xchar(struct tty_struct *tty, char ch)
 		/* Make sure transmit interrupts are on */
 		info->IER |= UART_IER_THRI;
 		serial_out(info, UART_IER, info->IER);
+		if (pxa_buggy_port(info->state->type))
+			rs_interrupt_single(info->state->irq, NULL, NULL);
 	}
 }
+
+#if defined(CONFIG_ARCH_EZX)
+/*
+ *added by jordan  : 03/09/12 
+ * 
+ * rs_flip_throttle()
+ * detail function can be retrived in tty_driver.h
+ *
+ * warning: this routine is just for btuart flip flow control. others don't call it. Otherwise, you 
+ *          will take responsibilites for your action. :)
+ */
+static void rs_flip_throttle(struct tty_struct *tty)
+{
+	struct async_struct *info = (struct async_struct *)tty->driver_data;
+	unsigned long flags;
+
+	save_flags(flags); cli();
+	info->IER &= ~UART_IER_RDI;
+	info->IER &= ~UART_IER_RTOIE;
+	serial_out(info, UART_IER, info->IER);
+	info->MCR &= ~UART_MCR_RTS;		
+	serial_out(info, UART_MCR, info->MCR);
+	btuart_flip_flow_ctl = 1;
+	restore_flags(flags);
+	
+	return;
+}	
+
+/*
+ *added by jordan  : 03/09/12 
+ * 
+ * rs_flip_unthrottle() 
+ * detail function can be retrived in tty_driver.h
+ * this function is called in n_tty_receive_buf().
+ *
+ * warning: this routine is just for btuart flip flow control. others don't call it. Otherwise, you 
+ *          will take responsibilites for your action. :)
+ */
+void rs_flip_unthrottle(struct tty_struct *tty)
+{
+	struct async_struct *info = (struct async_struct *)tty->driver_data;
+	unsigned long flags;
+
+	save_flags(flags); cli();
+    if ( ! (btuart_circular_flow_ctl+btuart_ioctl_flow_ctl) ){
+		info->IER |= UART_IER_RDI;
+		info->IER |= UART_IER_RTOIE;
+		serial_out(info, UART_IER, info->IER);
+		
+		info->MCR |= UART_MCR_RTS;		
+		serial_out(info, UART_MCR, info->MCR);
+	}
+	btuart_flip_flow_ctl = 0;
+	restore_flags(flags);
+	return;
+}
+#endif
 
 /*
  * ------------------------------------------------------------
@@ -2008,9 +3056,34 @@ static void rs_throttle(struct tty_struct * tty)
 	if (I_IXOFF(tty))
 		rs_send_xchar(tty, STOP_CHAR(tty));
 
-	if (tty->termios->c_cflag & CRTSCTS)
-		info->MCR &= ~UART_MCR_RTS;
+#if defined(CONFIG_ARCH_EZX)
+	if( info->state->iomem_base == (u8 *)&BTUART ) {
+	/*---------------------------------------------
+	 * added by jordan  :03/09/12
+	 * due to btuart flip flow control function so 
+	 * it is not necessary to use n_tty throttle for BTUART
+	 * -------------------------------------------*/
 
+        save_flags(flags); cli();
+        info->IER &= ~UART_IER_RDI;
+		info->IER &= ~UART_IER_RTOIE;
+        serial_out(info, UART_IER, info->IER);	  
+		info->MCR &= ~UART_MCR_RTS;		
+        serial_out(info, UART_MCR, info->MCR);
+        btuart_circular_flow_ctl = 1 ;
+        restore_flags(flags);
+
+		return;
+	/*---------------------------------------------
+	 * end by jordan 
+	 *-------------------------------------------- */
+	}
+	else if (tty->termios->c_cflag & CRTSCTS)
+		info->MCR &= ~UART_MCR_RTS;
+#else
+	if (tty->termios->c_cflag & CRTSCTS)
+                info->MCR &= ~UART_MCR_RTS;
+#endif
 	save_flags(flags); cli();
 	serial_out(info, UART_MCR, info->MCR);
 	restore_flags(flags);
@@ -2036,8 +3109,38 @@ static void rs_unthrottle(struct tty_struct * tty)
 		else
 			rs_send_xchar(tty, START_CHAR(tty));
 	}
-	if (tty->termios->c_cflag & CRTSCTS)
-		info->MCR |= UART_MCR_RTS;
+
+#if defined(CONFIG_ARCH_EZX)
+	if( info->state->iomem_base == (u8 *)&BTUART ) {
+        /*---------------------------------------------
+         * added by jordan  :03/09/12
+         * due to btuart flip flow control function so
+         * it is not necessary to use n_tty throttle for BTUART
+         * -------------------------------------------*/
+
+           save_flags(flags); cli();
+           if ( ! (btuart_flip_flow_ctl+btuart_ioctl_flow_ctl) ){	 
+                info->IER |= UART_IER_RDI;
+ 		        info->IER |= UART_IER_RTOIE;
+                serial_out(info, UART_IER, info->IER);
+		        info->MCR |= UART_MCR_RTS;		
+                serial_out(info, UART_MCR, info->MCR);          
+            } 
+            btuart_circular_flow_ctl = 0 ;
+            restore_flags(flags);
+
+      		return;
+        /*---------------------------------------------
+         * end by jordan
+         *-------------------------------------------- */
+      } 
+      else if (tty->termios->c_cflag & CRTSCTS)
+                info->MCR |= UART_MCR_RTS;
+#else
+        if (tty->termios->c_cflag & CRTSCTS)
+                info->MCR |= UART_MCR_RTS;
+#endif
+
 	save_flags(flags); cli();
 	serial_out(info, UART_MCR, info->MCR);
 	restore_flags(flags);
@@ -2369,7 +3472,7 @@ static int do_autoconfig(struct async_struct * info)
 	    (info->state->port != 0  || info->state->iomem_base != 0) &&
 	    (info->state->type != PORT_UNKNOWN)) {
 		irq = detect_uart_irq(info->state);
-		if (irq > 0)
+		if (IRQ_VALID(irq))
 			info->state->irq = irq;
 	}
 
@@ -2470,7 +3573,7 @@ static int set_multiport_struct(struct async_struct * info,
 			   sizeof(struct serial_multiport_struct)))
 		return -EFAULT;
 	
-	if (new_multi.irq != state->irq || state->irq == 0 ||
+	if (new_multi.irq != state->irq || !IRQ_VALID(state->irq) ||
 	    !IRQ_ports[state->irq])
 		return -EINVAL;
 
@@ -2539,6 +3642,7 @@ static int rs_ioctl(struct tty_struct *tty, struct file * file,
 	struct async_icount cprev, cnow;	/* kernel counter temps */
 	struct serial_icounter_struct icount;
 	unsigned long flags;
+	unsigned char old_fcr;
 #if (LINUX_VERSION_CODE < 131394) /* Linux 2.1.66 */
 	int retval, tmp;
 #endif
@@ -2605,6 +3709,126 @@ static int rs_ioctl(struct tty_struct *tty, struct file * file,
 		case TIOCSSERIAL:
 			return set_serial_info(info,
 					       (struct serial_struct *) arg);
+#if defined(CONFIG_ARCH_EZX)
+		case TIOCWAKEBTS:
+			GPSR(GPIO_BT_WAKEUP) = GPIO_bit(GPIO_BT_WAKEUP);
+			if (!bt_hostwake_state)
+				ICMR &= 0xffdfffff;
+#if BT_ON	
+			printk("Set BT_WAKE as high\n");
+#endif
+			return 0;
+		case TIOCWAKEBTC:
+			GPCR(GPIO_BT_WAKEUP) = GPIO_bit(GPIO_BT_WAKEUP);
+			ICMR |= 0x00200000;
+#if BT_ON	
+			printk("Clear BT_WAKE as low\n");
+#endif
+			return 0;
+		case TIOCRESETBTS:
+			GPSR(GPIO_BT_RESET) = GPIO_bit(GPIO_BT_RESET);
+#if BT_ON	
+			printk("Set BT_RESET as high\n");
+#endif
+			return 0;
+		case TIOCRESETBTC:
+			GPCR(GPIO_BT_RESET) = GPIO_bit(GPIO_BT_RESET);
+#if BT_ON	
+			printk("Clear BT_RESET as low\n");
+#endif
+			return 0;
+		case TIOC_ENABLE_IFLOW:
+			save_flags(flags); cli();
+            if ( !(btuart_flip_flow_ctl +btuart_circular_flow_ctl) ){
+                  info->IER |= UART_IER_RDI;
+ 		          info->IER |= UART_IER_RTOIE;
+                  serial_out(info, UART_IER, info->IER);
+		          info->MCR |= UART_MCR_RTS;		
+                  serial_out(info, UART_MCR, info->MCR);      
+			}			 
+			btuart_ioctl_flow_ctl = 0 ;
+			restore_flags(flags);
+
+			return 0;
+		case TIOC_DISABLE_IFLOW_RTS_LOW:
+			save_flags(flags); cli();
+   	        info->IER &= ~UART_IER_RDI;
+ 	        info->IER &= ~UART_IER_RTOIE;
+	        serial_out(info, UART_IER, info->IER);
+			info->MCR &= ~UART_MCR_RTS;
+			serial_out(info, UART_MCR, info->MCR);
+			btuart_ioctl_flow_ctl = 1 ;
+			restore_flags(flags);
+#if BT_ON	
+			printk("Software flow control\n");
+#endif
+			return 0;
+		case TIOC_HOST_WAKE_STATE:
+			if(GPLR(GPIO_BT_HOSTWAKE) & GPIO_bit(GPIO_BT_HOSTWAKE))
+				bt_hostwake_state = 0;	
+			else
+				bt_hostwake_state = 1;	
+			if(copy_to_user((unsigned int *) arg, &bt_hostwake_state, sizeof(int)))
+			{
+#if BT_ON
+				printk("copy_to_user error.host state is %d\n", bt_hostwake_state);
+#endif
+				return -EFAULT;
+			}
+			return 0;
+		case TIOC_HOST_WAKE_WATCH:
+			return bt_hostwake_read((unsigned int *) arg);
+		case TIOCRESETTF:
+			save_flags(flags); cli();          
+			old_fcr = serial_inp(info, UART_FCR);
+        	        serial_outp(info, UART_FCR, old_fcr | UART_FCR_ENABLE_FIFO  | UART_FCR_CLEAR_XMIT);
+			restore_flags(flags);
+#if BT_ON	
+			printk("Reset Transmitter FIFO.\n");
+#endif
+			return 0;
+		case  TIOCRESETRF:
+			save_flags(flags); cli();
+		       	old_fcr = serial_inp(info, UART_FCR);
+      		        serial_outp(info, UART_FCR, old_fcr | UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RCVR);
+			restore_flags(flags);
+#if BT_ON	
+			printk("Reset Receiver FIFO.\n");
+#endif
+			return 0;
+#endif
+#ifdef CONFIG_BTUART_FLOWCTL
+		case TIOCSPEEDCTL:
+			if (info->state->iomem_base != (u8 *)&BTUART)
+				return -ENOIOCTLCMD;
+                      
+			atomic_set(&btuart_timer_enable, 1);
+			bonus = 0;
+			stream_start = 1;
+
+			//modify the api according to XuMaopeng .by LiangYumin 05.8.18
+			if (copy_from_user(&tune_para, (TUNE_PARA_T *)arg, sizeof(TUNE_PARA_T)))
+		         return -EFAULT;
+		
+			//check the value and valid or not 	
+			if ((tune_para.bt_Sample_Value==0) && (tune_para.bt_Step_Value==0) && (tune_para.bt_SlopeTime_Value==0) && (tune_para.bt_SlopeData_Value==0))
+			{
+				 stream_start = 0;
+				atomic_set(&btuart_timer_enable, 0);
+				atomic_set(&btuart_timer_run, 0);
+			}
+			else
+			{
+				btuart_cnt_value=tune_para.bt_Sample_Value;
+			      bonus_step_value=tune_para.bt_Step_Value;
+			      bt_SlopeTime_Value=tune_para.bt_SlopeTime_Value;
+			      bt_SlopeData_Value=tune_para.bt_SlopeData_Value;
+				}
+			
+			bt_pid = current->pid;
+			atomic_set( &btuart_cnt, btuart_cnt_value);
+			return 0;
+#endif
 		case TIOCSERCONFIG:
 			return do_autoconfig(info);
 
@@ -2691,7 +3915,28 @@ static int rs_ioctl(struct tty_struct *tty, struct file * file,
 			/* "setserial -W" is called in Debian boot */
 			printk ("TIOCSER?WILD ioctl obsolete, ignored.\n");
 			return 0;
-
+		case TIOC_BT_VOLTAGE_ON:   //for Barbados  Jordan/Lin Weiqiang
+		#ifdef BT_DEBUG
+			printk("\nBT_voltage_on\n");
+		#endif
+#ifdef CONFIG_MOT_POWER_IC
+                        power_ic_periph_set_bluetooth_on(POWER_IC_PERIPH_ON);
+#else
+			SSP_PCAP_bit_set(SSP_PCAP_PRI_BIT_AUX_VREG_VAUX1_EN);
+			SSP_PCAP_bit_set(SSP_PCAP_PRI_BIT_AUX_VREG_VAUX1_EN);
+#endif
+			return 0;
+		case TIOC_BT_VOLTAGE_OFF: //for Barbados   Jordan / Lin Weiqiang
+		#ifdef BT_DEBUG
+			printk("\nBT_voltage_off\n");
+		#endif
+#ifdef CONFIG_MOT_POWER_IC
+                        power_ic_periph_set_bluetooth_on(POWER_IC_PERIPH_OFF);
+#else
+			SSP_PCAP_bit_clean(SSP_PCAP_PRI_BIT_AUX_VREG_VAUX1_EN);
+			SSP_PCAP_bit_clean(SSP_PCAP_PRI_BIT_AUX_VREG_VAUX1_EN);
+#endif
+			return 0;
 		default:
 			return -ENOIOCTLCMD;
 		}
@@ -2769,13 +4014,46 @@ static void rs_close(struct tty_struct *tty, struct file * filp)
 	struct serial_state *state;
 	unsigned long flags;
 
+	
+#ifdef CONFIG_BTUART_FLOWCTL 
+	if (info->state->iomem_base == (u8 *)&BTUART) 
+	{
+      		save_flags(flags); cli();
+		if ( atomic_read(&btuart_timer_run) != 0 )
+		{
+			del_timer_sync(&btuart_timer);
+			atomic_set(&btuart_timer_enable, 0);
+			atomic_set(&btuart_timer_run, 0);
+		}
+      		restore_flags(flags);
+	}
+#endif
 	if (!info || serial_paranoia_check(info, tty->device, "rs_close"))
 		return;
-
+#if ICL_UART
+  /***********************************
+  *            By Liu Xin
+  ************************************/
+  /* only the ttyS0 used by multiplexer */
+  /* be careful */
+  if( tty == serial_for_mux_tty ) {
+    serial_mux_guard--;
+    if( serial_mux_guard ) {
+      save_flags(flags); cli();
+      (info->state->count)--;
+      restore_flags(flags);
+      return;
+    }
+    serial_for_mux_tty = NULL;
+  }
+  /***********************************
+  *            By Liu Xin
+  ************************************/
+#endif
 	state = info->state;
 	
 	save_flags(flags); cli();
-	
+
 	if (tty_hung_up_p(filp)) {
 		DBG_CNT("before DEC-hung");
 		MOD_DEC_USE_COUNT;
@@ -2861,6 +4139,18 @@ static void rs_close(struct tty_struct *tty, struct file * filp)
 	info->flags &= ~(ASYNC_NORMAL_ACTIVE|ASYNC_CALLOUT_ACTIVE|
 			 ASYNC_CLOSING);
 	wake_up_interruptible(&info->close_wait);
+
+#if defined(CONFIG_ARCH_EZX)
+	if (info->state->iomem_base == (u8 *)&BTUART) {
+		tty->driver.btuart = 0;
+		PGSR(GPIO_BT_RESET) |= GPIO_bit(GPIO_BT_RESET);
+		PGSR(GPIO_BT_WAKEUP) |= GPIO_bit(GPIO_BT_WAKEUP);
+	}
+#endif
+#ifdef CONFIG_PM
+       	if (info->state->pm_dev)
+       		pm_unregister(info->state->pm_dev);
+#endif
 	MOD_DEC_USE_COUNT;
 }
 
@@ -3159,8 +4449,30 @@ static int rs_open(struct tty_struct *tty, struct file * filp)
 		MOD_DEC_USE_COUNT;
 		return retval;
 	}
+
 	tty->driver_data = info;
 	info->tty = tty;
+
+#if ICL_UART
+	/***********************************
+	*            By Liu Xin
+	************************************/
+	/* only the ttyS0 used by multiplexer */
+	if(line == TTY_NO_FOR_MUX ) {
+	        if( serial_mux_guard ) {
+			serial_mux_guard++;
+			MOD_DEC_USE_COUNT;
+			printk("Fail to open ttyS0, it's busy!\n");
+			return -EBUSY;
+		} else {
+			serial_mux_guard++;
+			serial_for_mux_tty = tty;
+		}
+	}
+	/***********************************
+	*            By Liu Xin
+	************************************/
+#endif
 	if (serial_paranoia_check(info, tty->device, "rs_open"))
 		return -ENODEV;
 
@@ -3177,6 +4489,7 @@ static int rs_open(struct tty_struct *tty, struct file * filp)
 	 */
 	if (!tmp_buf) {
 		page = get_zeroed_page(GFP_KERNEL);
+//		page = __get_free_pages(GFP_KERNEL,1);
 		if (!page)
 			return -ENOMEM;
 		if (tmp_buf)
@@ -3206,6 +4519,10 @@ static int rs_open(struct tty_struct *tty, struct file * filp)
 	retval = startup(info);
 	if (retval)
 		return retval;
+#if defined(CONFIG_ARCH_EZX)
+	if (info->state->iomem_base == (u8 *)&BTUART)
+		disable_irq(BT_HOSTWAKE);	
+#endif	
 
 	retval = block_til_ready(tty, filp, info);
 	if (retval) {
@@ -3234,11 +4551,126 @@ static int rs_open(struct tty_struct *tty, struct file * filp)
 	info->session = current->session;
 	info->pgrp = current->pgrp;
 
+#if defined(CONFIG_ARCH_EZX)
+	if (info->state->iomem_base == (u8 *)&BTUART) {
+		init_waitqueue_head(&bt_hostwake_wait);
+		tty->driver.btuart = 1;
+	}
+	else
+		tty->driver.btuart = 0;
+#else
+		tty->driver.btuart = 0;	
+
+#endif
+#ifdef CONFIG_BTUART_FLOWCTL
+	if( info->state->iomem_base == (u8 *)&BTUART ) {
+		atomic_set(&btuart_timer_enable, 0);
+		atomic_set(&btuart_timer_run, 0);
+		atomic_set(&btuart_cnt, 0);
+		init_timer(&btuart_timer);
+		btuart_timer.function = btuart_timer_speedctl;
+		btuart_timer.data = (unsigned long)info;
+
+		bonus_step_value = 50;
+		bonus = 0;
+	}
+#endif
+#ifdef CONFIG_PM
+	if (info->state->count == 1) {
+		info->state->pm_dev = pm_register(PM_SYS_DEV, 0, rs_pm_callback);
+	       	if (info->state->pm_dev)
+       			info->state->pm_dev->data = info->state;
+	}
+#endif
+
 #ifdef SERIAL_DEBUG_OPEN
 	printk("rs_open ttys%d successful...", info->line);
 #endif
 	return 0;
 }
+
+
+#ifdef CONFIG_BTUART_FLOWCTL 
+static unsigned long start_ticks;
+static void btuart_timer_speedctl( unsigned long data )
+{
+	struct async_struct *info = (struct async_struct*)data;
+	unsigned long flags, count, lost;
+	int adjust;
+       struct task_struct * bt_task;
+
+	if ( stream_start == 1 )
+	{
+		pre_jiffies = jiffies;
+		start_ticks = jiffies;
+		stream_start = 0;
+		bonus = 0;
+	}
+	else if ( (pre_jiffies + 1) != jiffies)
+	{
+		lost = jiffies - pre_jiffies;
+		if ( lost > COMPENSATE_THRESHOLD )
+		{
+			lost = 1;
+			bonus = 0;
+		}
+		if ( bonus > btuart_cnt_value * 2 )
+			bonus = btuart_cnt_value * 2;
+		bonus += btuart_cnt_value * (lost - 1);
+		if ( bonus > btuart_cnt_value * COMPENSATE_THRESHOLD)
+			bonus = btuart_cnt_value * COMPENSATE_THRESHOLD;
+		if ( jiffies < (start_ticks + 30))
+			bonus = 0;
+	}
+	count = CIRC_CNT(info->xmit.head, info->xmit.tail, SERIAL_XMIT_SIZE);
+       if ( bt_pid > 0 )
+        {	
+        	bt_task = find_task_by_pid(bt_pid);	
+		bt_task->static_prio = ( count > THROTTLE_THRESHOLD ) ? 105 : 100;
+	}
+	pre_jiffies = jiffies;
+	
+	save_flags(flags);cli();
+	if (atomic_read(&btuart_timer_run) &&
+		atomic_read(&btuart_timer_enable)) 
+	{
+		adjust = 0;
+/* Begin: modified by xump 05.08.13 */
+#if 0 
+		if ( btuart_cnt_value == DEFAULT_16_K_CNT_VALUE )
+			adjust = ((jiffies % 7) == 0) ? -2 : 0; /* 11 % 0 = 5 */
+		else if  ( btuart_cnt_value ==DEFAULT_32_K_CNT_VALUE )
+			adjust = (((jiffies % 21) == 0)) ? -13 : 0; /* 0x0f & 0x0f -1 */
+		else if ( btuart_cnt_value == DEFAULT_44_1_K_CNT_VALUE )
+			adjust = ((jiffies % 5) == 0) ? -1 : 0; /* 13% 0 = -1 */
+		else if ( btuart_cnt_value == DEFAULT_48_K_CNT_VALUE )
+			adjust = ((jiffies % 9) == 0) ? 2 : 0; /* 11 % 0 = 5 */
+#else
+                adjust = ((jiffies % bt_SlopeTime_Value) == 0) ? bt_SlopeData_Value : 0;
+#endif
+/* End: modified by xump 05.08.13 */
+		if (bonus  > bonus_step_value )
+		{
+			atomic_set( &btuart_cnt, (btuart_cnt_value + adjust + bonus_step_value));
+			bonus -= bonus_step_value;			
+		}
+		else
+		{
+			atomic_set( &btuart_cnt, (btuart_cnt_value + adjust + bonus));
+			bonus = 0;
+		}	
+//work around for pxa c0 issue		
+		info->IER &= ~UART_IER_THRI;
+		serial_out( info, UART_IER, info->IER );
+//		
+		info->IER |= UART_IER_THRI;
+		serial_out( info, UART_IER, info->IER );
+		btuart_timer.expires = jiffies + 1;
+		add_timer(&btuart_timer);
+	}
+	restore_flags(flags);
+}
+#endif
 
 /*
  * /proc fs routines....
@@ -3250,13 +4682,6 @@ static inline int line_info(char *buf, struct serial_state *state)
 	char	stat_buf[30], control, status;
 	int	ret;
 	unsigned long flags;
-
-	/*
-	 * Return zero characters for ports not claimed by driver.
-	 */
-	if (state->type == PORT_UNKNOWN) {
-		return 0;	/* ignore unused ports */
-	}
 
 	ret = sprintf(buf, "%d: uart:%s port:%lX irq:%d",
 		      state->line, uart_config[state->type].name, 
@@ -3326,8 +4751,8 @@ static inline int line_info(char *buf, struct serial_state *state)
 	return ret;
 }
 
-static int rs_read_proc(char *page, char **start, off_t off, int count,
-			int *eof, void *data)
+int rs_read_proc(char *page, char **start, off_t off, int count,
+		 int *eof, void *data)
 {
 	int i, len = 0, l;
 	off_t	begin = 0;
@@ -4107,8 +5532,6 @@ pci_plx9050_fn(struct pci_dev *dev, struct pci_board *board, int enable)
  * interface chip and different configuration methods:
  *     - 10x cards have control registers in IO and/or memory space;
  *     - 20x cards have control registers in standard PCI configuration space.
- *
- * SIIG initialization functions exported for use by parport_serial.c module.
  */
 
 #define PCI_DEVICE_ID_SIIG_1S_10x (PCI_DEVICE_ID_SIIG_1S_10x_550 & 0xfffc)
@@ -5237,7 +6660,7 @@ static struct pnp_board pnp_devices[] __devinitdata = {
 	{	0, }
 };
 
-static inline void avoid_irq_share(struct pci_dev *dev)
+static void inline avoid_irq_share(struct pci_dev *dev)
 {
 	int i, map = 0x1FF8;
 	struct serial_state *state = rs_table;
@@ -5274,7 +6697,7 @@ static int __devinit check_name(char *name)
        return 0;
 }
 
-static inline int check_compatible_id(struct pci_dev *dev)
+static int inline check_compatible_id(struct pci_dev *dev)
 {
        int i;
        for (i = 0; i < DEVICE_COUNT_COMPATIBLE; i++)
@@ -5377,6 +6800,181 @@ static void __devinit probe_serial_pnp(void)
 
 #endif /* ENABLE_SERIAL_PNP */
 
+#ifdef CONFIG_PM
+
+/*
+ * serial_out() is to be used only for devices currently open (and have an
+ * async_struct assigned).  We want to power down unopened devices.
+ */
+
+#if 0
+static _INLINE_ void pxa_pm_serial_out(struct serial_state *ss, int offset,
+					int value)
+{
+	writeb(value, (unsigned long) ss->iomem_base +
+	       (offset<<ss->iomem_reg_shift));
+}
+#endif
+
+#define NUM_REGS 7
+static unsigned int saved_regs[NR_PORTS][NUM_REGS];
+static int bt_wakeup;
+
+static void pm_save_uart_state(struct serial_state *ss)
+{
+	unsigned port = ss - rs_table;
+
+	switch ((long)ss->iomem_base) {
+	case (long)&FFUART:
+		saved_regs[port][0] = FFIER;
+		saved_regs[port][1] = FFLCR;
+		saved_regs[port][2] = FFMCR;
+		saved_regs[port][3] = FFSPR;
+		saved_regs[port][4] = FFISR;
+		/* enable DLAB to access Divisor Latch registers */
+		FFLCR |= 0x80;
+		saved_regs[port][5] = FFDLL;
+		saved_regs[port][6] = FFDLH;
+		FFLCR &= 0x7F;
+
+		/* disable the clock */
+		CKEN &= ~CKEN6_FFUART;
+		break;
+	case (long)&BTUART:
+		saved_regs[port][0] = BTIER;
+		saved_regs[port][1] = BTLCR;
+		saved_regs[port][2] = BTMCR;
+		saved_regs[port][3] = BTSPR;
+		saved_regs[port][4] = BTISR;
+		/* enable DLAB to access Divisor Latch registers */
+		BTLCR |= 0x80;
+		saved_regs[port][5] = BTDLL;
+		saved_regs[port][6] = BTDLH;
+		BTLCR &= 0x7F;
+
+		/* disable the clock */
+		CKEN &= ~CKEN7_BTUART;
+
+		/* BT control pin: BT_WAKEUP, BT_RESET */
+		if (GPIO_is_high(GPIO_BT_WAKEUP)) {
+			bt_wakeup = 1;
+			PGSR(GPIO_BT_WAKEUP) |= GPIO_bit(GPIO_BT_WAKEUP);
+		} else {
+			bt_wakeup = 0;
+			PGSR(GPIO_BT_WAKEUP) &= ~GPIO_bit(GPIO_BT_WAKEUP);
+		}
+
+		PGSR(GPIO_BT_RESET) |= GPIO_bit(GPIO_BT_RESET);
+
+		PGSR(GPIO43_BTTXD) |= GPIO_bit(GPIO43_BTTXD);
+		PGSR(GPIO45_BTRTS) |= GPIO_bit(GPIO45_BTRTS);
+		break;
+	case (long)&STUART:
+		saved_regs[port][0] = STIER;
+		saved_regs[port][1] = STLCR;
+		saved_regs[port][2] = STMCR;
+		saved_regs[port][3] = STSPR;
+		saved_regs[port][4] = STISR;
+
+		/* enable DLAB to access Divisor Latch registers */
+		STLCR |= 0x80;
+		saved_regs[port][5] = STDLL;
+		saved_regs[port][6] = STDLH;
+		STLCR &= 0x7f;
+		
+		/* disable the clock */
+		CKEN &= ~CKEN5_STUART;
+		break;
+	}
+}
+
+static void pm_restore_uart_state(struct serial_state *ss)
+{
+	unsigned port = ss - rs_table;
+
+	switch ((long)ss->iomem_base) {
+	case (long)&FFUART:
+		/* enable the clock */
+		CKEN |= CKEN6_FFUART;
+
+		FFMCR = saved_regs[port][2];
+		FFSPR = saved_regs[port][3];
+		FFLCR = saved_regs[port][1];
+		/* enable DLAB to access Divisor Latch registers */
+		FFLCR |= 0x80;
+		FFDLH = saved_regs[port][6];
+		FFDLL = saved_regs[port][5];
+		FFLCR = saved_regs[port][1];
+		FFISR = saved_regs[port][4];
+		FFFCR = 0x07;
+		FFIER = saved_regs[port][0];
+		break;
+	case (long)&BTUART:
+		/* enable the clock */
+		CKEN |= CKEN7_BTUART;
+
+		/* BT UART */
+		BTMCR = saved_regs[port][2];
+		BTSPR = saved_regs[port][3];
+		BTLCR = saved_regs[port][1];
+		/* enable DLAB to access Divisor Latch registers */
+		BTLCR |= 0x80;
+		BTDLH = saved_regs[port][6];
+		BTDLL = saved_regs[port][5];
+		BTLCR = saved_regs[port][1];
+		BTISR = saved_regs[port][4];
+		BTFCR = 0x07;
+		BTIER = saved_regs[port][0];
+
+		/* BT control pin: BT_WAKEUP, BT_RESET */
+		if (bt_wakeup)
+			set_GPIO(GPIO_BT_WAKEUP);
+		else
+			clr_GPIO(GPIO_BT_WAKEUP);
+
+		set_GPIO(GPIO_BT_RESET);
+
+		break;
+	case (long)&STUART:
+		/* enable the clock */
+		CKEN |= CKEN5_STUART;
+		/* ST UART */
+		STMCR = saved_regs[port][2];
+		STSPR = saved_regs[port][3];
+		STLCR = saved_regs[port][1];
+		/* enable DLAB to access Divisor Latch registers */
+		STLCR |= 0x80;
+		STDLH = saved_regs[port][6];
+		STDLL = saved_regs[port][5];
+		STLCR = saved_regs[port][1];
+		STISR = saved_regs[port][4];
+		STFCR = 0x07;
+		STIER = saved_regs[port][0];
+		break;
+	}
+}
+
+static int rs_pm_callback(struct pm_dev *dev, pm_request_t rqst, void *data)
+{
+	struct serial_state *ss = (struct serial_state *) dev->data;
+	//struct async_struct *info = ss->info;
+
+	switch (rqst) {
+	case PM_SUSPEND:
+		/* save important registers */
+		pm_save_uart_state(ss);
+		break;
+	case PM_RESUME:
+		/* restore important registers */
+		pm_restore_uart_state(ss);
+		break;
+	}
+
+	return 0;
+}
+
+#endif 
+
 /*
  * The serial driver boot-time initialization code!
  */
@@ -5432,7 +7030,7 @@ static int __init rs_init(void)
 	serial_driver.subtype = SERIAL_TYPE_NORMAL;
 	serial_driver.init_termios = tty_std_termios;
 	serial_driver.init_termios.c_cflag =
-		B9600 | CS8 | CREAD | HUPCL | CLOCAL;
+		B115200 | CS8 | CREAD | HUPCL | CLOCAL | CRTSCTS;
 	serial_driver.flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_NO_DEVFS;
 	serial_driver.refcount = &serial_refcount;
 	serial_driver.table = serial_table;
@@ -5484,11 +7082,32 @@ static int __init rs_init(void)
 		panic("Couldn't register serial driver\n");
 	if (tty_register_driver(&callout_driver))
 		panic("Couldn't register callout driver\n");
+#if defined(CONFIG_OMAP_INNOVATOR) || defined(CONFIG_405LP) || defined(CONFIG_ARCH_MAINSTONE) /* linux-pm */
+	serial_ldm_driver_register();
+#endif /* linux-pm */
 	
+
+#if ICL_UART
+/********************************************
+ *  By Liu Xin
+*********************************************/
+	serial_for_mux_driver = &serial_driver;
+  /* fill in in the rs_open() routine */
+  serial_for_mux_tty = NULL;
+  /* fill in in the mux_init routine */
+  serial_mux_dispatcher = NULL;
+  serial_mux_sender = NULL;
+
+  tq_serial_for_mux = &tq_serial;  
+  serial_mux_guard = 0;
+/********************************************
+ *  By Liu Xin
+*********************************************/
+#endif
+
 	for (i = 0, state = rs_table; i < NR_PORTS; i++,state++) {
 		state->magic = SSTATE_MAGIC;
 		state->line = i;
-		state->type = PORT_UNKNOWN;
 		state->custom_divisor = 0;
 		state->close_delay = 5*HZ/10;
 		state->closing_wait = 30*HZ;
@@ -5502,14 +7121,18 @@ static int __init rs_init(void)
 		state->irq = irq_cannonicalize(state->irq);
 		if (state->hub6)
 			state->io_type = SERIAL_IO_HUB6;
-		if (state->port && check_region(state->port,8))
+		if (state->port && check_region(state->port,8)) {
+			state->type = PORT_UNKNOWN;
 			continue;
+		}
 #ifdef CONFIG_MCA			
 		if ((state->flags & ASYNC_BOOT_ONLYMCA) && !MCA_bus)
 			continue;
 #endif			
-		if (state->flags & ASYNC_BOOT_AUTOCONF)
+		if (state->flags & ASYNC_BOOT_AUTOCONF) {
+			state->type = PORT_UNKNOWN;
 			autoconfig(state);
+		}
 	}
 	for (i = 0, state = rs_table; i < NR_PORTS; i++,state++) {
 		if (state->type == PORT_UNKNOWN)
@@ -5536,6 +7159,16 @@ static int __init rs_init(void)
 				   serial_driver.minor_start + state->line);
 		tty_register_devfs(&callout_driver, 0,
 				   callout_driver.minor_start + state->line);
+#if defined(CONFIG_OMAP_INNOVATOR) || defined(CONFIG_405LP) || defined(CONFIG_ARCH_MAINSTONE) /* linux-pm */
+		serial_ldm_device_register(i);
+#endif /* linux-pm */
+
+#if defined(CONFIG_ARCH_EZX)
+		if (state->iomem_base == (u8 *)&BTUART) {
+			PGSR(GPIO_BT_RESET) |= GPIO_bit(GPIO_BT_RESET);
+			PGSR(GPIO_BT_WAKEUP) |= GPIO_bit(GPIO_BT_WAKEUP);
+		}
+#endif
 	}
 #ifdef ENABLE_SERIAL_PCI
 	probe_serial_pci();
@@ -5790,7 +7423,7 @@ static struct async_struct async_sercons;
  */
 static inline void wait_for_xmitr(struct async_struct *info)
 {
-	unsigned int status, tmout = 1000000;
+	unsigned int status, tmout = 200;
 
 	do {
 		status = serial_in(info, UART_LSR);
@@ -5804,7 +7437,7 @@ static inline void wait_for_xmitr(struct async_struct *info)
 
 	/* Wait for flow control if necessary */
 	if (info->flags & ASYNC_CONS_FLOW) {
-		tmout = 1000000;
+		tmout = 200;
 		while (--tmout &&
 		       ((serial_in(info, UART_MSR) & UART_MSR_CTS) == 0));
 	}	
@@ -5829,6 +7462,8 @@ static void serial_console_write(struct console *co, const char *s,
 	 */
 	ier = serial_in(info, UART_IER);
 	serial_out(info, UART_IER, 0x00);
+	if (pxa_port(info->state->type))
+		serial_out(info, UART_IER, UART_IER_UUE);
 
 	/*
 	 *	Now, do each character
@@ -5975,11 +7610,58 @@ static int __init serial_console_setup(struct console *co, char *options)
 	 *	Disable UART interrupts, set DTR and RTS high
 	 *	and set speed.
 	 */
+#ifdef CONFIG_ARCH_OMAP
+	if (info->state->type == PORT_OMAP) {
+		serial_out(info, UART_OMAP_MDR1, 0x07);	/* disable UART */
+		serial_out(info, UART_LCR, 0xBF);	/* select EFR */
+		serial_out(info, UART_EFR, UART_EFR_ECB);
+		serial_out(info, UART_LCR, cval | UART_LCR_DLAB); /* set DLAB */
+		serial_out(info, UART_DLL, 0x00);
+		serial_out(info, UART_DLM, 0x00);
+		serial_out(info, UART_LCR, cval);	/* reset DLAB */
+		serial_out(info, UART_OMAP_SCR, 0x00);
+		serial_out(info, UART_IER, 0x00);
+		serial_out(info, UART_FCR, UART_FCR_ENABLE_FIFO |
+					   UART_FCR_CLEAR_RCVR |
+					   UART_FCR_CLEAR_XMIT);
+		serial_out(info, UART_MCR, 0x40);	/* enable TCR/TLR */
+		serial_out(info, UART_OMAP_TCR, 0x0F);
+		serial_out(info, UART_OMAP_TLR, 0x00);
+		serial_out(info, UART_MCR, 0x00);
+		serial_out(info, UART_LCR, 0xBF);	/* select EFR */
+		serial_out(info, UART_EFR, 0x00);
+		serial_out(info, UART_LCR, cval);	/* reset DLAB */
+		serial_out(info, UART_OMAP_MDR1, 0x00);	/* enable UART */
+		if (baud == 115200) {
+			quot = 1;
+			serial_out(info, UART_OMAP_OSC_12M_SEL, 1);
+		} else
+			serial_out(info, UART_OMAP_OSC_12M_SEL, 0);
+	}
+#endif
+#ifdef CONFIG_ARCH_PXA
+        if (state->type == PORT_PXA) {
+                switch ((long)state->iomem_base) {
+                        case (long)&FFUART:
+                                CKEN |= CKEN6_FFUART;
+                                break;
+                        case (long)&BTUART:
+                                CKEN |= CKEN7_BTUART;
+                                break;
+                        case (long)&STUART:
+                                CKEN |= CKEN5_STUART;
+                                break;
+                }
+        }
+#endif
+
 	serial_out(info, UART_LCR, cval | UART_LCR_DLAB);	/* set DLAB */
 	serial_out(info, UART_DLL, quot & 0xff);	/* LS of divisor */
 	serial_out(info, UART_DLM, quot >> 8);		/* MS of divisor */
 	serial_out(info, UART_LCR, cval);		/* reset DLAB */
 	serial_out(info, UART_IER, 0);
+	if (pxa_port(info->state->type))
+		serial_out(info, UART_IER, UART_IER_UUE);
 	serial_out(info, UART_MCR, UART_MCR_DTR | UART_MCR_RTS);
 
 	/*

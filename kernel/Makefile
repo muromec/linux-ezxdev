@@ -9,16 +9,26 @@
 
 O_TARGET := kernel.o
 
-export-objs = signal.o sys.o kmod.o context.o ksyms.o pm.o exec_domain.o printk.o
+export-objs = signal.o sys.o kmod.o context.o ksyms.o pm.o exec_domain.o \
+	      printk.o trace.o 
 
-obj-y     = sched.o dma.o fork.o exec_domain.o panic.o printk.o \
+obj-y     = sched.o fork.o exec_domain.o panic.o printk.o \
 	    module.o exit.o itimer.o info.o time.o softirq.o resource.o \
 	    sysctl.o acct.o capability.o ptrace.o timer.o user.o \
 	    signal.o sys.o kmod.o context.o
 
+obj-$(CONFIG_GENERIC_ISA_DMA) += dma.o
 obj-$(CONFIG_UID16) += uid16.o
 obj-$(CONFIG_MODULES) += ksyms.o
 obj-$(CONFIG_PM) += pm.o
+obj-$(CONFIG_PREEMPT_TIMES) += preem_latency.o
+obj-$(CONFIG_ILATENCY) += ilatcurve.o imaxoff.o
+obj-$(CONFIG_IKCONFIG) += configs.o
+
+
+ifdef CONFIG_TRACE
+obj-y += trace.o
+endif
 
 ifneq ($(CONFIG_IA64),y)
 # According to Alan Modra <alan@linuxcare.com.au>, the -fno-omit-frame-pointer is
@@ -30,3 +40,10 @@ CFLAGS_sched.o := $(PROFILING) -fno-omit-frame-pointer
 endif
 
 include $(TOPDIR)/Rules.make
+
+ikconfig.h: $(TOPDIR)/scripts/mkconfigs $(TOPDIR)/.config $(TOPDIR)/Makefile
+	$(CONFIG_SHELL) $(TOPDIR)/scripts/mkconfigs $(TOPDIR)/.config $(TOPDIR)/Makefile > ikconfig.h
+
+configs.o: ikconfig.h configs.c \
+		$(TOPDIR)/include/linux/version.h $(TOPDIR)/include/linux/compile.h
+

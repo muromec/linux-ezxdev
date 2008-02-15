@@ -1,7 +1,11 @@
 /*
  * Common code to handle map devices which are simple RAM
  * (C) 2000 Red Hat. GPL'd.
- * $Id: map_ram.c,v 1.14 2001/10/02 15:05:12 dwmw2 Exp $
+ * Copyright (C) 2005 Motorola Inc.
+ * $Id: map_ram.c,v 1.20 2004/08/09 13:19:43 dwmw2 Exp $
+ *
+ * 01/15/2005  Susan Gu <w15879@motorola.com>
+ *      - Modified for EzX and pm support 
  */
 
 #include <linux/module.h>
@@ -11,9 +15,14 @@
 #include <asm/byteorder.h>
 #include <linux/errno.h>
 #include <linux/slab.h>
-
+#include <linux/init.h>
+#include <linux/mtd/mtd.h>
 #include <linux/mtd/map.h>
+#include <linux/mtd/compatmac.h>
 
+#ifdef CONFIG_PM
+extern struct pm_flash_s pm_flash;
+#endif
 
 static int mapram_read (struct mtd_info *, loff_t, size_t, size_t *, u_char *);
 static int mapram_write (struct mtd_info *, loff_t, size_t, size_t *, const u_char *);
@@ -23,9 +32,9 @@ static struct mtd_info *map_ram_probe(struct map_info *map);
 
 
 static struct mtd_chip_driver mapram_chipdrv = {
-	probe: map_ram_probe,
-	name: "map_ram",
-	module: THIS_MODULE
+	.probe	= map_ram_probe,
+	.name	= "map_ram",
+	.module	= THIS_MODULE
 };
 
 static struct mtd_info *map_ram_probe(struct map_info *map)
@@ -34,21 +43,21 @@ static struct mtd_info *map_ram_probe(struct map_info *map)
 
 	/* Check the first byte is RAM */
 #if 0
-	map->write8(map, 0x55, 0);
-	if (map->read8(map, 0) != 0x55)
+	map_write8(map, 0x55, 0);
+	if (map_read8(map, 0) != 0x55)
 		return NULL;
 
-	map->write8(map, 0xAA, 0);
-	if (map->read8(map, 0) != 0xAA)
+	map_write8(map, 0xAA, 0);
+	if (map_read8(map, 0) != 0xAA)
 		return NULL;
 
 	/* Check the last byte is RAM */
-	map->write8(map, 0x55, map->size-1);
-	if (map->read8(map, map->size-1) != 0x55)
+	map_write8(map, 0x55, map->size-1);
+	if (map_read8(map, map->size-1) != 0x55)
 		return NULL;
 
-	map->write8(map, 0xAA, map->size-1);
-	if (map->read8(map, map->size-1) != 0xAA)
+	map_write8(map, 0xAA, map->size-1);
+	if (map_read8(map, map->size-1) != 0xAA)
 		return NULL;
 #endif
 	/* OK. It seems to be RAM. */
@@ -74,7 +83,7 @@ static struct mtd_info *map_ram_probe(struct map_info *map)
  	while(mtd->size & (mtd->erasesize - 1))
 		mtd->erasesize >>= 1;
 
-	MOD_INC_USE_COUNT;
+	__module_get(THIS_MODULE);
 	return mtd;
 }
 
@@ -83,8 +92,17 @@ static int mapram_read (struct mtd_info *mtd, loff_t from, size_t len, size_t *r
 {
 	struct map_info *map = (struct map_info *)mtd->priv;
 
-	map->copy_from(map, buf, from, len);
+	#ifdef CONFIG_PM
+	atomic_inc(&(pm_flash.pm_flash_count));
+	#endif
+	
+	map_copy_from(map, buf, from, len);
 	*retlen = len;
+	
+	#ifdef CONFIG_PM
+	atomic_dec(&(pm_flash.pm_flash_count));
+	#endif
+	
 	return 0;
 }
 
@@ -92,8 +110,17 @@ static int mapram_write (struct mtd_info *mtd, loff_t to, size_t len, size_t *re
 {
 	struct map_info *map = (struct map_info *)mtd->priv;
 
-	map->copy_to(map, to, buf, len);
+	#ifdef CONFIG_PM
+	atomic_inc(&(pm_flash.pm_flash_count));
+	#endif
+	
+	map_copy_to(map, to, buf, len);
 	*retlen = len;
+	
+	#ifdef CONFIG_PM
+	atomic_dec(&(pm_flash.pm_flash_count));
+	#endif
+	
 	return 0;
 }
 
@@ -102,14 +129,26 @@ static int mapram_erase (struct mtd_info *mtd, struct erase_info *instr)
 	/* Yeah, it's inefficient. Who cares? It's faster than a _real_
 	   flash erase. */
 	struct map_info *map = (struct map_info *)mtd->priv;
+	map_word allff;
 	unsigned long i;
+	
+	#ifdef CONFIG_PM
+	atomic_inc(&(pm_flash.pm_flash_count));
+	#endif
+	
+	allff = map_word_ff(map);
 
-	for (i=0; i<instr->len; i++)
-		map->write8(map, 0xFF, instr->addr + i);
+	for (i=0; i<instr->len; i += map_bankwidth(map))
+		map_write(map, allff, instr->addr + i);
 
-	if (instr->callback)
-		instr->callback(instr);
+	instr->state = MTD_ERASE_DONE;
 
+	mtd_erase_callback(instr);
+	
+	#ifdef CONFIG_PM
+	atomic_dec(&(pm_flash.pm_flash_count));
+	#endif
+	
 	return 0;
 }
 

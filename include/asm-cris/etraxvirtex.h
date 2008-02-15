@@ -1,4 +1,4 @@
-/* $Id: etraxvirtex.h,v 1.1 2002/06/25 10:01:05 stefanl Exp $ */
+/* $Id: etraxvirtex.h,v 1.1 2002/12/17 18:21:17 trini Exp $ */
 
 #ifndef _LINUX_ETRAXVIRTEX_FPGA_H
 #define _LINUX_ETRAXVIRTEX_FPGA_H

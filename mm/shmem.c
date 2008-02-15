@@ -5,7 +5,8 @@
  *		 2000 Transmeta Corp.
  *		 2000-2001 Christoph Rohland
  *		 2000-2001 SAP AG
- * 
+ *		 2002 Red Hat Inc.
+ *
  * This file is released under the GPL.
  */
 
@@ -21,6 +22,7 @@
 #include <linux/devfs_fs_kernel.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
+#include <linux/mman.h>
 #include <linux/file.h>
 #include <linux/swap.h>
 #include <linux/pagemap.h>
@@ -357,9 +359,36 @@ static void shmem_truncate (struct inode * inode)
 	up(&info->sem);
 }
 
+static int shmem_notify_change(struct dentry * dentry, struct iattr *attr)
+{
+	struct inode *inode = dentry->d_inode;
+	int error;
+
+	if (attr->ia_valid & ATTR_SIZE) {
+		/*
+	 	 * Account swap file usage based on new file size	
+	 	 */
+		long change = (attr->ia_size>>PAGE_SHIFT) - (inode->i_size >> PAGE_SHIFT);
+
+		if (attr->ia_size > inode->i_size) {
+			if (!vm_enough_memory(change,1))
+				return -ENOMEM;
+		} else
+			vm_unacct_memory(-change);
+	}
+
+	error = inode_change_ok(inode, attr);
+	if (!error)
+		error = inode_setattr(inode, attr);
+
+	return error;
+}
+
 static void shmem_delete_inode(struct inode * inode)
 {
 	struct shmem_sb_info *sbinfo = SHMEM_SB(inode->i_sb);
+
+	vm_unacct_memory((inode->i_size) >> PAGE_SHIFT);
 
 	if (inode->i_op->truncate == shmem_truncate) {
 		spin_lock (&shmem_ilock);
@@ -696,6 +725,7 @@ static int shmem_mmap(struct file * file, struct vm_area_struct * vma)
 		return -EACCES;
 	UPDATE_ATIME(inode);
 	vma->vm_ops = ops;
+	vma->vm_flags &= ~VM_IO;
 	return 0;
 }
 
@@ -792,6 +822,7 @@ shmem_file_write(struct file *file,const char *buf,size_t count,loff_t *ppos)
 	unsigned long	written;
 	long		status;
 	int		err;
+	loff_t		maxpos;
 
 	if ((ssize_t) count < 0)
 		return -EINVAL;
@@ -804,18 +835,27 @@ shmem_file_write(struct file *file,const char *buf,size_t count,loff_t *ppos)
 	pos = *ppos;
 	err = -EINVAL;
 	if (pos < 0)
-		goto out;
+		goto out_nc;
 
 	err = file->f_error;
 	if (err) {
 		file->f_error = 0;
-		goto out;
+		goto out_nc;
 	}
 
 	written = 0;
 
 	if (file->f_flags & O_APPEND)
 		pos = inode->i_size;
+
+	maxpos = inode->i_size;
+	if (pos + count > inode->i_size) {
+		maxpos = pos + count;
+		if (!vm_enough_memory((maxpos - inode->i_size) >> PAGE_SHIFT, 1)) {
+			err = -ENOMEM;
+			goto out_nc;
+		}
+	}
 
 	/*
 	 * Check whether we've reached the file size limit.
@@ -906,6 +946,10 @@ unlock:
 
 	err = written ? written : status;
 out:
+	/* Short writes give back address space */
+	if (inode->i_size != maxpos)
+		vm_unacct_memory((maxpos - inode->i_size) >> PAGE_SHIFT);
+out_nc:
 	up(&inode->i_sem);
 	return err;
 fail_write:
@@ -919,14 +963,13 @@ static void do_shmem_file_read(struct file * filp, loff_t *ppos, read_descriptor
 	struct inode *inode = filp->f_dentry->d_inode;
 	struct address_space *mapping = inode->i_mapping;
 	unsigned long index, offset;
-	int nr = 1;
 
 	index = *ppos >> PAGE_CACHE_SHIFT;
 	offset = *ppos & ~PAGE_CACHE_MASK;
 
-	while (nr && desc->count) {
+	for (;;) {
 		struct page *page;
-		unsigned long end_index, nr;
+		unsigned long end_index, nr, ret;
 
 		end_index = inode->i_size >> PAGE_CACHE_SHIFT;
 		if (index > end_index)
@@ -956,12 +999,14 @@ static void do_shmem_file_read(struct file * filp, loff_t *ppos, read_descriptor
 		 * "pos" here (the actor routine has to update the user buffer
 		 * pointers and the remaining count).
 		 */
-		nr = file_read_actor(desc, page, offset, nr);
-		offset += nr;
+		ret = file_read_actor(desc, page, offset, nr);
+		offset += ret;
 		index += offset >> PAGE_CACHE_SHIFT;
 		offset &= ~PAGE_CACHE_MASK;
 	
 		page_cache_release(page);
+		if (ret != nr || !desc->count)
+			break;
 	}
 
 	*ppos = ((loff_t) index << PAGE_CACHE_SHIFT) + offset;
@@ -1398,6 +1443,7 @@ static struct file_operations shmem_file_operations = {
 
 static struct inode_operations shmem_inode_operations = {
 	truncate:	shmem_truncate,
+	setattr:	shmem_notify_change,
 };
 
 static struct inode_operations shmem_dir_inode_operations = {
@@ -1488,17 +1534,16 @@ module_exit(exit_shmem_fs)
  */
 struct file *shmem_file_setup(char * name, loff_t size)
 {
-	int error;
+	int error = -ENOMEM;
 	struct file *file;
 	struct inode * inode;
 	struct dentry *dentry, *root;
 	struct qstr this;
-	int vm_enough_memory(long pages);
 
 	if (size > SHMEM_MAX_BYTES)
 		return ERR_PTR(-EINVAL);
 
-	if (!vm_enough_memory(VM_ACCT(size)))
+	if (!vm_enough_memory((size) >> PAGE_CACHE_SHIFT, 1))
 		return ERR_PTR(-ENOMEM);
 
 	this.name = name;
@@ -1507,7 +1552,7 @@ struct file *shmem_file_setup(char * name, loff_t size)
 	root = shm_mnt->mnt_root;
 	dentry = d_alloc(root, &this);
 	if (!dentry)
-		return ERR_PTR(-ENOMEM);
+		goto put_memory;
 
 	error = -ENFILE;
 	file = get_empty_filp();
@@ -1532,6 +1577,8 @@ close_file:
 	put_filp(file);
 put_dentry:
 	dput (dentry);
+put_memory:
+	vm_unacct_memory((size) >> PAGE_CACHE_SHIFT);
 	return ERR_PTR(error);	
 }
 

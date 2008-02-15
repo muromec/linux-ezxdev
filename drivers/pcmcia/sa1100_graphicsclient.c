@@ -19,8 +19,6 @@
 #include <asm/irq.h>
 #include "sa1100_generic.h"
 
-#error This is broken!
-
 #define	S0_CD_IRQ		60				// Socket 0 Card Detect IRQ
 #define	S0_STS_IRQ		55				// Socket 0 PCMCIA IRQ
 

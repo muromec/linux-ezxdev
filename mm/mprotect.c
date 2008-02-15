@@ -1,12 +1,22 @@
 /*
- *	linux/mm/mprotect.c
+ *  mm/mprotect.c
  *
  *  (C) Copyright 1994 Linus Torvalds
+ *
+ *  Address space accounting code	<alan@redhat.com>
+ *  (C) Copyright 2002 Red Hat Inc, All Rights Reserved
  */
+/*
+ *
+ * 2005-Apr-04 Motorola  Add security patch 
+ */
+
+
 #include <linux/slab.h>
 #include <linux/smp_lock.h>
 #include <linux/shm.h>
 #include <linux/mman.h>
+#include <linux/security.h>
 
 #include <asm/uaccess.h>
 #include <asm/pgalloc.h>
@@ -241,6 +251,7 @@ static int mprotect_fixup(struct vm_area_struct * vma, struct vm_area_struct ** 
 {
 	pgprot_t newprot;
 	int error;
+	unsigned long charged = 0;
 
 	if (newflags == vma->vm_flags) {
 		*pprev = vma;
@@ -257,9 +268,18 @@ static int mprotect_fixup(struct vm_area_struct * vma, struct vm_area_struct ** 
 	else
 		error = mprotect_fixup_middle(vma, pprev, start, end, newflags, newprot);
 
-	if (error)
+	if (error) {
+		if(newflags & PROT_WRITE)
+			vm_unacct_memory(charged);
 		return error;
+	}
 
+	/*
+	 * Delayed accounting for reduction of memory use - done last to
+	 * avoid allocation races
+	 */
+	if (charged && !(newflags & PROT_WRITE))
+		vm_unacct_memory(charged);
 	change_protection(start, end, newprot);
 	return 0;
 }
@@ -300,6 +320,24 @@ asmlinkage long sys_mprotect(unsigned long start, size_t len, unsigned long prot
 			goto out;
 		}
 
+		error = security_file_mprotect(vma, prot);
+		if (error)
+			goto out;
+
+#ifdef	CONFIG_HAVE_XFS_DMAPI	/* Temporary until dmapi is in main kernel */
+		if((vma->vm_flags & VM_MAYSHARE) &&
+		   (newflags & PROT_WRITE) && !(vma->vm_flags & PROT_WRITE)){
+			if( vma->vm_file && vma->vm_file->f_op &&
+			   vma->vm_file->f_op->dmapi_map_event ){
+				struct file *filp = vma->vm_file;
+
+				error = filp->f_op->dmapi_map_event(filp, vma, VM_WRITE);
+				if( error < 0 )
+					goto out;
+			   }
+		}
+
+#endif	/* CONFIG_HAVE_XFS_DMAPI */
 		if (vma->vm_end > end) {
 			error = mprotect_fixup(vma, &prev, nstart, end, newflags);
 			goto out;

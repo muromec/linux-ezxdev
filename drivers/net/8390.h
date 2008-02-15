@@ -36,7 +36,11 @@ struct e8390_pkt_hdr {
 #ifdef notdef
 extern int ei_debug;
 #else
+#ifdef  CONFIG_REDWOOD_4
+#define ei_debug 0
+#else
 #define ei_debug 1
+#endif
 #endif
 
 #ifndef HAVE_AUTOIRQ
@@ -130,6 +134,8 @@ struct ei_device {
 #define inb_p(port)   in_8(port)
 #define outb_p(val,port)  out_8(port,val)
 
+#elif	CONFIG_STB03xxx
+#define EI_SHIFT(x)	(2 * (x))
 #else
 #define EI_SHIFT(x)	(x)
 #endif

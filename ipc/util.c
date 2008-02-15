@@ -9,6 +9,11 @@
  * Nov 1999 - ipc helper functions, unified SMP locking
  *	      Manfred Spraul <manfreds@colorfullife.com>
  */
+/*
+ *
+ *  2005-Apr-04 Motorola  Add security patch 
+ */
+
 
 #include <linux/config.h>
 #include <linux/mm.h>
@@ -19,6 +24,7 @@
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
 #include <linux/highuid.h>
+#include <linux/security.h>
 
 #if defined(CONFIG_SYSVIPC)
 
@@ -263,7 +269,7 @@ int ipcperms (struct kern_ipc_perm *ipcp, short flag)
 	    !capable(CAP_IPC_OWNER))
 		return -1;
 
-	return 0;
+	return security_ipc_permission(ipcp, flag);
 }
 
 /*

@@ -29,6 +29,11 @@
  *		Also fixed a bug in BLOCKING mode where write_chan returns
  *		EAGAIN
  */
+/*
+ * Copyright (C) 2003-2005 Motorola Inc.
+ *
+ * modified by A14194, for EZX platform 
+ */
 
 #include <linux/types.h>
 #include <linux/major.h>
@@ -65,8 +70,24 @@
  * unthrottling the TTY driver.  These watermarks are used for
  * controlling the space in the read buffer.
  */
-#define TTY_THRESHOLD_THROTTLE		128 /* now based on remaining room */
+#if defined(CONFIG_ARCH_EZX)
+/*
+ * the low level flip buffer will be copied to the upper 4K buffer even if the 
+ * the UART is throttled. The default flip buffer size is 512 byte. Thus, if
+ * the TTY_THRESHOLD_THROTTLE is defined smaller than the flip buffer size,
+ * the buffer overflow will definitely happen when it flips to the upper buffer.
+ * This will happen especially during harvy system load (a14194).
+ */
+#define TTY_THRESHOLD_THROTTLE		512 
+#else
+#define TTY_THRESHOLD_THROTTLE	 	128 /* now based on remaining room */
+#endif 
+
 #define TTY_THRESHOLD_UNTHROTTLE 	128
+#if defined(CONFIG_ARCH_EZX)
+extern int btuart_flip_flow_ctl;
+extern void rs_flip_unthrottle(struct tty_struct *tty);
+#endif
 
 static inline unsigned char *alloc_buf(void)
 {
@@ -543,7 +564,7 @@ static inline void n_tty_receive_char(struct tty_struct *tty, unsigned char c)
 	 * handle specially, do shortcut processing to speed things
 	 * up.
 	 */
-	if (!test_bit(c, &tty->process_char_map) || tty->lnext) {
+	if (!test_bit(c, tty->process_char_map) || tty->lnext) {
 		finish_erasing(tty);
 		tty->lnext = 0;
 		if (L_ECHO(tty)) {
@@ -664,7 +685,7 @@ send_signal:
 
 		handle_newline:
 			spin_lock_irqsave(&tty->read_lock, flags);
-			set_bit(tty->read_head, &tty->read_flags);
+			set_bit(tty->read_head, tty->read_flags);
 			put_tty_queue_nolock(c, tty);
 			tty->canon_head = tty->read_head;
 			tty->canon_data++;
@@ -788,6 +809,11 @@ static void n_tty_receive_buf(struct tty_struct *tty, const unsigned char *cp,
 			tty->driver.flush_chars(tty);
 	}
 
+#if defined(CONFIG_ARCH_EZX)
+	if(tty && tty->driver.btuart)
+		rs_flip_unthrottle(tty);
+#endif
+
 	if (!tty->icanon && (tty->read_cnt >= tty->minimum_to_wake)) {
 		kill_fasync(&tty->fasync, SIGIO, POLL_IN);
 		if (waitqueue_active(&tty->read_wait))
@@ -832,38 +858,38 @@ static void n_tty_set_termios(struct tty_struct *tty, struct termios * old)
 		memset(tty->process_char_map, 0, 256/8);
 
 		if (I_IGNCR(tty) || I_ICRNL(tty))
-			set_bit('\r', &tty->process_char_map);
+			set_bit('\r', tty->process_char_map);
 		if (I_INLCR(tty))
-			set_bit('\n', &tty->process_char_map);
+			set_bit('\n', tty->process_char_map);
 
 		if (L_ICANON(tty)) {
-			set_bit(ERASE_CHAR(tty), &tty->process_char_map);
-			set_bit(KILL_CHAR(tty), &tty->process_char_map);
-			set_bit(EOF_CHAR(tty), &tty->process_char_map);
-			set_bit('\n', &tty->process_char_map);
-			set_bit(EOL_CHAR(tty), &tty->process_char_map);
+			set_bit(ERASE_CHAR(tty), tty->process_char_map);
+			set_bit(KILL_CHAR(tty), tty->process_char_map);
+			set_bit(EOF_CHAR(tty), tty->process_char_map);
+			set_bit('\n', tty->process_char_map);
+			set_bit(EOL_CHAR(tty), tty->process_char_map);
 			if (L_IEXTEN(tty)) {
 				set_bit(WERASE_CHAR(tty),
-					&tty->process_char_map);
+					tty->process_char_map);
 				set_bit(LNEXT_CHAR(tty),
-					&tty->process_char_map);
+					tty->process_char_map);
 				set_bit(EOL2_CHAR(tty),
-					&tty->process_char_map);
+					tty->process_char_map);
 				if (L_ECHO(tty))
 					set_bit(REPRINT_CHAR(tty),
-						&tty->process_char_map);
+						tty->process_char_map);
 			}
 		}
 		if (I_IXON(tty)) {
-			set_bit(START_CHAR(tty), &tty->process_char_map);
-			set_bit(STOP_CHAR(tty), &tty->process_char_map);
+			set_bit(START_CHAR(tty), tty->process_char_map);
+			set_bit(STOP_CHAR(tty), tty->process_char_map);
 		}
 		if (L_ISIG(tty)) {
-			set_bit(INTR_CHAR(tty), &tty->process_char_map);
-			set_bit(QUIT_CHAR(tty), &tty->process_char_map);
-			set_bit(SUSP_CHAR(tty), &tty->process_char_map);
+			set_bit(INTR_CHAR(tty), tty->process_char_map);
+			set_bit(QUIT_CHAR(tty), tty->process_char_map);
+			set_bit(SUSP_CHAR(tty), tty->process_char_map);
 		}
-		clear_bit(__DISABLED_CHAR, &tty->process_char_map);
+		clear_bit(__DISABLED_CHAR, tty->process_char_map);
 		sti();
 		tty->raw = 0;
 		tty->real_raw = 0;
@@ -1079,7 +1105,7 @@ do_it_again:
  				int eol;
 
 				eol = test_and_clear_bit(tty->read_tail,
-						&tty->read_flags);
+						tty->read_flags);
 				c = tty->read_buf[tty->read_tail];
 				spin_lock_irqsave(&tty->read_lock, flags);
 				tty->read_tail = ((tty->read_tail+1) &

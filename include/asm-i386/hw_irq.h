@@ -92,8 +92,30 @@ extern char _stext, _etext;
 
 #define IO_APIC_IRQ(x) (((x) >= 16) || ((1<<(x)) & io_apic_irqs))
 
+#ifdef CONFIG_STACK_OVERFLOW_TEST
+#define STACK_OVERFLOW_TEST \
+        "testl $7680,%esp\n\t"    \
+        "jnz   10f\n\t"            \
+        "call " SYMBOL_NAME_STR(stack_overflow)"\n\t" \
+"10:\n\t"
+#else
+#define STACK_OVERFLOW_TEST
+#endif
+
 #define __STR(x) #x
 #define STR(x) __STR(x)
+
+#define GET_CURRENT \
+	"movl %esp, %ebx\n\t" \
+	"andl $-8192, %ebx\n\t"
+
+#ifdef CONFIG_PREEMPT
+#define BUMP_LOCK_COUNT \
+	GET_CURRENT \
+	"incl 4(%ebx)\n\t"
+#else
+#define BUMP_LOCK_COUNT
+#endif
 
 #define SAVE_ALL \
 	"cld\n\t" \
@@ -106,16 +128,14 @@ extern char _stext, _etext;
 	"pushl %edx\n\t" \
 	"pushl %ecx\n\t" \
 	"pushl %ebx\n\t" \
+        STACK_OVERFLOW_TEST \
 	"movl $" STR(__KERNEL_DS) ",%edx\n\t" \
 	"movl %edx,%ds\n\t" \
-	"movl %edx,%es\n\t"
+	"movl %edx,%es\n\t" \
+	BUMP_LOCK_COUNT
 
 #define IRQ_NAME2(nr) nr##_interrupt(void)
 #define IRQ_NAME(nr) IRQ_NAME2(IRQ##nr)
-
-#define GET_CURRENT \
-	"movl %esp, %ebx\n\t" \
-	"andl $-8192, %ebx\n\t"
 
 /*
  *	SMP has a few special interrupts for IPI messages

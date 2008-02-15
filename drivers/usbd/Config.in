@@ -1,0 +1,72 @@
+#
+# USB device configuration from the device viewpoint (e.g. Linux running inside a USB device, not as host)
+#
+# Copyright (c) 2002-2003 Belcarra
+#
+#
+# Copyright (C) 2005 Motorola Inc.
+#
+# add dsplog support  by a5035c, for EZX platform
+# add network support  by a19553, for EZX platform
+# add usb2.0 support by a16157, for EZX platform
+#
+
+
+mainmenu_option next_comment
+
+comment 'USB clients (devices, not hosts)'
+
+tristate 'Support for USB Clients (USB Device, not USB Host)' CONFIG_USBD
+
+if [ "$CONFIG_USBD" = "y" -o "$CONFIG_USBD" = "m" ]; then
+   comment ''
+   bool   '   Enable High Speed Descriptors' CONFIG_USBD_HIGH_SPEED
+
+   bool   '   Do Not Use Serial Number in Device Descriptor (Default is no' CONFIG_USBD_NO_SERIAL_NUMBER
+   if [ "$CONFIG_USBD_NO_SERIAL_NUMBER" != "y" ]; then
+      string '  Default Serial number (string)' CONFIG_USBD_SERIAL_NUMBER_STR ""
+   fi
+
+   int '   Max Power (mA) (Default is zero, whick is self powered)' CONFIG_USBD_MAXPOWER "0"
+
+   comment ''
+
+   bool   '  USBD Proc FS' CONFIG_USBD_PROCFS
+
+   tristate   '  USBD Proc FS Module' CONFIG_USBD_PROCFSM $CONFIG_USBD
+
+   comment 'Function Drivers'
+
+   source drivers/usbd/network_fd/Config.in
+   source drivers/usbd/acm_fd/Config.in
+
+   source drivers/usbd/mouse_fd/Config.in
+   source drivers/usbd/storage_fd/Config.in
+
+   comment 'Bus Interface'
+
+   source drivers/usbd/pxa_bi/Config.in
+   source drivers/usbd/wmmx_bi/Config.in
+   source drivers/usbd/isp_bi/Config.in
+
+   bool '  USB Device Register Tracing' CONFIG_USBD_BI_REGISTER_TRACE
+   if [ "$CONFIG_USBD" = "y" ]; then
+      bool '  USB Device Manual Enable' CONFIG_USBD_BI_DELAY_ENABLE
+   fi
+
+   source drivers/usbd/pst_fd/Config.in
+   source drivers/usbd/cfg11_fd/Config.in
+   #source drivers/usbd/gen_bi/Config.in
+   #source drivers/usbd/l7205_bi/Config.in
+   #source drivers/usbd/sl11_bi/Config.in
+
+   #source drivers/usbd/cdc_fd/Config.in
+   #source drivers/usbd/serialnumber/Config.in
+   #source drivers/usbd/audio_fd/Config.in
+   #source drivers/usbd/eg_fd/Config.in
+   #source drivers/usbd/keyboard_fd/Config.in
+   source drivers/usbd/dsplog_fd/Config.in
+   source drivers/usbd/nm_fd/Config.in
+fi
+
+endmenu

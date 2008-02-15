@@ -78,6 +78,11 @@
  *		  started by 0, so that this name space does not intersect
  *		  with BSD names.
  */
+/*
+ *
+ * 2005-Apr-04 Motorola  Add security patch
+ */
+
 
 #include <linux/module.h>
 #include <linux/config.h>
@@ -109,6 +114,7 @@
 #include <linux/poll.h>
 #include <linux/smp_lock.h>
 #include <linux/rtnetlink.h>
+#include <linux/security.h>
 
 #include <asm/checksum.h>
 
@@ -800,6 +806,11 @@ static int unix_dgram_connect(struct socket *sock, struct sockaddr *addr,
 		err = -EPERM;
 		if (!unix_may_send(sk, other))
 			goto out_unlock;
+
+		err = security_unix_may_send(sk->socket, other->socket);
+		if (err)
+			goto out_unlock;
+
 	} else {
 		/*
 		 *	1003.1g breaking connected state with AF_UNSPEC
@@ -962,6 +973,12 @@ restart:
 		unix_state_runlock(other);
 		sock_put(other);
 		goto restart;
+	}
+
+	err = security_unix_stream_connect(sock, other->socket, newsk);
+	if (err) {
+		unix_state_wunlock(sk);
+		goto out_unlock;
 	}
 
 	/* The way is open! Fastly set all the necessary fields... */
@@ -1257,6 +1274,10 @@ restart:
 
 	err = -EPIPE;
 	if (other->shutdown&RCV_SHUTDOWN)
+		goto out_unlock;
+
+	err = security_unix_may_send(sk->socket, other->socket);
+	if (err)
 		goto out_unlock;
 
 	if (unix_peer(other) != sk &&

@@ -1,7 +1,7 @@
 /* Linux driver for NAND Flash Translation Layer      */
 /* (c) 1999 Machine Vision Holdings, Inc.             */
 /* Author: David Woodhouse <dwmw2@infradead.org>      */
-/* $Id: nftlcore.c,v 1.85 2001/11/20 11:42:33 dwmw2 Exp $ */
+/* $Id: nftlcore.c,v 1.96 2004/06/28 13:52:55 dbrown Exp $ */
 
 /*
   The contents of this file are distributed under the GNU General
@@ -23,14 +23,13 @@
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/init.h>
-#include <linux/blkpg.h>
+#include <linux/hdreg.h>
 
-#ifdef CONFIG_KMOD
 #include <linux/kmod.h>
-#endif
 #include <linux/mtd/mtd.h>
+#include <linux/mtd/nand.h>
 #include <linux/mtd/nftl.h>
-#include <linux/mtd/compatmac.h>
+#include <linux/mtd/blktrans.h>
 
 /* maximum number of loops while examining next block, to have a
    chance to detect consistency problems (they should never happen
@@ -38,190 +37,107 @@
 
 #define MAX_LOOPS 10000
 
-/* NFTL block device stuff */
-#define MAJOR_NR NFTL_MAJOR
-#define DEVICE_REQUEST nftl_request
-#define DEVICE_OFF(device)
 
-
-#include <linux/blk.h>
-#include <linux/hdreg.h>
-
-/* Linux-specific block device functions */
-
-/* I _HATE_ the Linux block device setup more than anything else I've ever
- *  encountered, except ...
- */
-
-static int nftl_sizes[256];
-static int nftl_blocksizes[256];
-
-/* .. for the Linux partition table handling. */
-struct hd_struct part_table[256];
-
-#if LINUX_VERSION_CODE < 0x20328
-static void dummy_init (struct gendisk *crap)
-{}
-#endif
-
-static struct gendisk nftl_gendisk = {
-	major:		MAJOR_NR,
-	major_name:	"nftl",
-	minor_shift:	NFTL_PARTN_BITS,	/* Bits to shift to get real from partition */
-	max_p:		(1<<NFTL_PARTN_BITS)-1,	/* Number of partitions per real */
-#if LINUX_VERSION_CODE < 0x20328
-	max_nr:		MAX_NFTLS,      /* maximum number of real */
-	init:		dummy_init,     /* init function */
-#endif
-	part:		part_table,     /* hd struct */
-	sizes:		nftl_sizes,     /* block sizes */
-};
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,4,14)
-#define BLK_INC_USE_COUNT MOD_INC_USE_COUNT
-#define BLK_DEC_USE_COUNT MOD_DEC_USE_COUNT
-#else
-#define BLK_INC_USE_COUNT do {} while(0)
-#define BLK_DEC_USE_COUNT do {} while(0)
-#endif
-
-struct NFTLrecord *NFTLs[MAX_NFTLS];
-
-static void NFTL_setup(struct mtd_info *mtd)
+static void nftl_add_mtd(struct mtd_blktrans_ops *tr, struct mtd_info *mtd)
 {
-	int i;
 	struct NFTLrecord *nftl;
 	unsigned long temp;
-	int firstfree = -1;
 
-	DEBUG(MTD_DEBUG_LEVEL1,"NFTL_setup\n");
-
-	for (i = 0; i < MAX_NFTLS; i++) {
-		if (!NFTLs[i] && firstfree == -1)
-			firstfree = i;
-		else if (NFTLs[i] && NFTLs[i]->mtd == mtd) {
-			/* This is a Spare Media Header for an NFTL we've already found */
-			DEBUG(MTD_DEBUG_LEVEL1, "MTD already mounted as NFTL\n");
-			return;
-		}
-	}
-        if (firstfree == -1) {
-		printk(KERN_WARNING "No more NFTL slot available\n");
+	if (mtd->type != MTD_NANDFLASH)
 		return;
-        }
+	/* OK, this is moderately ugly.  But probably safe.  Alternatives? */
+	if (memcmp(mtd->name, "DiskOnChip", 10))
+		return;
+
+	if (!mtd->block_isbad) {
+		printk(KERN_ERR
+"NFTL no longer supports the old DiskOnChip drivers loaded via docprobe.\n"
+"Please use the new diskonchip driver under the NAND subsystem.\n");
+		return;
+	}
+
+	DEBUG(MTD_DEBUG_LEVEL1, "NFTL: add_mtd for %s\n", mtd->name);
 
 	nftl = kmalloc(sizeof(struct NFTLrecord), GFP_KERNEL);
+
 	if (!nftl) {
-		printk(KERN_WARNING "Out of memory for NFTL data structures\n");
+		printk(KERN_WARNING "NFTL: out of memory for data structures\n");
 		return;
 	}
+	memset(nftl, 0, sizeof(*nftl));
 
-	init_MUTEX(&nftl->mutex);
-
-        /* get physical parameters */
-	nftl->EraseSize = mtd->erasesize;
-        nftl->nb_blocks = mtd->size / mtd->erasesize;
-	nftl->mtd = mtd;
+	nftl->mbd.mtd = mtd;
+	nftl->mbd.devnum = -1;
+	nftl->mbd.blksize = 512;
+	nftl->mbd.tr = tr;
+	memcpy(&nftl->oobinfo, &mtd->oobinfo, sizeof(struct nand_oobinfo));
+	nftl->oobinfo.useecc = MTD_NANDECC_PLACEONLY;
 
         if (NFTL_mount(nftl) < 0) {
-		printk(KERN_WARNING "Could not mount NFTL device\n");
+		printk(KERN_WARNING "NFTL: could not mount device\n");
 		kfree(nftl);
 		return;
         }
 
 	/* OK, it's a new one. Set up all the data structures. */
-#ifdef PSYCHO_DEBUG
-	printk("Found new NFTL nftl%c\n", firstfree + 'a');
-#endif
 
-        /* linux stuff */
-	nftl->usecount = 0;
+	/* Calculate geometry */
 	nftl->cylinders = 1024;
 	nftl->heads = 16;
 
 	temp = nftl->cylinders * nftl->heads;
-	nftl->sectors = nftl->nr_sects / temp;
-	if (nftl->nr_sects % temp) {
+	nftl->sectors = nftl->mbd.size / temp;
+	if (nftl->mbd.size % temp) {
 		nftl->sectors++;
 		temp = nftl->cylinders * nftl->sectors;
-		nftl->heads = nftl->nr_sects / temp;
+		nftl->heads = nftl->mbd.size / temp;
 
-		if (nftl->nr_sects % temp) {
+		if (nftl->mbd.size % temp) {
 			nftl->heads++;
 			temp = nftl->heads * nftl->sectors;
-			nftl->cylinders = nftl->nr_sects / temp;
+			nftl->cylinders = nftl->mbd.size / temp;
 		}
 	}
 
-	if (nftl->nr_sects != nftl->heads * nftl->cylinders * nftl->sectors) {
-		printk(KERN_WARNING "Cannot calculate an NFTL geometry to "
-		       "match size of 0x%lx.\n", nftl->nr_sects);
-		printk(KERN_WARNING "Using C:%d H:%d S:%d (== 0x%lx sects)\n", 
-		       nftl->cylinders, nftl->heads , nftl->sectors, 
-		       (long)nftl->cylinders * (long)nftl->heads * (long)nftl->sectors );
-
-		/* Oh no we don't have nftl->nr_sects = nftl->heads * nftl->cylinders * nftl->sectors; */
+	if (nftl->mbd.size != nftl->heads * nftl->cylinders * nftl->sectors) {
+		/*
+		  Oh no we don't have 
+		   mbd.size == heads * cylinders * sectors
+		*/
+		printk(KERN_WARNING "NFTL: cannot calculate a geometry to "
+		       "match size of 0x%lx.\n", nftl->mbd.size);
+		printk(KERN_WARNING "NFTL: using C:%d H:%d S:%d "
+			"(== 0x%lx sects)\n",
+			nftl->cylinders, nftl->heads , nftl->sectors, 
+			(long)nftl->cylinders * (long)nftl->heads *
+			(long)nftl->sectors );
 	}
-	NFTLs[firstfree] = nftl;
-	/* Finally, set up the block device sizes */
-	nftl_sizes[firstfree * 16] = nftl->nr_sects;
-	//nftl_blocksizes[firstfree*16] = 512;
-	part_table[firstfree * 16].nr_sects = nftl->nr_sects;
 
-	nftl_gendisk.nr_real++;
-
-	/* partition check ... */
-#if LINUX_VERSION_CODE < 0x20328
-	resetup_one_dev(&nftl_gendisk, firstfree);
-#else
-	grok_partitions(&nftl_gendisk, firstfree, 1<<NFTL_PARTN_BITS, nftl->nr_sects);
+	if (add_mtd_blktrans_dev(&nftl->mbd)) {
+		if (nftl->ReplUnitTable)
+			kfree(nftl->ReplUnitTable);
+		if (nftl->EUNtable)
+			kfree(nftl->EUNtable);
+		kfree(nftl);
+		return;
+	}
+#ifdef PSYCHO_DEBUG
+	printk(KERN_INFO "NFTL: Found new nftl%c\n", nftl->mbd.devnum + 'a');
 #endif
 }
 
-static void NFTL_unsetup(int i)
+static void nftl_remove_dev(struct mtd_blktrans_dev *dev)
 {
-	struct NFTLrecord *nftl = NFTLs[i];
+	struct NFTLrecord *nftl = (void *)dev;
 
-	DEBUG(MTD_DEBUG_LEVEL1, "NFTL_unsetup %d\n", i);
-	
-	NFTLs[i] = NULL;
-	
+	DEBUG(MTD_DEBUG_LEVEL1, "NFTL: remove_dev (i=%d)\n", dev->devnum);
+
+	del_mtd_blktrans_dev(dev);
 	if (nftl->ReplUnitTable)
 		kfree(nftl->ReplUnitTable);
 	if (nftl->EUNtable)
 		kfree(nftl->EUNtable);
-		      
-	nftl_gendisk.nr_real--;
 	kfree(nftl);
-}
-
-/* Search the MTD device for NFTL partitions */
-static void NFTL_notify_add(struct mtd_info *mtd)
-{
-	DEBUG(MTD_DEBUG_LEVEL1, "NFTL_notify_add for %s\n", mtd->name);
-
-	if (mtd) {
-		if (!mtd->read_oob) {
-			/* If this MTD doesn't have out-of-band data,
-			   then there's no point continuing */
-			DEBUG(MTD_DEBUG_LEVEL1, "No OOB data, quitting\n");
-			return;
-		}
-		DEBUG(MTD_DEBUG_LEVEL3, "mtd->read = %p, size = %d, erasesize = %d\n", 
-		      mtd->read, mtd->size, mtd->erasesize);
-
-                NFTL_setup(mtd);
-	}
-}
-
-static void NFTL_notify_remove(struct mtd_info *mtd)
-{
-	int i;
-
-	for (i = 0; i < MAX_NFTLS; i++) {
-		if (NFTLs[i] && NFTLs[i]->mtd == mtd)
-			NFTL_unsetup(i);
-	}
 }
 
 #ifdef CONFIG_NFTL_RW
@@ -305,7 +221,7 @@ static u16 NFTL_foldchain (struct NFTLrecord *nftl, unsigned thisVUC, unsigned p
 
 		targetEUN = thisEUN;
 		for (block = 0; block < nftl->EraseSize / 512; block ++) {
-			MTD_READOOB(nftl->mtd,
+			MTD_READOOB(nftl->mbd.mtd,
 				    (thisEUN * nftl->EraseSize) + (block * 512),
 				    16 , &retlen, (char *)&oob);
 			if (block == 2) {
@@ -422,7 +338,7 @@ static u16 NFTL_foldchain (struct NFTLrecord *nftl, unsigned thisVUC, unsigned p
                chain by selecting the longer one */
             oob.u.c.FoldMark = oob.u.c.FoldMark1 = cpu_to_le16(FOLD_MARK_IN_PROGRESS);
             oob.u.c.unused = 0xffffffff;
-            MTD_WRITEOOB(nftl->mtd, (nftl->EraseSize * targetEUN) + 2 * 512 + 8, 
+            MTD_WRITEOOB(nftl->mbd.mtd, (nftl->EraseSize * targetEUN) + 2 * 512 + 8, 
                          8, &retlen, (char *)&oob.u);
         }
 
@@ -446,17 +362,19 @@ static u16 NFTL_foldchain (struct NFTLrecord *nftl, unsigned thisVUC, unsigned p
                 if (BlockMap[block] == BLOCK_NIL)
                         continue;
                 
-                ret = MTD_READECC(nftl->mtd, (nftl->EraseSize * BlockMap[block])
-                                  + (block * 512), 512, &retlen, movebuf, (char *)&oob); 
+                ret = MTD_READ(nftl->mbd.mtd, (nftl->EraseSize * BlockMap[block]) + (block * 512),
+				  512, &retlen, movebuf); 
                 if (ret < 0) {
-                    ret = MTD_READECC(nftl->mtd, (nftl->EraseSize * BlockMap[block])
+                    ret = MTD_READ(nftl->mbd.mtd, (nftl->EraseSize * BlockMap[block])
                                       + (block * 512), 512, &retlen,
-                                      movebuf, (char *)&oob); 
+                                      movebuf); 
                     if (ret != -EIO) 
                         printk("Error went away on retry.\n");
                 }
-                MTD_WRITEECC(nftl->mtd, (nftl->EraseSize * targetEUN) + (block * 512),
-                             512, &retlen, movebuf, (char *)&oob);
+		memset(&oob, 0xff, sizeof(struct nftl_oob));
+		oob.b.Status = oob.b.Status1 = SECTOR_USED;
+                MTD_WRITEECC(nftl->mbd.mtd, (nftl->EraseSize * targetEUN) + (block * 512),
+                             512, &retlen, movebuf, (char *)&oob, &nftl->oobinfo);
 	}
         
         /* add the header so that it is now a valid chain */
@@ -464,7 +382,7 @@ static u16 NFTL_foldchain (struct NFTLrecord *nftl, unsigned thisVUC, unsigned p
                 = cpu_to_le16(thisVUC);
         oob.u.a.ReplUnitNum = oob.u.a.SpareReplUnitNum = 0xffff;
         
-        MTD_WRITEOOB(nftl->mtd, (nftl->EraseSize * targetEUN) + 8, 
+        MTD_WRITEOOB(nftl->mbd.mtd, (nftl->EraseSize * targetEUN) + 8, 
                      8, &retlen, (char *)&oob.u);
 
 	/* OK. We've moved the whole lot into the new block. Now we have to free the original blocks. */
@@ -486,7 +404,6 @@ static u16 NFTL_foldchain (struct NFTLrecord *nftl, unsigned thisVUC, unsigned p
 
                 if (NFTL_formatblock(nftl, thisEUN) < 0) {
 			/* could not erase : mark block as reserved
-			 * FixMe: Update Bad Unit Table on disk
 			 */
 			nftl->ReplUnitTable[thisEUN] = BLOCK_RESERVED;
                 } else {
@@ -584,7 +501,7 @@ static inline u16 NFTL_findwriteunit(struct NFTLrecord *nftl, unsigned block)
 
 			lastEUN = writeEUN;
 
-			MTD_READOOB(nftl->mtd, (writeEUN * nftl->EraseSize) + blockofs,
+			MTD_READOOB(nftl->mbd.mtd, (writeEUN * nftl->EraseSize) + blockofs,
 				    8, &retlen, (char *)&bci);
 			
 			DEBUG(MTD_DEBUG_LEVEL2, "Status of block %d in EUN %d is %x\n",
@@ -672,12 +589,12 @@ static inline u16 NFTL_findwriteunit(struct NFTLrecord *nftl, unsigned block)
 		nftl->ReplUnitTable[writeEUN] = BLOCK_NIL;
 
 		/* ... and on the flash itself */
-		MTD_READOOB(nftl->mtd, writeEUN * nftl->EraseSize + 8, 8,
+		MTD_READOOB(nftl->mbd.mtd, writeEUN * nftl->EraseSize + 8, 8,
 			    &retlen, (char *)&oob.u);
 
 		oob.u.a.VirtUnitNum = oob.u.a.SpareVirtUnitNum = cpu_to_le16(thisVUC);
 
-		MTD_WRITEOOB(nftl->mtd, writeEUN * nftl->EraseSize + 8, 8,
+		MTD_WRITEOOB(nftl->mbd.mtd, writeEUN * nftl->EraseSize + 8, 8,
                              &retlen, (char *)&oob.u);
 
                 /* we link the new block to the chain only after the
@@ -687,13 +604,13 @@ static inline u16 NFTL_findwriteunit(struct NFTLrecord *nftl, unsigned block)
 			/* Both in our cache... */
 			nftl->ReplUnitTable[lastEUN] = writeEUN;
 			/* ... and on the flash itself */
-			MTD_READOOB(nftl->mtd, (lastEUN * nftl->EraseSize) + 8,
+			MTD_READOOB(nftl->mbd.mtd, (lastEUN * nftl->EraseSize) + 8,
 				    8, &retlen, (char *)&oob.u);
 
 			oob.u.a.ReplUnitNum = oob.u.a.SpareReplUnitNum
 				= cpu_to_le16(writeEUN);
 
-			MTD_WRITEOOB(nftl->mtd, (lastEUN * nftl->EraseSize) + 8,
+			MTD_WRITEOOB(nftl->mbd.mtd, (lastEUN * nftl->EraseSize) + 8,
 				     8, &retlen, (char *)&oob.u);
 		}
 
@@ -706,12 +623,14 @@ static inline u16 NFTL_findwriteunit(struct NFTLrecord *nftl, unsigned block)
 	return 0xffff;
 }
 
-static int NFTL_writeblock(struct NFTLrecord *nftl, unsigned block, char *buffer)
+static int nftl_writeblock(struct mtd_blktrans_dev *mbd, unsigned long block,
+			   char *buffer)
 {
+	struct NFTLrecord *nftl = (void *)mbd;
 	u16 writeEUN;
 	unsigned long blockofs = (block * 512) & (nftl->EraseSize - 1);
 	size_t retlen;
-	u8 eccbuf[6];
+	struct nftl_oob oob;
 
 	writeEUN = NFTL_findwriteunit(nftl, block);
 
@@ -722,16 +641,20 @@ static int NFTL_writeblock(struct NFTLrecord *nftl, unsigned block, char *buffer
 		return 1;
 	}
 
-	MTD_WRITEECC(nftl->mtd, (writeEUN * nftl->EraseSize) + blockofs,
-		     512, &retlen, (char *)buffer, (char *)eccbuf);
-        /* no need to write SECTOR_USED flags since they are written in mtd_writeecc */
+	memset(&oob, 0xff, sizeof(struct nftl_oob));
+	oob.b.Status = oob.b.Status1 = SECTOR_USED;
+	MTD_WRITEECC(nftl->mbd.mtd, (writeEUN * nftl->EraseSize) + blockofs,
+		     512, &retlen, (char *)buffer, (char *)&oob, &nftl->oobinfo);
+        /* need to write SECTOR_USED flags since they are not written in mtd_writeecc */
 
 	return 0;
 }
 #endif /* CONFIG_NFTL_RW */
 
-static int NFTL_readblock(struct NFTLrecord *nftl, unsigned block, char *buffer)
+static int nftl_readblock(struct mtd_blktrans_dev *mbd, unsigned long block,
+			  char *buffer)
 {
+	struct NFTLrecord *nftl = (void *)mbd;
 	u16 lastgoodEUN;
 	u16 thisEUN = nftl->EUNtable[block / (nftl->EraseSize / 512)];
 	unsigned long blockofs = (block * 512) & (nftl->EraseSize - 1);
@@ -744,7 +667,7 @@ static int NFTL_readblock(struct NFTLrecord *nftl, unsigned block, char *buffer)
 
         if (thisEUN != BLOCK_NIL) {
 		while (thisEUN < nftl->nb_blocks) {
-			if (MTD_READOOB(nftl->mtd, (thisEUN * nftl->EraseSize) + blockofs,
+			if (MTD_READOOB(nftl->mbd.mtd, (thisEUN * nftl->EraseSize) + blockofs,
 					8, &retlen, (char *)&bci) < 0)
 				status = SECTOR_IGNORE;
 			else
@@ -763,13 +686,13 @@ static int NFTL_readblock(struct NFTLrecord *nftl, unsigned block, char *buffer)
 			case SECTOR_IGNORE:
 				break;
 			default:
-				printk("Unknown status for block %d in EUN %d: %x\n",
+				printk("Unknown status for block %ld in EUN %d: %x\n",
 				       block, thisEUN, status);
 				break;
 			}
 
 			if (!silly--) {
-				printk(KERN_WARNING "Infinite loop in Virtual Unit Chain 0x%x\n",
+				printk(KERN_WARNING "Infinite loop in Virtual Unit Chain 0x%lx\n",
 				       block / (nftl->EraseSize / 512));
 				return 1;
 			}
@@ -784,265 +707,22 @@ static int NFTL_readblock(struct NFTLrecord *nftl, unsigned block, char *buffer)
 	} else {
 		loff_t ptr = (lastgoodEUN * nftl->EraseSize) + blockofs;
 		size_t retlen;
-		u_char eccbuf[6];
-		if (MTD_READECC(nftl->mtd, ptr, 512, &retlen, buffer, eccbuf))
+		if (MTD_READ(nftl->mbd.mtd, ptr, 512, &retlen, buffer))
 			return -EIO;
 	}
 	return 0;
 }
 
-static int nftl_ioctl(struct inode * inode, struct file * file, unsigned int cmd, unsigned long arg)
+static int nftl_getgeo(struct mtd_blktrans_dev *dev,  struct hd_geometry *geo)
 {
-	struct NFTLrecord *nftl;
-	int p;
+	struct NFTLrecord *nftl = (void *)dev;
 
-	nftl = NFTLs[MINOR(inode->i_rdev) >> NFTL_PARTN_BITS];
-
-	if (!nftl) return -EINVAL;
-
-	switch (cmd) {
-	case HDIO_GETGEO: {
-		struct hd_geometry g;
-
-		g.heads = nftl->heads;
-		g.sectors = nftl->sectors;
-		g.cylinders = nftl->cylinders;
-		g.start = part_table[MINOR(inode->i_rdev)].start_sect;
-		return copy_to_user((void *)arg, &g, sizeof g) ? -EFAULT : 0;
-	}
-	case BLKGETSIZE:   /* Return device size */
-		return put_user(part_table[MINOR(inode->i_rdev)].nr_sects,
-                                (unsigned long *) arg);
-
-#ifdef BLKGETSIZE64
-	case BLKGETSIZE64:
-		return put_user((u64)part_table[MINOR(inode->i_rdev)].nr_sects << 9,
-                                (u64 *)arg);
-#endif
-
-	case BLKFLSBUF:
-		if (!capable(CAP_SYS_ADMIN)) return -EACCES;
-		fsync_dev(inode->i_rdev);
-		invalidate_buffers(inode->i_rdev);
-		if (nftl->mtd->sync)
-			nftl->mtd->sync(nftl->mtd);
-		return 0;
-
-	case BLKRRPART:
-		if (!capable(CAP_SYS_ADMIN)) return -EACCES;
-		if (nftl->usecount > 1) return -EBUSY;
-		/* 
-		 * We have to flush all buffers and invalidate caches,
-		 * or we won't be able to re-use the partitions,
-		 * if there was a change and we don't want to reboot
-		 */
-		p = (1<<NFTL_PARTN_BITS) - 1;
-		while (p-- > 0) {
-			kdev_t devp = MKDEV(MAJOR(inode->i_dev), MINOR(inode->i_dev)+p);
-			if (part_table[p].nr_sects > 0)
-				invalidate_device (devp, 1);
-
-			part_table[MINOR(inode->i_dev)+p].start_sect = 0;
-			part_table[MINOR(inode->i_dev)+p].nr_sects = 0;
-		}
-		
-#if LINUX_VERSION_CODE < 0x20328
-		resetup_one_dev(&nftl_gendisk, MINOR(inode->i_rdev) >> NFTL_PARTN_BITS);
-#else
-		grok_partitions(&nftl_gendisk, MINOR(inode->i_rdev) >> NFTL_PARTN_BITS,
-				1<<NFTL_PARTN_BITS, nftl->nr_sects);
-#endif
-		return 0;
-
-#if (LINUX_VERSION_CODE < 0x20303)		
-	RO_IOCTLS(inode->i_rdev, arg);  /* ref. linux/blk.h */
-#else
-	case BLKROSET:
-	case BLKROGET:
-	case BLKSSZGET:
-		return blk_ioctl(inode->i_rdev, cmd, arg);
-#endif
-
-	default:
-		return -EINVAL;
-	}
-}
-
-void nftl_request(RQFUNC_ARG)
-{
-	unsigned int dev, block, nsect;
-	struct NFTLrecord *nftl;
-	char *buffer;
-	struct request *req;
-	int res;
-
-	while (1) {
-		INIT_REQUEST;	/* blk.h */
-		req = CURRENT;
-		
-		/* We can do this because the generic code knows not to
-		   touch the request at the head of the queue */
-		spin_unlock_irq(&io_request_lock);
-
-		DEBUG(MTD_DEBUG_LEVEL2, "NFTL_request\n");
-		DEBUG(MTD_DEBUG_LEVEL3, "NFTL %s request, from sector 0x%04lx for 0x%04lx sectors\n",
-		      (req->cmd == READ) ? "Read " : "Write",
-		      req->sector, req->current_nr_sectors);
-
-		dev = MINOR(req->rq_dev);
-		block = req->sector;
-		nsect = req->current_nr_sectors;
-		buffer = req->buffer;
-		res = 1; /* succeed */
-
-		if (dev >= MAX_NFTLS * (1<<NFTL_PARTN_BITS)) {
-			/* there is no such partition */
-			printk("nftl: bad minor number: device = %s\n",
-			       kdevname(req->rq_dev));
-			res = 0; /* fail */
-			goto repeat;
-		}
-		
-		nftl = NFTLs[dev / (1<<NFTL_PARTN_BITS)];
-		DEBUG(MTD_DEBUG_LEVEL3, "Waiting for mutex\n");
-		down(&nftl->mutex);
-		DEBUG(MTD_DEBUG_LEVEL3, "Got mutex\n");
-
-		if (block + nsect > part_table[dev].nr_sects) {
-			/* access past the end of device */
-			printk("nftl%c%d: bad access: block = %d, count = %d\n",
-			       (MINOR(req->rq_dev)>>6)+'a', dev & 0xf, block, nsect);
-			up(&nftl->mutex);
-			res = 0; /* fail */
-			goto repeat;
-		}
-		
-		block += part_table[dev].start_sect;
-		
-		if (req->cmd == READ) {
-			DEBUG(MTD_DEBUG_LEVEL2, "NFTL read request of 0x%x sectors @ %x "
-			      "(req->nr_sectors == %lx)\n", nsect, block, req->nr_sectors);
-	
-			for ( ; nsect > 0; nsect-- , block++, buffer += 512) {
-				/* Read a single sector to req->buffer + (512 * i) */
-				if (NFTL_readblock(nftl, block, buffer)) {
-					DEBUG(MTD_DEBUG_LEVEL2, "NFTL read request failed\n");
-					up(&nftl->mutex);
-					res = 0;
-					goto repeat;
-				}
-			}
-
-			DEBUG(MTD_DEBUG_LEVEL2,"NFTL read request completed OK\n");
-			up(&nftl->mutex);
-			goto repeat;
-		} else if (req->cmd == WRITE) {
-			DEBUG(MTD_DEBUG_LEVEL2, "NFTL write request of 0x%x sectors @ %x "
-			      "(req->nr_sectors == %lx)\n", nsect, block,
-			      req->nr_sectors);
-#ifdef CONFIG_NFTL_RW
-			for ( ; nsect > 0; nsect-- , block++, buffer += 512) {
-				/* Read a single sector to req->buffer + (512 * i) */
-				if (NFTL_writeblock(nftl, block, buffer)) {
-					DEBUG(MTD_DEBUG_LEVEL1,"NFTL write request failed\n");
-					up(&nftl->mutex);
-					res = 0;
-					goto repeat;
-				}
-			}
-			DEBUG(MTD_DEBUG_LEVEL2,"NFTL write request completed OK\n");
-#else
-			res = 0; /* Writes always fail */
-#endif /* CONFIG_NFTL_RW */
-			up(&nftl->mutex);
-			goto repeat;
-		} else {
-			DEBUG(MTD_DEBUG_LEVEL0, "NFTL unknown request\n");
-			up(&nftl->mutex);
-			res = 0;
-			goto repeat;
-		}
-	repeat: 
-		DEBUG(MTD_DEBUG_LEVEL3, "end_request(%d)\n", res);
-		spin_lock_irq(&io_request_lock);
-		end_request(res);
-	}
-}
-
-static int nftl_open(struct inode *ip, struct file *fp)
-{
-	int nftlnum = MINOR(ip->i_rdev) >> NFTL_PARTN_BITS;
-	struct NFTLrecord *thisNFTL;
-	thisNFTL = NFTLs[nftlnum];
-
-	DEBUG(MTD_DEBUG_LEVEL2,"NFTL_open\n");
-
-#ifdef CONFIG_KMOD
-	if (!thisNFTL && nftlnum == 0) {
-		request_module("docprobe");
-		thisNFTL = NFTLs[nftlnum];
-	}
-#endif
-	if (!thisNFTL) {
-		DEBUG(MTD_DEBUG_LEVEL2,"ENODEV: thisNFTL = %d, minor = %d, ip = %p, fp = %p\n", 
-		      nftlnum, ip->i_rdev, ip, fp);
-		return -ENODEV;
-	}
-
-#ifndef CONFIG_NFTL_RW
-	if (fp->f_mode & FMODE_WRITE)
-		return -EROFS;
-#endif /* !CONFIG_NFTL_RW */
-
-	thisNFTL->usecount++;
-	BLK_INC_USE_COUNT;
-	if (!get_mtd_device(thisNFTL->mtd, -1)) {
-		BLK_DEC_USE_COUNT;
-		return -ENXIO;
-	}
+	geo->heads = nftl->heads;
+	geo->sectors = nftl->sectors;
+	geo->cylinders = nftl->cylinders;
 
 	return 0;
 }
-
-static int nftl_release(struct inode *inode, struct file *fp)
-{
-	struct NFTLrecord *thisNFTL;
-
-	thisNFTL = NFTLs[MINOR(inode->i_rdev) / 16];
-
-	DEBUG(MTD_DEBUG_LEVEL2, "NFTL_release\n");
-
-	if (thisNFTL->mtd->sync)
-		thisNFTL->mtd->sync(thisNFTL->mtd);
-	thisNFTL->usecount--;
-	BLK_DEC_USE_COUNT;
-
-	put_mtd_device(thisNFTL->mtd);
-
-	return 0;
-}
-#if LINUX_VERSION_CODE < 0x20326
-static struct file_operations nftl_fops = {
-	read:		block_read,
-	write:		block_write,
-	ioctl:		nftl_ioctl,
-	open:		nftl_open,
-	release:	nftl_release,
-	fsync:		block_fsync,
-};
-#else
-static struct block_device_operations nftl_fops = 
-{
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,14)
-	owner:		THIS_MODULE,
-#endif
-	open:		nftl_open,
-	release:	nftl_release,
-	ioctl: 		nftl_ioctl
-};
-#endif
-
-
 
 /****************************************************************************
  *
@@ -1050,49 +730,33 @@ static struct block_device_operations nftl_fops =
  *
  ****************************************************************************/
 
-static struct mtd_notifier nftl_notifier = {
-	add:	NFTL_notify_add,
-	remove:	NFTL_notify_remove
+
+struct mtd_blktrans_ops nftl_tr = {
+	.name		= "nftl",
+	.major		= NFTL_MAJOR,
+	.part_bits	= NFTL_PARTN_BITS,
+	.getgeo		= nftl_getgeo,
+	.readsect	= nftl_readblock,
+#ifdef CONFIG_NFTL_RW
+	.writesect	= nftl_writeblock,
+#endif
+	.add_mtd	= nftl_add_mtd,
+	.remove_dev	= nftl_remove_dev,
+	.owner		= THIS_MODULE,
 };
 
 extern char nftlmountrev[];
 
 int __init init_nftl(void)
 {
-	int i;
+	printk(KERN_INFO "NFTL driver: nftlcore.c $Revision: 1.96 $, nftlmount.c %s\n", nftlmountrev);
 
-#ifdef PRERELEASE 
-	printk(KERN_INFO "NFTL driver: nftlcore.c $Revision: 1.85 $, nftlmount.c %s\n", nftlmountrev);
-#endif
-
-	if (register_blkdev(MAJOR_NR, "nftl", &nftl_fops)){
-		printk("unable to register NFTL block device on major %d\n", MAJOR_NR);
-		return -EBUSY;
-	} else {
-		blk_init_queue(BLK_DEFAULT_QUEUE(MAJOR_NR), &nftl_request);
-
-		/* set block size to 1kB each */
-		for (i = 0; i < 256; i++) {
-			nftl_blocksizes[i] = 1024;
-		}
-		blksize_size[MAJOR_NR] = nftl_blocksizes;
-
-		add_gendisk(&nftl_gendisk);
-	}
-	
-	register_mtd_user(&nftl_notifier);
-
-	return 0;
+	return register_mtd_blktrans(&nftl_tr);
 }
 
 static void __exit cleanup_nftl(void)
 {
-  	unregister_mtd_user(&nftl_notifier);
-  	unregister_blkdev(MAJOR_NR, "nftl");
-  	
-  	blk_cleanup_queue(BLK_DEFAULT_QUEUE(MAJOR_NR));
-
-	del_gendisk(&nftl_gendisk);
+	deregister_mtd_blktrans(&nftl_tr);
 }
 
 module_init(init_nftl);

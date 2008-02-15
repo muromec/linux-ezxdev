@@ -1,0 +1,15 @@
+#
+# Generic Serial Function Driver
+#
+# Copyright (C) 2001 Lineo, Inc.
+# Copyright (C) 2001 Hewlett-Packard Co.
+
+mainmenu_option next_comment
+comment "EP0 test Function"
+
+dep_tristate '  Simple EP0 test Function' CONFIG_USBD_TEST $CONFIG_USBD $CONFIG_USBD_EP0_SUPPORT
+if [ "$CONFIG_USBD_TEST" = "y" -o "$CONFIG_USBD_TEST" = "m" ]; then
+   hex     ' Overide VendorID (hex value)' CONFIG_USBD_TEST_VENDORID "0000"
+   hex     ' Overide ProductID (hex value)' CONFIG_USBD_TEST_PRODUCTID "0000"
+fi
+endmenu

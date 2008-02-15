@@ -3,6 +3,8 @@
  *
  *  Copyright (C) 1991, 1992  Linus Torvalds
  *  Copyright (C) 1997 David S. Miller (davem@caip.rutgers.edu)
+ *  
+ *  2005-Apr-04 Motorola  Add security patch  
  */
 
 #include <linux/string.h>
@@ -12,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/smp_lock.h>
 #include <linux/iobuf.h>
+#include <linux/security.h>
 
 /* sysctl tunables... */
 struct files_stat_struct files_stat = {0, 0, NR_FILE};
@@ -42,6 +45,12 @@ struct file * get_empty_filp(void)
 		files_stat.nr_free_files--;
 	new_one:
 		memset(f, 0, sizeof(*f));
+		if (security_file_alloc(f)) {
+			list_add(&f->f_list, &free_list);
+			files_stat.nr_free_files++;
+			file_list_unlock();
+			return NULL;
+		}
 		atomic_set(&f->f_count,1);
 		f->f_version = ++event;
 		f->f_uid = current->fsuid;
@@ -79,22 +88,41 @@ struct file * get_empty_filp(void)
 
 /*
  * Clear and initialize a (private) struct file for the given dentry,
- * and call the open function (if any).  The caller must verify that
- * inode->i_fop is not NULL.
+ * allocate the security structure, and call the open function (if any).  
+ * The file should be released using close_private_file.
  */
-int init_private_file(struct file *filp, struct dentry *dentry, int mode)
+int open_private_file(struct file *filp, struct dentry *dentry, int flags)
 {
+	int error;
 	memset(filp, 0, sizeof(*filp));
-	filp->f_mode   = mode;
+ 	filp->f_flags  = flags;
+ 	filp->f_mode   = (flags+1) & O_ACCMODE;
 	atomic_set(&filp->f_count, 1);
 	filp->f_dentry = dentry;
 	filp->f_uid    = current->fsuid;
 	filp->f_gid    = current->fsgid;
 	filp->f_op     = dentry->d_inode->i_fop;
-	if (filp->f_op->open)
-		return filp->f_op->open(dentry->d_inode, filp);
-	else
-		return 0;
+	error = security_file_alloc(filp);
+	if (!error)
+		if (filp->f_op && filp->f_op->open) {
+			error = filp->f_op->open(dentry->d_inode, filp);
+			if (error)
+				security_file_free(filp);
+		}
+	return error;
+}
+
+/*
+ * Release a private file by calling the release function (if any) and
+ * freeing the security structure.
+ */
+void close_private_file(struct file *file)
+{
+	struct inode * inode = file->f_dentry->d_inode;
+
+	if (file->f_op && file->f_op->release)
+		file->f_op->release(inode, file);
+	security_file_free(file);
 }
 
 void fput(struct file * file)
@@ -111,6 +139,8 @@ void fput(struct file * file)
 
 		if (file->f_op && file->f_op->release)
 			file->f_op->release(inode, file);
+		security_file_free (file);
+
 		fops_put(file->f_op);
 		if (file->f_mode & FMODE_WRITE)
 			put_write_access(inode);
@@ -144,6 +174,7 @@ struct file * fget(unsigned int fd)
 void put_filp(struct file *file)
 {
 	if(atomic_dec_and_test(&file->f_count)) {
+		security_file_free(file);
 		file_list_lock();
 		list_del(&file->f_list);
 		list_add(&file->f_list, &free_list);

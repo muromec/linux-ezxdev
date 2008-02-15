@@ -10,7 +10,7 @@
 #include <linux/config.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
-
+#include <linux/interrupt.h>
 #include <asm/pgtable.h>
 #include <asm/uaccess.h>
 
@@ -38,6 +38,16 @@ DEFN("TSK_USED_MATH",		OFF_TSK(used_math));
 
 DEFN("TSS_SAVE",		OFF_TSK(thread.save));
 DEFN("TSS_FPESAVE",		OFF_TSK(thread.fpstate.soft.save));
+
+#ifdef CONFIG_PREEMPT
+DEFN("TSK_PREEMPT",		OFF_TSK(preempt_count));
+DEFN("IRQSTAT_BH_COUNT",	(unsigned long)&(((irq_cpustat_t *)0)->__local_bh_count));
+#endif
+
+#ifdef CONFIG_XSCALE_WMMX
+DEFN("TSS_WMMXSAVE",		OFF_TSK(thread.fpstate.concan.save));
+DEFN("TSS_WANT_WMMX",		OFF_TSK(thread.want_wmmx));
+#endif
 
 #ifdef CONFIG_CPU_32
 DEFN("TSS_DOMAIN",		OFF_TSK(thread.domain));

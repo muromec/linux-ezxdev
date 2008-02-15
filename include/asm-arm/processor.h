@@ -1,7 +1,7 @@
 /*
  *  linux/include/asm-arm/processor.h
  *
- *  Copyright (C) 1995 Russell King
+ *  Copyright (C) 1995-2002 Russell King
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -10,6 +10,8 @@
 
 #ifndef __ASM_ARM_PROCESSOR_H
 #define __ASM_ARM_PROCESSOR_H
+
+#include <linux/config.h>
 
 /*
  * Default implementation of macro that returns current
@@ -27,9 +29,20 @@ struct fp_soft_struct {
 	unsigned int save[FP_SIZE];		/* undefined information */
 };
 
+#ifdef CONFIG_XSCALE_WMMX
+#define NR_wRREGS	16	/* Sixteen 64-bits registers in CP0 */
+#define NR_wCREGS	6	/* Control and status registers in CP1 */
+struct concan_struct {
+	unsigned int save[ 2 * NR_wRREGS + NR_wCREGS + 1];
+};
+#endif
+
 union fp_state {
 	struct fp_hard_struct	hard;
 	struct fp_soft_struct	soft;
+#ifdef CONFIG_XSCALE_WMMX
+	struct concan_struct	concan;
+#endif
 };
 
 typedef unsigned long mm_segment_t;		/* domain register	*/
@@ -44,13 +57,21 @@ typedef unsigned long mm_segment_t;		/* domain register	*/
 #include <asm/ptrace.h>
 #include <asm/arch/memory.h>
 #include <asm/proc/processor.h>
+#include <asm/types.h>
+
+union debug_insn {
+	u32	arm;
+	u16	thumb;
+};
+
+struct debug_entry {
+	u32			address;
+	union debug_insn	insn;
+};
 
 struct debug_info {
-	int				nsaved;
-	struct {
-		unsigned long		address;
-		unsigned long		insn;
-	} bp[2];
+	int			nsaved;
+	struct debug_entry	bp[2];
 };
 
 struct thread_struct {
@@ -65,6 +86,9 @@ struct thread_struct {
 	struct debug_info		debug;
 							/* context info	  */
 	struct context_save_struct	*save;
+#ifdef CONFIG_XSCALE_WMMX
+	unsigned int want_wmmx;
+#endif
 	EXTRA_THREAD_STRUCT
 };
 
@@ -81,7 +105,7 @@ static inline unsigned long thread_saved_pc(struct thread_struct *t)
 	return t->save ? pc_pointer(t->save->pc) : 0;
 }
 
-static inline unsigned long get_css_fp(struct thread_struct *t)
+static inline unsigned long thread_saved_fp(struct thread_struct *t)
 {
 	return t->save ? t->save->fp : 0;
 }
@@ -112,7 +136,7 @@ extern void __free_task_struct(struct task_struct *);
 #define init_task	(init_task_union.task)
 #define init_stack	(init_task_union.stack)
 
-#define cpu_relax()	do { } while (0)
+#define cpu_relax()	barrier()
 
 /*
  * Create a new kernel thread

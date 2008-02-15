@@ -9,13 +9,13 @@ comment 'Library routines'
 #
 if [ "$CONFIG_CRAMFS" = "y" -o \
      "$CONFIG_PPP_DEFLATE" = "y" -o \
-     "$CONFIG_JFFS2_FS" = "y" -o \
+     "$CONFIG_JFFS2_ZLIB" = "y" -o \
      "$CONFIG_ZISOFS_FS" = "y" ]; then
    define_tristate CONFIG_ZLIB_INFLATE y
 else
   if [ "$CONFIG_CRAMFS" = "m" -o \
        "$CONFIG_PPP_DEFLATE" = "m" -o \
-       "$CONFIG_JFFS2_FS" = "m" -o \
+       "$CONFIG_JFFS2_ZLIB" = "m" -o \
        "$CONFIG_ZISOFS_FS" = "m" ]; then
      define_tristate CONFIG_ZLIB_INFLATE m
   else
@@ -24,11 +24,11 @@ else
 fi
 
 if [ "$CONFIG_PPP_DEFLATE" = "y" -o \
-     "$CONFIG_JFFS2_FS" = "y" ]; then
+     "$CONFIG_JFFS2_ZLIB" = "y" ]; then
    define_tristate CONFIG_ZLIB_DEFLATE y
 else
   if [ "$CONFIG_PPP_DEFLATE" = "m" -o \
-       "$CONFIG_JFFS2_FS" = "m" ]; then
+       "$CONFIG_JFFS2_ZLIB" = "m" ]; then
      define_tristate CONFIG_ZLIB_DEFLATE m
   else
      tristate 'zlib compression support' CONFIG_ZLIB_DEFLATE

@@ -215,12 +215,29 @@ MODINCL = $(TOPDIR)/include/linux/modules
 #
 # Added the SMP separator to stop module accidents between uniprocessor
 # and SMP Intel boxes - AC - from bits by Michael Chastain
+# Added separator for different PAGE_OFFSET memory models - Ingo.
 #
 
 ifdef CONFIG_SMP
 	genksyms_smp_prefix := -p smp_
 else
 	genksyms_smp_prefix := 
+endif
+
+ifdef CONFIG_2GB
+ifdef CONFIG_SMP
+	genksyms_smp_prefix := -p smp_2gig_
+else
+	genksyms_smp_prefix := -p 2gig_
+endif
+endif
+
+ifdef CONFIG_3GB
+ifdef CONFIG_SMP
+	genksyms_smp_prefix := -p smp_3gig_
+else
+	genksyms_smp_prefix := -p 3gig_
+endif
 endif
 
 $(MODINCL)/%.ver: %.c

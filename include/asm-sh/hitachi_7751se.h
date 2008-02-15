@@ -31,8 +31,8 @@
 #define PA_EXT5_SIZE	0x04000000
 #define PA_PCIC		0x18000000	/* MR-SHPC-01 PCMCIA */
 
-#define PA_DIPSW0	0xb9000000	/* Dip switch 5,6 */
-#define PA_DIPSW1	0xb9000002	/* Dip switch 7,8 */
+#define PA_DIPSW0	0xb9000000	/* Dip switch 6,7 */
+#define PA_DIPSW1	0xb9000002	/* Dip switch 8,9 */
 #define PA_LED		0xba000000	/* LED */
 #define	PA_BCR		0xbb000000	/* FPGA on the MS7751SE01 */
 
@@ -63,6 +63,6 @@
 #define BCR_ILCRF	(PA_BCR + 10)
 #define BCR_ILCRG	(PA_BCR + 12)
 
-#define IRQ_79C973	13
+#define IRQ_79C973	7
 
 #endif  /* __ASM_SH_HITACHI_7751SE_H */

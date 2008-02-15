@@ -1,6 +1,8 @@
 /*
  *  linux/drivers/video/fbcon.c -- Low level frame buffer based console driver
  *
+ * 	Copyright (C) 2004-2005 - Motorola
+ *
  *	Copyright (C) 1995 Geert Uytterhoeven
  *
  *
@@ -54,6 +56,13 @@
  *  This file is subject to the terms and conditions of the GNU General Public
  *  License.  See the file COPYING in the main directory of this archive for
  *  more details.
+ *
+ * 2004/06/28  Susan
+ *      - Show MOTO logo in kernel;
+ * 2005/12/12  Wang limei
+ *	 - Add power cut feature, no logo showing in powercut case;
+ *	 - Support logo is showed by MBM instead of kernel, it is configurable;
+ *      - Add interface to show kernel panic blue screen;
  */
 
 #undef FBCONDEBUG
@@ -75,6 +84,7 @@
 #include <linux/selection.h>
 #include <linux/smp.h>
 #include <linux/init.h>
+#include <linux/vmalloc.h>
 #include <linux/pm.h>
 
 #include <asm/irq.h>
@@ -97,8 +107,13 @@
 #ifdef CONFIG_FBCON_VGA_PLANES
 #include <asm/io.h>
 #endif
+#ifndef CONFIG_MOT_LOGO
+#define CONFIG_MOT_LOGO
+#endif
+#ifndef CONFIG_MOT_LOGO
 #define INCLUDE_LINUX_LOGO_DATA
 #include <asm/linux_logo.h>
+#endif
 
 #include <video/fbcon.h>
 #include <video/fbcon-mac.h>	/* for 6x11 font on mac */
@@ -110,8 +125,47 @@
 #  define DPRINTK(fmt, args...)
 #endif
 
-#define LOGO_H			80
-#define LOGO_W			80
+
+#ifdef CONFIG_MOT_LOGO
+#define LOGO_H			320 //80 for default logo
+#define LOGO_W			240 //80 for default logo
+#define FLASH_ADDR		0x0
+#define FLASH_SIZE		32*1024*1024
+#define FLASH_BLOCK_SIZE	0x20000
+
+/* Susan -- since barbados, logo source image file is always 24bpp with 3 bytes */
+#ifdef CONFIG_ARCH_EZXBASE
+
+#ifdef CONFIG_ARCH_EZX_HAINAN
+
+#define MOT_LOGO_LINE		LOGO_W*3
+#define IMAGE_SIZE		LOGO_H*MOT_LOGO_LINE
+#define FILE_SIZE		IMAGE_SIZE+0x100
+#define LOGO_ADDR               0x18E0800
+
+#else
+
+#define MOT_LOGO_LINE		LOGO_W*3
+#define IMAGE_SIZE		LOGO_H*MOT_LOGO_LINE
+#define FILE_SIZE		IMAGE_SIZE+0x100
+#define LOGO_ADDR               0x1CE0800
+
+#endif
+#else  //CONFIG_ARCH_EZXBASE
+
+#define IMAGE_SIZE		LOGO_H*LOGO_W*2
+#define MOT_LOGO_LINE		LOGO_W*2
+#define FILE_SIZE		LOGO_H*LOGO_W*2+0x100
+
+#define LOGO_ADDR               0x1FC0000
+
+#endif //CONFIG_ARCH_EZXBASE
+
+#else  //CONFIG_MOT_LOGO
+#define LOGO_H                  80
+#define LOGO_W                  80
+#endif  //CONFIG_MOT_LOGO
+
 #define LOGO_LINE	(LOGO_W/8)
 
 struct display fb_display[MAX_NR_CONSOLES];
@@ -143,6 +197,41 @@ static int pm_fbcon_request(struct pm_dev *dev, pm_request_t rqst, void *data);
 static struct pm_dev *pm_fbcon;
 static int fbcon_sleeping;
 #endif
+#ifdef CONFIG_ARCH_MX2ADS
+#include <linux/device.h>
+
+#ifndef CONFIG_PM
+static int fbcon_sleeping;
+#endif
+
+extern void mx21_ldm_bus_register(struct device *device,
+                          struct device_driver *driver);
+extern void mx21_ldm_bus_unregister(struct device *device,
+                          struct device_driver *driver);
+static int
+fbcon_ldm_suspend(struct device *dev, u32 state, u32 level);
+
+static int
+fbcon_ldm_resume(struct device *dev, u32 level);
+
+static struct device_driver fbcon_driver_ldm = {
+	.name = "fbcon",
+	.devclass = NULL,
+	.probe = NULL,
+	.suspend = fbcon_ldm_suspend,
+	.resume = fbcon_ldm_resume,
+	.scale = NULL,
+	.remove = NULL,
+};
+
+static struct device fbcon_device_ldm = {
+	.name = "FB Console",
+	.bus_id = "fbcon",
+	.driver = &fbcon_driver_ldm,
+	.power_state = DPM_POWER_ON,
+};
+#endif
+
 
 /*
  * Emmanuel: fbcon will now use a hardware cursor if the
@@ -200,7 +289,6 @@ static int fbcon_blank(struct vc_data *conp, int blank);
 static int fbcon_font_op(struct vc_data *conp, struct console_font_op *op);
 static int fbcon_set_palette(struct vc_data *conp, unsigned char *table);
 static int fbcon_scrolldelta(struct vc_data *conp, int lines);
-
 
 /*
  *  Internal routines
@@ -474,6 +562,9 @@ static const char *fbcon_startup(void)
 #ifdef CONFIG_PM
     pm_fbcon = pm_register(PM_SYS_DEV, PM_SYS_VGA, pm_fbcon_request);
 #endif
+#ifdef CONFIG_ARCH_MX2ADS
+	mx21_ldm_bus_register(&fbcon_device_ldm, &fbcon_driver_ldm);
+#endif
 
     return display_desc;
 }
@@ -576,6 +667,8 @@ static void fbcon_setup(int con, int init, int logo)
     if (con != fg_console || (p->fb_info->flags & FBINFO_FLAG_MODULE) ||
         p->type == FB_TYPE_TEXT)
     	logo = 0;
+
+    vt_cons[conp->vc_num]->vc_mode = KD_GRAPHICS;
 
     p->var.xoffset = p->var.yoffset = p->yscroll = 0;  /* reset wrap/pan */
 
@@ -2131,21 +2224,191 @@ static inline unsigned safe_shift(unsigned d,int n)
     return n<0 ? d>>-n : d<<n;
 }
 
+/*---------------------------------------------------------------------------
+ Font table for "kernel panic!"
+---------------------------------------------------------------------------*/
+
+static unsigned char kernelpanic_fontcode16[] =
+        {
+                /* font code of 'k' */
+
+                0x00,0x00,0xe0,0x60,0x60,0x66,0x66,0x6c,
+                0x78,0x6c,0x66,0xe6,0x00,0x00,0x00,0x00,
+
+                /* font code of 'e' */
+
+                0x00,0x00,0x00,0x00,0x00,0x7c,0xc6,0xcc,
+                0xd8,0xf0,0xe6,0x7c,0x00,0x00,0x00,0x00,
+
+                /* font code of 'r' */
+
+                0x00,0x00,0x00,0x00,0x00,0xdc,0x66,0x60,
+                0x60,0x60,0x60,0xf0,0x00,0x00,0x00,0x00,
+
+                /* font code of 'n' */
+
+                0x00,0x00,0x00,0x00,0x00,0xdc,0x66,0x66,
+                0x66,0x66,0x66,0x66,0x00,0x00,0x00,0x00,
+
+                /* font code of 'e' */
+
+                0x00,0x00,0x00,0x00,0x00,0x7c,0xc6,0xcc,
+                0xd8,0xf0,0xe6,0x7c,0x00,0x00,0x00,0x00,
+
+                /* font code of 'l' */
+
+                0x00,0x00,0x18,0x18,0x18,0x18,0x18,0x18,
+                0x18,0x18,0x18,0x1c,0x00,0x00,0x00,0x00,
+
+                /* font code of ' ' */
+
+                0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+                0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+
+                /* font code of 'p' */
+
+                0x00,0x00,0x00,0x00,0x00,0xdc,0x66,0x66,
+                0x66,0x66,0x7c,0x60,0x60,0xf0,0x00,0x00,
+
+                /* font code of 'a' */
+
+                0x00,0x00,0x00,0x00,0x00,0x78,0xc,0x7c,
+                0xcc,0xcc,0xdc,0x76,0x00,0x00,0x00,0x00,
+
+                /* font code of 'n' */
+
+                0x00,0x00,0x00,0x00,0x00,0xdc,0x66,0x66,
+                0x66,0x66,0x66,0x66,0x00,0x00,0x00,0x00,
+
+                /* font code of 'i' */
+
+                0x00,0x00,0x18,0x10,0x00,0x38,0x18,0x18,
+                0x18,0x18,0x18,0x3c,0x00,0x00,0x00,0x00,
+
+                /* font code of 'c' */
+
+                0x00,0x00,0x00,0x00,0x00,0x7c,0xc6,0xc0,
+                0xc0,0xc0,0xc6,0x7c,0x00,0x00,0x00,0x00,
+
+                /* font code 0x21 '!' */
+
+                0x00,0x00,0x18,0x3c,0x3c,0x3c,0x3c,0x18,
+                0x18,0x00,0x18,0x18,0x00,0x00,0x00,0x00
+
+        };
+
+
+#define RGB666_RED 0x3F000
+#define RGB666_GREEN 0xFC0
+#define RGB666_BLUE 0x3F
+
+#define LCD_X 240
+#define LCD_Y 320
+#define STR_LEN 13
+
+static int fg_color =RGB666_BLUE|RGB666_RED|RGB666_GREEN;       //white color
+static int bg_color = RGB666_BLUE;  //blue color
+
+static void printout_char(int char_idx,unsigned int row, unsigned int col)
+{
+        struct display *p = &fb_display[fg_console]; /* draw to vt in foreground */
+        unsigned char *font;
+        unsigned char *pix;
+        unsigned int f;
+        int r,offset,i;
+
+        offset = (row *18*240 + col * 10) * 3;
+
+         pix = &p->screen_base[offset];
+
+         font = &kernelpanic_fontcode16[((char_idx & 0xff) << 4)];//the font corresponding to the char
+
+        for (r=0; r<18; r++) {  //paint the char
+                if ((r == 0) || (r == 17)) {
+                        f = 0;
+                } else {
+                        f = *font++;
+                };
+
+                *pix++ =(unsigned char)( bg_color & 0xff );
+                *pix++ =(unsigned char)( bg_color >> 8 );
+                *pix++ =  (unsigned char)(bg_color >> 16 );
+
+                  for (i = 7; i>0; i--){
+                        if ((f>>i) & 0x1)
+                        {       *pix++ =(unsigned char)( fg_color & 0xff );
+                                *pix++ =(unsigned char)( fg_color >> 8 );
+                                *pix++ =  (unsigned char)(fg_color >> 16 );
+                        }else
+                        {
+                                *pix++ =(unsigned char)( bg_color & 0xff );
+                                *pix++ =(unsigned char)( bg_color >> 8 );
+                                *pix++ =  (unsigned char)(bg_color >> 16 );
+                        }
+
+                  }
+
+                *pix++ =(unsigned char)( bg_color & 0xff );
+                *pix++ =(unsigned char)( bg_color >> 8 );
+                *pix++ =  (unsigned char)(bg_color >> 16 );
+
+                pix += (LCD_X-10)*3; //next char
+
+        }
+
+}
+ 
+/*Used to printout string:"kernel panic!" on main panel*/
+void printout_string(void)
+{
+    struct display *p = &fb_display[fg_console]; /* draw to vt in foreground */
+    unsigned char *fb = p->screen_base;
+
+    unsigned long i, pixel_count;
+    unsigned int lcd_row = 1,lcd_col = 1;
+
+    /*Fill main FB with blue color*/
+    pixel_count = 240*320;
+    for ( i = 0; i < pixel_count; i ++ )  //For each pixel //
+    {
+                fb[i * 3] =(unsigned char)( bg_color & 0xff );
+                fb[i*3 + 1] =(unsigned char)( bg_color >> 8 );
+                fb[i*3 + 2] =  (unsigned char)(bg_color >> 16 );
+    }
+    /*Print out string:"kernel panic!"*/
+    for(i=0; i<STR_LEN; i++) {
+          printout_char(i,lcd_row,lcd_col++);
+    }
+
+}
+
+extern void decompress_logo(unsigned char *input, unsigned char *output, unsigned long inlen, unsigned long outlen);
+extern u32 read_powerup_reason_value(void);
+#define POWERUP_REASON_POWERCUT_BIT (1<<9)
 static int __init fbcon_show_logo( void )
 {
     struct display *p = &fb_display[fg_console]; /* draw to vt in foreground */
+#ifdef INCLUDE_LINUX_LOGO_DATA 
     int depth = p->var.bits_per_pixel;
     int line = p->next_line;
+    int i, j, n, x;
+    int logo_depth;
+#endif    
     unsigned char *fb = p->screen_base;
     unsigned char *logo;
+#ifdef CONFIG_MOT_LOGO
+    unsigned long base;
+#else
     unsigned char *dst, *src;
-    int i, j, n, x1, y1, x;
-    int logo_depth, done = 0;
-
+#endif
+    int x1, y1; 
+    int  done = 0; 
+    
     /* Return if the frame buffer is not mapped */
     if (!fb)
-	return 0;
-	
+	return 0;	
+
+#ifdef INCLUDE_LINUX_LOGO_DATA
     /*
      * Set colors if visual is PSEUDOCOLOR and we have enough colors, or for
      * DIRECTCOLOR
@@ -2267,58 +2530,187 @@ static int __init fbcon_show_logo( void )
 	    done = 1;
         }
 #endif
+#endif
 #if defined(CONFIG_FBCON_CFB16) || defined(CONFIG_FBCON_CFB24) || \
-    defined(CONFIG_FBCON_CFB32) || defined(CONFIG_FB_SBUS)
-	if ((depth % 8 == 0) && (p->visual == FB_VISUAL_TRUECOLOR)) {
+    defined(CONFIG_FBCON_CFB32) || defined(CONFIG_FBCON_CFB18) || \
+    defined(CONFIG_FB_SBUS)
+	if ((p->visual == FB_VISUAL_TRUECOLOR)) {
 	    /* Modes without color mapping, needs special data transformation... */
-	    unsigned int val;		/* max. depth 32! */
-	    int bdepth = depth/8;
+
+#ifdef CONFIG_MOT_LOGO
+	    int buflen, imglen;
+	    unsigned char *image, *image_data;
+	    unsigned char *src_addr;
+	    unsigned char *dst_addr;
+	    u32 power_reason_tmp=0;
+
+	#ifdef CONFIG_LOGO_SHOWED_BY_MBM  /* logo showed by MBM */
+           /*Logo display functionality and powercut support are move from kernel to MBM, so here return directly*/
+		return 0;
+	#endif
+/*
+??? a17400: We add decision of Power cut here, but we have to make sure
+	power_up_reason has been set validly before this function called... just 
+	look up system.map to make sure it...
+*/
+	    power_reason_tmp = read_powerup_reason_value();
+	    if(power_reason_tmp & POWERUP_REASON_POWERCUT_BIT)
+		return 0;
+		
+	    base = (unsigned long)__ioremap(FLASH_ADDR, FLASH_SIZE, 0);
+	    logo = (unsigned char *)(base + LOGO_ADDR);
+	    printk("address of logo is 0x%x\n", (unsigned int)virt_to_phys(logo));
+	    buflen = FLASH_BLOCK_SIZE;
+	    imglen = FILE_SIZE;
+	    image = vmalloc(imglen);	   
+	    decompress_logo(logo, image, buflen, imglen);
+	    
+#ifdef CONFIG_ARCH_EZXBASE
+//	    image_data = image + 14 + 2 + 40;  /*Susan: discard bitmap header and infoheader structures */
+	    image_data = image + 14 + 40;  /*Susan: discard bitmap header and infoheader structures */
+#else
+	    image_data = image + 72;
+#endif
+
+#else
 	    unsigned char mask[9] = { 0,0x80,0xc0,0xe0,0xf0,0xf8,0xfc,0xfe,0xff };
 	    unsigned char redmask, greenmask, bluemask;
 	    int redshift, greenshift, blueshift;
 		
 	    /* Bug: Doesn't obey msb_right ... (who needs that?) */
+
 	    redmask   = mask[p->var.red.length   < 8 ? p->var.red.length   : 8];
 	    greenmask = mask[p->var.green.length < 8 ? p->var.green.length : 8];
 	    bluemask  = mask[p->var.blue.length  < 8 ? p->var.blue.length  : 8];
 	    redshift   = p->var.red.offset   - (8-p->var.red.length);
 	    greenshift = p->var.green.offset - (8-p->var.green.length);
 	    blueshift  = p->var.blue.offset  - (8-p->var.blue.length);
-
+	    
 	    src = logo;
-	    for( y1 = 0; y1 < LOGO_H; y1++ ) {
-		dst = fb + y1*line + x*bdepth;
-		for( x1 = 0; x1 < LOGO_W; x1++, src++ ) {
-		    val = safe_shift((linux_logo_red[*src-32]   & redmask), redshift) |
-		          safe_shift((linux_logo_green[*src-32] & greenmask), greenshift) |
-		          safe_shift((linux_logo_blue[*src-32]  & bluemask), blueshift);
-		    if (bdepth == 4 && !((long)dst & 3)) {
-			/* Some cards require 32bit access */
-			fb_writel (val, dst);
-			dst += 4;
-		    } else if (bdepth == 2 && !((long)dst & 1)) {
-			/* others require 16bit access */
-			fb_writew (val,dst);
-			dst +=2;
-		    } else {
-#ifdef __LITTLE_ENDIAN
-			for( i = 0; i < bdepth; ++i )
-#else
-			for( i = bdepth-1; i >= 0; --i )
 #endif
-			    fb_writeb (val >> (i*8), dst++);
-		    }
+	    
+    for ( y1 = 0; y1 < LOGO_H; y1++ ) 
+    {
+	dst_addr = fb + y1*(p->line_length);  //Susan
+	src_addr = image_data + (LOGO_H-1-y1)*MOT_LOGO_LINE;
+
+	for ( x1 = 0; x1 < LOGO_W; x1++ ) 
+	{
+#ifdef CONFIG_MOT_LOGO
+		if ( p->var.bits_per_pixel > 19 )
+		{
+			unsigned long var;
+								
+			((unsigned char *)(&var))[0] = src_addr[0]; //B
+			((unsigned char *)(&var))[1] = src_addr[1]; //G
+			((unsigned char *)(&var))[2] = src_addr[2]; //R
+			((unsigned char *)(&var))[3] = 0x00; //24bpp format according to bulverde spec
+	
+			fb_writel (var, dst_addr);
+				
+			src_addr += 3;
+			dst_addr += 4;
 		}
-	    }
+		else if (p->var.bits_per_pixel == 16)
+		{
+			unsigned short var;
+	    			
+			var = (src_addr[0] >> 3) | ((src_addr[1] >> 2) << 5) | ((src_addr[2] >> 3) << 11);
+			
+			fb_writew(var, dst_addr);
+			
+			src_addr += 3;
+			dst_addr += 2;
+			
+		}
+		else if ( (p->var.bits_per_pixel == 18) || (p->var.bits_per_pixel == 19) )  //source is 24bpp with 3 bytes
+		{
+			unsigned long var;
+			unsigned char *var_b;
+				    	
+			var = 0x0;  //Make sure logo is display even 19bpp format //		
+	    		var = (src_addr[0]>>2) | ((src_addr[1]>>2)<<6) | ((src_addr[2]>>2)<<12);
+	    		var_b = (unsigned char *)&var;
+	    			
+	    		fb_writeb(var_b[0],dst_addr++);
+	    		fb_writeb(var_b[1],dst_addr++);
+	    		fb_writeb(var_b[2],dst_addr++);
+	    								
+			src_addr += 3;				
+		}
+		else 
+			printk("fbcon_show_logo: doesn't support %d pixel depth\n",p->var.bits_per_pixel);		
+
+#else
+
+	    unsigned long val;		/* max. depth 32! */
+#ifndef CONFIG_FBCON_CFB18
+	    int bdepth = depth/8;
+#else
+	    int bdepth = 3;
+#endif
+
+		    val = safe_shift((linux_logo_red[*src-32] & redmask), redshift) |
+		          safe_shift((linux_logo_green[*src-32] & greenmask), greenshift) |
+		          safe_shift((linux_logo_blue[*src-32] & bluemask), blueshift);
+
+		    if ((bdepth == 4) && !((long)dst & 3)) 
+		    {
+				/* Some cards require 32bit access */
+				fb_writel (val, dst);
+				dst += 4;
+		    } 
+		    else if ((bdepth == 2 || bdepth == 3) && !((long)dst & 1)) 
+		    {
+				//This case is used by E680
+				/* others require 16bit access */
+	#ifndef CONFIG_FB_PXA_18BPP
+				fb_writew (val,dst);
+				dst += 2;
+	#else
+				c = x1 & 0x3;
+				//Convert 16-bit pixel to 18-bit pixel
+				px[c] = ((val & 0xF800)<<2) | ((val & 0x7E0)<<1) | ((val & 0x1F)<<1);		
+
+				if (c == 3) //just finished reading 4th pixel, let's convert and write to fb
+				{
+				    //construct packed words
+				    wd0 = px[0] | (px[1] << 24);
+				    wd1 = (px[1] >> 8) | (px[2] << 16);
+				    wd2 = (px[2] >> 16) | (px[3] << 8);
+
+				    fb_writel (wd0, dst); dst+=4;
+				    fb_writel (wd1, dst); dst+=4;
+				    fb_writel (wd2, dst); dst+=4; 
+				}	
+	#endif
+		    }
+		    else 
+		    {
+	#ifdef __LITTLE_ENDIAN
+				for( i = 0; i < bdepth; ++i )
+	#else
+				for( i = bdepth-1; i >= 0; --i )
+	#endif
+				    fb_writeb (val >> (i*8), dst++);
+		    }
+#endif
+		}
+	}
+#ifdef CONFIG_MOT_LOGO
+	    vfree(image);
+	    iounmap((void *)base);	
+#endif
 	    done = 1;
 	}
 #endif
+#ifdef INCLUDE_LINUX_LOGO_DATA
 #if defined(CONFIG_FBCON_CFB4)
 	if (depth == 4 && p->type == FB_TYPE_PACKED_PIXELS) {
 		src = logo;
-		for( y1 = 0; y1 < LOGO_H; y1++) {
+		for( y1 = 0; y1 < (int)(LOGO_H); y1++) {
 			dst = fb + y1*line + x/2;
-			for( x1 = 0; x1 < LOGO_W/2; x1++) {
+			for( x1 = 0; x1 < (int)(LOGO_W/2); x1++) {
 				u8 q = *src++;
 				q = (q << 4) | (q >> 4);
 				fb_writeb (q, dst++);
@@ -2332,9 +2724,9 @@ static int __init fbcon_show_logo( void )
 	    /* depth 8 or more, packed, with color registers */
 		
 	    src = logo;
-	    for( y1 = 0; y1 < LOGO_H; y1++ ) {
+	    for( y1 = 0; y1 < (int)(LOGO_H); y1++ ) {
 		dst = fb + y1*line + x;
-		for( x1 = 0; x1 < LOGO_W; x1++ )
+		for( x1 = 0; x1 < (int)(LOGO_W); x1++ )
 		    fb_writeb (*src++, dst++);
 	    }
 	    done = 1;
@@ -2450,7 +2842,7 @@ static int __init fbcon_show_logo( void )
 	}
 #endif			
     }
-    
+#endif    
     if (p->fb_info->fbops->fb_rasterimg)
     	p->fb_info->fbops->fb_rasterimg(p->fb_info, 0);
 
@@ -2492,6 +2884,46 @@ pm_fbcon_request(struct pm_dev *dev, pm_request_t rqst, void *data)
 	return 0;
 }
 #endif /* CONFIG_PM */
+#ifdef CONFIG_ARCH_MX2ADS
+static int
+fbcon_ldm_suspend(struct device *dev, u32 state, u32 level)
+{
+	unsigned long flags;
+
+	switch (level) {
+	case SUSPEND_POWER_DOWN:
+		acquire_console_sem();
+		save_flags(flags);
+		cli();
+		if (use_timer_cursor)
+			del_timer(&cursor_timer);
+		fbcon_sleeping = 1;
+		restore_flags(flags);
+		release_console_sem();
+		break;
+	}
+	return 0;
+}
+
+static int
+fbcon_ldm_resume(struct device *dev, u32 level)
+{
+
+	switch (level) {
+	case RESUME_POWER_ON:
+		acquire_console_sem();
+		fbcon_sleeping = 0;
+		if (use_timer_cursor) {
+			cursor_timer.expires = jiffies+HZ/50;
+			add_timer(&cursor_timer);
+		}
+		release_console_sem();
+		break;
+	}
+	return 0;
+}
+#endif
+
 
 /*
  *  The console `switch' structure for the frame buffer based console

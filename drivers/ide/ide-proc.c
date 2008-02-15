@@ -102,6 +102,10 @@ int (*hpt34x_display_info)(char *, char **, off_t, int) = NULL;
 extern byte hpt366_proc;
 int (*hpt366_display_info)(char *, char **, off_t, int) = NULL;
 #endif /* CONFIG_BLK_DEV_HPT366 */
+#ifdef CONFIG_BLK_DEV_HPT371
+extern byte hpt371_proc;
+int (*hpt371_display_info)(char *, char **, off_t, int) = NULL;
+#endif /* CONFIG_BLK_DEV_HPT371 */
 #ifdef CONFIG_BLK_DEV_PDC202XX
 extern byte pdc202xx_proc;
 int (*pdc202xx_display_info)(char *, char **, off_t, int) = NULL;
@@ -126,6 +130,10 @@ int (*slc90e66_display_info)(char *, char **, off_t, int) = NULL;
 extern byte via_proc;
 int (*via_display_info)(char *, char **, off_t, int) = NULL;
 #endif /* CONFIG_BLK_DEV_VIA82CXXX */
+#ifdef CONFIG_BLK_DEV_XILLEON
+extern byte _proc;
+int (*xilleon_ide_display_info)(char *, char **, off_t, int) = NULL;
+#endif /* CONFIG_BLK_DEV_XILLEON */
 
 static int ide_getxdigit(char c)
 {
@@ -415,6 +423,7 @@ static int proc_ide_read_imodel
 		case ide_cy82c693:	name = "cy82c693";	break;
 		case ide_4drives:	name = "4drives";	break;
 		case ide_pmac:		name = "mac-io";	break;
+		case ide_acorn:		name = "acorn";		break;
 		default:		name = "(unknown)";	break;
 	}
 	len = sprintf(page, "%s\n", name);
@@ -882,6 +891,10 @@ void proc_ide_create(void)
 	if ((hpt366_display_info) && (hpt366_proc))
 		create_proc_info_entry("hpt366", 0, proc_ide_root, hpt366_display_info);
 #endif /* CONFIG_BLK_DEV_HPT366 */
+#ifdef CONFIG_BLK_DEV_HPT371
+	if ((hpt371_display_info) && (hpt371_proc))
+		create_proc_info_entry("hpt371", 0, proc_ide_root, hpt371_display_info);
+#endif /* CONFIG_BLK_DEV_HPT371 */
 #ifdef CONFIG_BLK_DEV_SVWKS
 	if ((svwks_display_info) && (svwks_proc))
 		create_proc_info_entry("svwks", 0, proc_ide_root, svwks_display_info);
@@ -942,6 +955,10 @@ void proc_ide_destroy(void)
 	if ((hpt366_display_info) && (hpt366_proc))
 		remove_proc_entry("ide/hpt366",0);
 #endif /* CONFIG_BLK_DEV_HPT366 */
+#ifdef CONFIG_BLK_DEV_HPT371
+	if ((hpt371_display_info) && (hpt371_proc))
+		remove_proc_entry("ide/hpt371",0);
+#endif /* CONFIG_BLK_DEV_HPT371 */
 #ifdef CONFIG_BLK_DEV_PDC202XX
 	if ((pdc202xx_display_info) && (pdc202xx_proc))
 		remove_proc_entry("ide/pdc202xx",0);

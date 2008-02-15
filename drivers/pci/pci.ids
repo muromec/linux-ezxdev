@@ -860,6 +860,7 @@
 	5427  PCI to AGP Bridge
 	5451  M5451 PCI AC-Link Controller Audio Device
 	5453  M5453 PCI AC-Link Controller Modem Device
+	5457  M5457 PCI DC-97 Controller Modem 
 	7101  M7101 PCI PMU Power Management Controller
 		10b9 7101  M7101 PCI PMU Power Management Controller
 1028  Dell Computer Corporation
@@ -3342,6 +3343,7 @@
 11aa  Actel
 11ab  Galileo Technology Ltd.
 	0146  GT-64010
+	4146  GT-64111
 	4801  GT-48001
 	f003  GT-64010 Primary Image Piranha Image Generator
 11ac  Canon Information Systems Research Aust.
@@ -3524,6 +3526,7 @@
 11d9  TEC Corporation
 11da  Novell
 11db  Sega Enterprises Ltd
+	1234  Broadband Adapter
 11dc  Questra Corporation
 11dd  Crosfield Electronics Limited
 11de  Zoran Corporation

@@ -1,0 +1,215 @@
+/*
+ *  drivers/mtd/nand/h1910.c
+ *
+ *  Copyright (C) 2003 Joshua Wise (joshua@joshuawise.com)
+ *
+ *  Derived from drivers/mtd/nand/edb7312.c
+ *       Copyright (C) 2002 Marius Grger (mag@sysgo.de)
+ *       Copyright (c) 2001 Thomas Gleixner (gleixner@autronix.de)
+ *
+ * $Id: h1910.c,v 1.1.2.1 2004/08/26 22:07:10 alowe Exp $
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ *  Overview:
+ *   This is a device driver for the NAND flash device found on the
+ *   iPAQ h1910 board which utilizes the Samsung K9F2808 part. This is
+ *   a 128Mibit (16MiB x 8 bits) NAND flash device.
+ */
+
+#include <linux/slab.h>
+#include <linux/init.h>
+#include <linux/module.h>
+#include <linux/mtd/mtd.h>
+#include <linux/mtd/nand.h>
+#include <linux/mtd/partitions.h>
+#include <asm/io.h>
+#include <asm/arch/hardware.h> /* for CLPS7111_VIRT_BASE */
+#include <asm/sizes.h>
+#include <asm/arch/h1900-gpio.h>
+#include <asm/arch/ipaq.h>
+
+/*
+ * MTD structure for EDB7312 board
+ */
+static struct mtd_info *h1910_nand_mtd = NULL;
+
+/*
+ * Module stuff
+ */
+
+#ifdef CONFIG_MTD_PARTITIONS
+/*
+ * Define static partitions for flash device
+ */
+static struct mtd_partition partition_info[] = {
+	{ name: "h1910 NAND Flash",
+		  offset: 0,
+		  size: 16*1024*1024 }
+};
+#define NUM_PARTITIONS 1
+
+#endif
+
+
+/* 
+ *	hardware specific access to control-lines
+ */
+static void h1910_hwcontrol(struct mtd_info *mtd, int cmd) 
+{
+	struct nand_chip* this = (struct nand_chip *) (mtd->priv);
+	
+	switch(cmd) {
+		
+	case NAND_CTL_SETCLE: 
+		this->IO_ADDR_R |= (1 << 2);
+		this->IO_ADDR_W |= (1 << 2);
+		break;
+	case NAND_CTL_CLRCLE: 
+		this->IO_ADDR_R &= ~(1 << 2);
+		this->IO_ADDR_W &= ~(1 << 2);
+		break;
+		
+	case NAND_CTL_SETALE:
+		this->IO_ADDR_R |= (1 << 3);
+		this->IO_ADDR_W |= (1 << 3);
+		break;
+	case NAND_CTL_CLRALE:
+		this->IO_ADDR_R &= ~(1 << 3);
+		this->IO_ADDR_W &= ~(1 << 3);
+		break;
+		
+	case NAND_CTL_SETNCE:
+		break;
+	case NAND_CTL_CLRNCE:
+		break;
+	}
+}
+
+/*
+ *	read device ready pin
+ */
+#if 0
+static int h1910_device_ready(struct mtd_info *mtd)
+{
+	return (GPLR(55) & GPIO_bit(55));
+}
+#endif
+
+/*
+ * Main initialization routine
+ */
+static int __init h1910_init (void)
+{
+	struct nand_chip *this;
+	const char *part_type = 0;
+	int mtd_parts_nb = 0;
+	struct mtd_partition *mtd_parts = 0;
+	void* nandaddr;
+	
+	if (!machine_is_h1900())
+		return -ENODEV;
+		
+	nandaddr = __ioremap(0x08000000, 0x1000, 0, 1);
+	if (!nandaddr)
+	{
+		printk("Failed to ioremap in nand flash.\n");
+		return -ENOMEM;
+	};
+	
+	/* Allocate memory for MTD device structure and private data */
+	h1910_nand_mtd = kmalloc(sizeof(struct mtd_info) + 
+			     sizeof(struct nand_chip),
+			     GFP_KERNEL);
+	if (!h1910_nand_mtd) {
+		printk("Unable to allocate h1910 NAND MTD device structure.\n");
+		return -ENOMEM;
+	}
+	
+	/* Get pointer to private data */
+	this = (struct nand_chip *) (&h1910_nand_mtd[1]);
+	
+	/* Initialize structures */
+	memset((char *) h1910_nand_mtd, 0, sizeof(struct mtd_info));
+	memset((char *) this, 0, sizeof(struct nand_chip));
+	
+	/* Link the private data with the MTD structure */
+	h1910_nand_mtd->priv = this;
+	
+	/*
+	 * Enable VPEN
+	 */
+	GPSR(37) = GPIO_bit(37);
+	
+	/* insert callbacks */
+	this->IO_ADDR_R = (unsigned long)nandaddr;
+	this->IO_ADDR_W = (unsigned long)nandaddr;
+	this->hwcontrol = h1910_hwcontrol;
+	this->dev_ready = NULL;	/* unknown whether that was correct or not so we will just do it like this */
+	/* 15 us command delay time */
+	this->chip_delay = 50;
+	this->eccmode = NAND_ECC_SOFT;
+	this->options = NAND_NO_AUTOINCR;
+	
+	/* Scan to find existence of the device */
+	if (nand_scan (h1910_nand_mtd, 1)) {
+		printk(KERN_NOTICE "No NAND device - returning -ENXIO\n");
+		kfree (h1910_nand_mtd);
+		return -ENXIO;
+	}
+	
+	/* Allocate memory for internal data buffer */
+	this->data_buf = kmalloc (sizeof(u_char) * (h1910_nand_mtd->oobblock + h1910_nand_mtd->oobsize), GFP_KERNEL);
+	if (!this->data_buf) {
+		printk("Unable to allocate NAND data buffer for h1910.\n");
+		kfree (h1910_nand_mtd);
+		return -ENOMEM;
+	}
+	
+#ifdef CONFIG_MTD_CMDLINE_PARTS
+	mtd_parts_nb = parse_cmdline_partitions(h1910_nand_mtd, &mtd_parts, 
+						"h1910-nand");
+	if (mtd_parts_nb > 0)
+	  part_type = "command line";
+	else
+	  mtd_parts_nb = 0;
+#endif
+	if (mtd_parts_nb == 0)
+	{
+		mtd_parts = partition_info;
+		mtd_parts_nb = NUM_PARTITIONS;
+		part_type = "static";
+	}
+	
+	/* Register the partitions */
+	printk(KERN_NOTICE "Using %s partition definition\n", part_type);
+	add_mtd_partitions(h1910_nand_mtd, mtd_parts, mtd_parts_nb);
+	
+	/* Return happy */
+	return 0;
+}
+module_init(h1910_init);
+
+/*
+ * Clean up routine
+ */
+static void __exit h1910_cleanup (void)
+{
+	struct nand_chip *this = (struct nand_chip *) &h1910_nand_mtd[1];
+	
+	/* Unregister the device */
+	del_mtd_device (h1910_nand_mtd);
+	
+	/* Free internal data buffer */
+	kfree (this->data_buf);
+	
+	/* Free the MTD device structure */
+	kfree (h1910_nand_mtd);
+}
+module_exit(h1910_cleanup);
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Joshua Wise <joshua at joshuawise dot com>");
+MODULE_DESCRIPTION("NAND flash driver for iPAQ h1910");

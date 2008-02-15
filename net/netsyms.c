@@ -4,6 +4,11 @@
  *  Symbol table for the linux networking subsystem. Moved here to
  *  make life simpler in ksyms.c.
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by Brain.Redding to support wlan, for EZX platform
+ */
 
 #include <linux/config.h>
 #include <linux/module.h>
@@ -594,6 +599,11 @@ EXPORT_SYMBOL(softnet_data);
 #if defined(CONFIG_NET_RADIO) || defined(CONFIG_NET_PCMCIA_RADIO)
 #include <net/iw_handler.h>
 EXPORT_SYMBOL(wireless_send_event);
+EXPORT_SYMBOL(iw_handler_set_spy);
+EXPORT_SYMBOL(iw_handler_get_spy);
+EXPORT_SYMBOL(iw_handler_set_thrspy);
+EXPORT_SYMBOL(iw_handler_get_thrspy);
+EXPORT_SYMBOL(wireless_spy_update);
 #endif /* CONFIG_NET_RADIO || CONFIG_NET_PCMCIA_RADIO */
 
 #endif  /* CONFIG_NET */

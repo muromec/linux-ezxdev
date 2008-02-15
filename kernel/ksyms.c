@@ -8,6 +8,13 @@
  * - Versions on symbols added (December 1994)
  *   by Bjorn Ekwall <bj0rn@blox.se>
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * add security patch by w20586, for EZX platform
+ * modified by a15285, for EZX platform
+ */
+
 
 #include <linux/config.h>
 #include <linux/slab.h>
@@ -49,6 +56,9 @@
 #include <linux/seq_file.h>
 #include <linux/dnotify.h>
 #include <asm/checksum.h>
+#ifdef CONFIG_ILATENCY
+#include <linux/ilatency.h>
+#endif
 
 #if defined(CONFIG_PROC_FS)
 #include <linux/proc_fs.h>
@@ -91,6 +101,7 @@ EXPORT_SYMBOL(exit_fs);
 EXPORT_SYMBOL(exit_sighand);
 
 /* internal kernel memory management */
+EXPORT_SYMBOL(start_aggressive_readahead);
 EXPORT_SYMBOL(_alloc_pages);
 EXPORT_SYMBOL(__alloc_pages);
 EXPORT_SYMBOL(alloc_pages_node);
@@ -104,6 +115,7 @@ EXPORT_SYMBOL(kmem_cache_create);
 EXPORT_SYMBOL(kmem_cache_destroy);
 EXPORT_SYMBOL(kmem_cache_shrink);
 EXPORT_SYMBOL(kmem_cache_alloc);
+EXPORT_SYMBOL(kmem_cache_zalloc);
 EXPORT_SYMBOL(kmem_cache_free);
 EXPORT_SYMBOL(kmem_cache_size);
 EXPORT_SYMBOL(kmalloc);
@@ -113,6 +125,7 @@ EXPORT_SYMBOL(__vmalloc);
 EXPORT_SYMBOL(vmalloc_to_page);
 EXPORT_SYMBOL(mem_map);
 EXPORT_SYMBOL(remap_page_range);
+EXPORT_SYMBOL(remap_page_array);
 EXPORT_SYMBOL(max_mapnr);
 EXPORT_SYMBOL(high_memory);
 EXPORT_SYMBOL(vmtruncate);
@@ -140,7 +153,10 @@ EXPORT_SYMBOL(fput);
 EXPORT_SYMBOL(fget);
 EXPORT_SYMBOL(igrab);
 EXPORT_SYMBOL(iunique);
+EXPORT_SYMBOL(ilookup);
 EXPORT_SYMBOL(iget4);
+EXPORT_SYMBOL(icreate);
+EXPORT_SYMBOL(unlock_new_inode);
 EXPORT_SYMBOL(iput);
 EXPORT_SYMBOL(force_delete);
 EXPORT_SYMBOL(follow_up);
@@ -171,7 +187,8 @@ EXPORT_SYMBOL(__mark_buffer_dirty);
 EXPORT_SYMBOL(__mark_inode_dirty);
 EXPORT_SYMBOL(fd_install);
 EXPORT_SYMBOL(get_empty_filp);
-EXPORT_SYMBOL(init_private_file);
+EXPORT_SYMBOL(open_private_file);
+EXPORT_SYMBOL(close_private_file);
 EXPORT_SYMBOL(filp_open);
 EXPORT_SYMBOL(filp_close);
 EXPORT_SYMBOL(put_filp);
@@ -245,6 +262,7 @@ EXPORT_SYMBOL(shrink_dcache_parent);
 EXPORT_SYMBOL(find_inode_number);
 EXPORT_SYMBOL(is_subdir);
 EXPORT_SYMBOL(get_unused_fd);
+EXPORT_SYMBOL(put_unused_fd);
 EXPORT_SYMBOL(vfs_create);
 EXPORT_SYMBOL(vfs_mkdir);
 EXPORT_SYMBOL(vfs_mknod);
@@ -293,6 +311,10 @@ EXPORT_SYMBOL(filemap_fdatasync);
 EXPORT_SYMBOL(filemap_fdatawait);
 EXPORT_SYMBOL(lock_page);
 EXPORT_SYMBOL(unlock_page);
+
+/* for page_buf cache */
+EXPORT_SYMBOL(add_to_page_cache_unique);
+EXPORT_SYMBOL(balance_dirty);
 
 /* device registration */
 EXPORT_SYMBOL(register_chrdev);
@@ -421,9 +443,11 @@ EXPORT_SYMBOL(brw_kiovec);
 EXPORT_SYMBOL(kiobuf_wait_for_io);
 
 /* dma handling */
+#ifdef CONFIG_GENERIC_ISA_DMA
 EXPORT_SYMBOL(request_dma);
 EXPORT_SYMBOL(free_dma);
 EXPORT_SYMBOL(dma_spin_lock);
+#endif
 #ifdef HAVE_DISABLE_HLT
 EXPORT_SYMBOL(disable_hlt);
 EXPORT_SYMBOL(enable_hlt);
@@ -443,16 +467,33 @@ EXPORT_SYMBOL(iomem_resource);
 /* process management */
 EXPORT_SYMBOL(complete_and_exit);
 EXPORT_SYMBOL(__wake_up);
-EXPORT_SYMBOL(__wake_up_sync);
 EXPORT_SYMBOL(wake_up_process);
 EXPORT_SYMBOL(sleep_on);
 EXPORT_SYMBOL(sleep_on_timeout);
 EXPORT_SYMBOL(interruptible_sleep_on);
 EXPORT_SYMBOL(interruptible_sleep_on_timeout);
 EXPORT_SYMBOL(schedule);
+#ifdef CONFIG_ILATENCY
+EXPORT_SYMBOL(intr_sti);
+EXPORT_SYMBOL(intr_cli);
+EXPORT_SYMBOL(intr_restore_flags); 
+#endif
+#ifdef CONFIG_PREEMPT
+EXPORT_SYMBOL(preempt_schedule);
+#endif
+#ifdef CONFIG_PREEMPT_TIMES
+EXPORT_SYMBOL(latency_start);
+EXPORT_SYMBOL(latency_end);
+#endif
+EXPORT_SYMBOL(setscheduler);
 EXPORT_SYMBOL(schedule_timeout);
 EXPORT_SYMBOL(yield);
 EXPORT_SYMBOL(__cond_resched);
+EXPORT_SYMBOL(set_user_nice);
+#ifdef CONFIG_SMP
+EXPORT_SYMBOL_GPL(set_cpus_allowed);
+#endif
+EXPORT_SYMBOL(nr_context_switches);
 EXPORT_SYMBOL(jiffies);
 EXPORT_SYMBOL(xtime);
 EXPORT_SYMBOL(do_gettimeofday);
@@ -463,7 +504,6 @@ EXPORT_SYMBOL(loops_per_jiffy);
 #endif
 
 EXPORT_SYMBOL(kstat);
-EXPORT_SYMBOL(nr_running);
 
 /* misc */
 EXPORT_SYMBOL(panic);
@@ -549,6 +589,9 @@ EXPORT_SYMBOL(disk_name);	/* for md.c */
 
 /* binfmt_aout */
 EXPORT_SYMBOL(get_write_access);
+
+/* ptrace */                                                                                       
+EXPORT_SYMBOL(ptrace_notify);                                                                      
 
 /* library functions */
 EXPORT_SYMBOL(strnicmp);

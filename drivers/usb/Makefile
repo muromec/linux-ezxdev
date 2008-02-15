@@ -1,24 +1,28 @@
 #
+# Copyright (C) 2005 - Motorola
 # Makefile for the kernel USB device drivers.
+#
+# history:
+# modified by q16136 for Motorola EZX platform
 #
 
 # Subdirs.
 
+#subdir-$(CONFIG_USBD)	:= device
 # The target object and module list name.
 
 O_TARGET	:= usbdrv.o
 
 # Objects that export symbols.
 
-export-objs		:= hcd.o usb.o ov511.o pwc-uncompress.o
-
+export-objs		:= hcd.o usb.o ov511.o pwc-uncompress.o \
+			   omap1510-pci-pool.o usb-ohci-pool.o ipcusb.o
 # Multipart objects.
 
 list-multi		:= usbcore.o hid.o pwc.o
 usbcore-objs		:= usb.o usb-debug.o hub.o
 hid-objs		:= hid-core.o
 pwc-objs		:= pwc-if.o pwc-misc.o pwc-ctrl.o pwc-uncompress.o
-
 
 # Optional parts of multipart objects.
 
@@ -52,12 +56,19 @@ endif
 
 obj-$(CONFIG_USB_UHCI)		+= usb-uhci.o
 obj-$(CONFIG_USB_UHCI_ALT)	+= uhci.o
+obj-$(CONFIG_USB_MPC8xx)	+= m8xxhci.o
 obj-$(CONFIG_USB_OHCI)		+= usb-ohci.o
+obj-$(CONFIG_USB_OHCI_SA1111)	+= usb-ohci-sa1111.o
+obj-$(CONFIG_USB_OHCI_WMMX)	+= usb-ohci.o usb-ohci-wmmx.o usb-ohci-pool.o
+obj-$(CONFIG_USB_NON_PCI_OHCI)	+= usb-ohci-nonpci.o
+obj-$(CONFIG_USB_OHCI_OMAP1510) += usb-ohci-omap1510.o omap1510-pci-pool.o
+obj-$(CONFIG_USB_OCP_OHCI)      += usb-ocp-ohci.o
+obj-$(CONFIG_USB_ISP116X)	+= hc_isp116x.o
 
 ifneq ($(CONFIG_USB_EHCI_HCD),n)
 	usbcore-objs		+= hcd.o
 endif
-subdir-$(CONFIG_USB_EHCI_HCD)	+= hcd
+subdir-$(CONFIG_USB_EHCI_HCD) 	+= hcd
 
 obj-$(CONFIG_USB_MOUSE)		+= usbmouse.o
 obj-$(CONFIG_USB_HID)		+= hid.o
@@ -96,6 +107,8 @@ obj-$(CONFIG_USB_USBNET)	+= usbnet.o
 obj-$(CONFIG_USB_AUERSWALD)	+= auerswald.o
 obj-$(CONFIG_USB_BRLVGER)	+= brlvger.o
 obj-$(CONFIG_USB_LCD)		+= usblcd.o
+obj-$(CONFIG_IPC_USB)		+= ipcusb.o 
+obj-$(CONFIG_DSPLOG_USB)	+= dsplog_usb.o 
 
 # Object files in subdirectories
 mod-subdirs	:= serial hcd
@@ -123,3 +136,6 @@ hid.o: $(hid-objs)
 
 pwc.o: $(pwc-objs)
 	$(LD) -r -o $@ $(pwc-objs)
+
+usb-wmmx.o: $(usb-wmmx-objs)
+	$(LD) -r -o $@ $(usb-wmmx-objs)

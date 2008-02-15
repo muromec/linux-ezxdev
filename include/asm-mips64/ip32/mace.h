@@ -50,8 +50,8 @@
 #define MACEPCI_SWAPPED_VIEW		0
 #define MACEPCI_NATIVE_VIEW		0x40000000
 #define MACEPCI_IO			0x80000000
-/*#define MACEPCI_HI_MEMORY		0x0000000280000000UL * This mipght be just 0x0000000200000000UL 2G more :) (or maybe it is different between 1.1 & 1.5 */
-#define MACEPCI_HI_MEMORY		0x0000000200000000UL /* This mipght be just 0x0000000200000000UL 2G more :) (or maybe it is different between 1.1 & 1.5 */
+/*#define MACEPCI_HI_MEMORY		0x0000000280000000UL * This mipght be just 0x0000000200000000UL 2G more :) (or maybe it is different between 1.1 & 1.5 */ 
+#define MACEPCI_HI_MEMORY		0x0000000200000000UL /* This mipght be just 0x0000000200000000UL 2G more :) (or maybe it is different between 1.1 & 1.5 */ 
 #define MACEPCI_HI_IO			0x0000000100000000UL
 
 /*
@@ -197,7 +197,7 @@
 #define MACEISA_SERIAL2_RDMAT_INT	BIT (30)
 #define MACEISA_SERIAL2_RDMAOR_INT	BIT (31)
 
-#ifndef __ASSEMBLY__
+#ifndef _LANGUAGE_ASSEMBLY
 #include <asm/types.h>
 
 /*
@@ -248,7 +248,7 @@ static inline void mace_inv_read_buffers(void)
 {
 /*	mace_write_32(MACEPCI_WFLUSH,0xffffffff);*/
 }
-#endif /* !__ASSEMBLY__ */
+#endif
 
 
 #endif /* __ASM_MACE_H__ */

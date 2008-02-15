@@ -112,7 +112,7 @@ typedef struct pccard_mem_map {
     u_char	map;
     u_char	flags;
     u_short	speed;
-    u_long	sys_start, sys_stop;
+    memaddr_t	sys_start, sys_stop;
     u_int	card_start;
 } pccard_mem_map;
 

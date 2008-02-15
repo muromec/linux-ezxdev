@@ -22,10 +22,13 @@
 #include <linux/proc_fs.h>
 #include <linux/init.h>
 
+#include <linux/trace.h>
+
 #include <asm/system.h>
 #include <asm/uaccess.h>
 #include <asm/pgtable.h>
 #include <asm/unaligned.h>
+#include <asm/kgdb.h>
 
 #ifdef CONFIG_CPU_26
 #define FAULT_CODE_WRITE	0x02
@@ -42,8 +45,6 @@
 #define DO_COW(m)		(m)
 #define READ_FAULT(m)		(!(m))
 #endif
-
-NORET_TYPE void die(const char *msg, struct pt_regs *regs, int err) ATTRIB_NORET;
 
 /*
  * This is useful to dump out the page tables associated with
@@ -123,6 +124,12 @@ __do_kernel_fault(struct mm_struct *mm, unsigned long addr, int error_code,
 		"paging request", addr);
 
 	show_pte(mm, addr);
+
+#ifdef	CONFIG_KGDB
+	if (kgdb_active()) {
+		do_kgdb(regs, SIGSEGV);
+	}
+#endif
 	die("Oops", regs, error_code);
 	do_exit(SIGKILL);
 }
@@ -174,6 +181,12 @@ __do_page_fault(struct mm_struct *mm, unsigned long addr, int error_code,
 {
 	struct vm_area_struct *vma;
 	int fault, mask;
+
+#if defined(CONFIG_KGDB)
+	/* REVISIT: This one may not be required? */
+	if (kgdb_fault_expected)
+		kgdb_handle_bus_error();
+#endif
 
 	vma = find_vma(mm, addr);
 	fault = -2; /* bad map area */
@@ -241,6 +254,11 @@ int do_page_fault(unsigned long addr, int error_code, struct pt_regs *regs)
 	struct mm_struct *mm;
 	int fault;
 
+#if defined(CONFIG_KGDB)
+	if (kgdb_fault_expected)
+		kgdb_handle_bus_error();
+#endif
+
 	tsk = current;
 	mm  = tsk->mm;
 
@@ -251,9 +269,13 @@ int do_page_fault(unsigned long addr, int error_code, struct pt_regs *regs)
 	if (in_interrupt() || !mm)
 		goto no_context;
 
+	TRACE_TRAP_ENTRY(14, instruction_pointer(regs));
+
 	down_read(&mm->mmap_sem);
 	fault = __do_page_fault(mm, addr, error_code, tsk);
 	up_read(&mm->mmap_sem);
+
+        TRACE_EVENT(TRACE_EV_TRAP_EXIT, NULL);
 
 	/*
 	 * Handle the "normal" case first
@@ -345,6 +367,9 @@ int do_translation_fault(unsigned long addr, int error_code, struct pt_regs *reg
 
 	offset = __pgd_offset(addr);
 
+	/*
+	 * FIXME: CP15 C1 is write only on ARMv3 architectures.
+	 */
 	pgd = cpu_get_pgd() + offset;
 	pgd_k = init_mm.pgd + offset;
 

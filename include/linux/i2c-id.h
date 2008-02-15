@@ -20,7 +20,7 @@
     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.		     */
 /* ------------------------------------------------------------------------- */
 
-/* $Id: i2c-id.h,v 1.35 2001/08/12 17:22:20 mds Exp $ */
+/* $Id: i2c-id.h,v 1.40 2001/11/11 22:16:33 mds Exp $ */
 
 #ifndef I2C_ID_H
 #define I2C_ID_H
@@ -90,6 +90,13 @@
 #define I2C_DRIVERID_DRP3510	43     /* ADR decoder (Astra Radio)	*/
 #define I2C_DRIVERID_SP5055	44     /* Satellite tuner		*/
 #define I2C_DRIVERID_STV0030	45     /* Multipurpose switch		*/
+#define I2C_DRIVERID_M41T11	46     /* real time clock               */
+
+#define I2C_DRIVERID_DS1307	46	/* real time clock: DS1307	*/
+#define I2C_DRIVERID_24LC64	47	/* EEprom 24LC64		*/
+#define I2C_DRIVERID_FM24CLB4	48	/* EEprom FM24CLB4		*/
+#define I2C_DRIVERID_X1226	49	/* RTC: Xicor X1226		*/
+#define I2C_DRIVERID_RV5C387	50	/* RTC: Ricoh RV5C387		*/
 
 #define I2C_DRIVERID_EXP0	0xF0	/* experimental use id's	*/
 #define I2C_DRIVERID_EXP1	0xF1
@@ -127,6 +134,10 @@
 #define I2C_DRIVERID_ADM1024 1025
 #define I2C_DRIVERID_IT87 1026
 #define I2C_DRIVERID_CH700X 1027 /* single driver for CH7003-7009 digital pc to tv encoders */
+#define I2C_DRIVERID_FSCPOS 1028
+#define I2C_DRIVERID_FSCSCY 1029
+#define I2C_DRIVERID_PCF8591 1030
+#define I2C_DRIVERID_X9221 1031
 
 /*
  * ---- Adapter types ----------------------------------------------------
@@ -143,10 +154,15 @@
 #define I2C_ALGO_ISA 	0x050000	/* lm_sensors ISA pseudo-adapter */
 #define I2C_ALGO_SAA7146 0x060000	/* SAA 7146 video decoder bus	*/
 #define I2C_ALGO_ACB 	0x070000	/* ACCESS.bus algorithm         */
-
+#define I2C_ALGO_IIC    0x080000 	/* ITE IIC bus */
+#define I2C_ALGO_SAA7134 0x090000
 #define I2C_ALGO_EC     0x100000        /* ACPI embedded controller     */
 
 #define I2C_ALGO_MPC8XX 0x110000	/* MPC8xx PowerPC I2C algorithm */
+#define I2C_ALGO_MPC8260 0x120000	/* MPC8260 CPM I2C */
+#define I2C_ALGO_OCP    0x130000	/* IBM or otherwise On-chip I2C algorithm */
+#define I2C_ALGO_X220   0x140000	/* ATI Xilleon 220 I2C algorithm */
+#define I2C_ALGO_PXA    0x400000	/* Intel PXA I2C algorithm  */
 
 #define I2C_ALGO_EXP	0x800000	/* experimental			*/
 
@@ -177,6 +193,7 @@
 #define I2C_HW_B_RIVA	0x10	/* Riva based graphics cards		*/
 #define I2C_HW_B_IOC	0x11	/* IOC bit-wiggling			*/
 #define I2C_HW_B_TSUNA  0x12	/* DEC Tsunami chipset			*/
+#define I2C_HW_B_FRODO	0x13	/* 2d3D, Inc. SA-1110 Development Board */
 
 /* --- PCF 8584 based algorithms					*/
 #define I2C_HW_P_LP	0x00	/* Parallel port interface		*/
@@ -188,6 +205,18 @@
 
 /* --- MPC8xx PowerPC adapters						*/
 #define I2C_HW_MPC8XX_EPON 0x00	/* Eponymous MPC8xx I2C adapter 	*/
+
+/* --- PowerPC on-chip adapters						*/
+#define I2C_HW_OCP 0x00	/* IBM on-chip I2C adapter 	*/
+
+/* --- MPC8260 PowerPC CPM adapters					*/
+#define I2C_HW_MPC8260_EPON 0x00 /* Eponymous MPC8260 I2C adapter	*/
+
+/* --- ITE based algorithms						*/
+#define I2C_HW_I_IIC	0x00	/* controller on the ITE */
+
+/* --- ATI Xilleon based algorithms					*/
+#define I2C_HW_X_X220	0x00	/* controller on the Xilleon 220 */
 
 /* --- SMBus only adapters						*/
 #define I2C_HW_SMBUS_PIIX4	0x00

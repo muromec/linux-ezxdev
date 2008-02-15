@@ -1,0 +1,76 @@
+# Base Configuration for MontaVista Linux 
+# 
+# If an option is marked as "m", the .config will only 
+# be modified if the option is turned off.
+# 
+# If an option is marked as "y", the .config will be modified
+# if the options in the "m" or the off states.
+#
+# If an option is marked as "n", the .config will be modified
+# if the option is in the "m" or "y" states.
+
+# MontaVista Linux uses devfs for devices
+CONFIG_EXPERIMENTAL=y
+CONFIG_DEVFS_FS=y
+CONFIG_DEVFS_MOUNT=y
+
+# MontaVista enhancements and dependancies
+CONFIG_PROC_FS=y
+CONFIG_IKCONFIG=y
+CONFIG_IKCONFIG_PROC=y
+
+# Standard Userland requirements
+CONFIG_BINFMT_ELF=y
+CONFIG_SYSVIPC=y
+CONFIG_UNIX=y
+
+# Required for glibc shm interfaces
+CONFIG_TMPFS=y
+
+# Required for various kernel tuning features
+CONFIG_SYSCTL=y
+
+# Required for remote login
+CONFIG_UNIX98_PTYS=y
+
+# Required for ip stack snooping(tcpdump, ethereal)
+CONFIG_PACKET=y
+
+# Required for iptables
+CONFIG_NETFILTER=y
+
+# Required for kernel nfs server utilities
+CONFIG_NFSD=m
+
+# Required for pppd 
+CONFIG_PPP=m
+CONFIG_PPP_ASYNC=m
+CONFIG_PPP_SYNC_TTY=m
+CONFIG_PPP_DEFLATE=m
+# BSD compression is possibly patent encumbered and should not be enabled 
+CONFIG_PPP_BSDCOMP=n
+
+# Required default root filesystems
+CONFIG_EXT2_FS=y
+CONFIG_CRAMFS=y
+# Note if MTD is not configured this option will disapear from the config
+CONFIG_JFFS2_FS=y
+
+# Required non-root filesystems
+CONFIG_SMB_FS=m
+CONFIG_EXT3_FS=m
+CONFIG_AUTOFS4_FS=m
+CONFIG_XFS_FS=m
+
+# Kernel module support
+CONFIG_MODULES=y
+CONFIG_KMOD=y
+
+# IPv6 kernel support
+CONFIG_IPV6=m
+
+# Misc supported features
+CONFIG_BLK_DEV_LOOP=m
+CONFIG_INPUT=m
+CONFIG_INPUT_EVDEV=m
+CONFIG_TUN=m

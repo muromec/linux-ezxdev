@@ -28,6 +28,13 @@
  * e-mail - mail your message to <vojtech@suse.cz>, or by paper mail:
  * Vojtech Pavlik, Ucitelska 1576, Prague 8, 182 00 Czech Republic
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by w15879, for EZX platform
+ *
+ * 2005-Apr-04  Motorola  Add security patch
+ */
 
 #ifdef __KERNEL__
 #include <linux/time.h>
@@ -426,6 +433,7 @@ struct input_event {
  */
 
 #define MSC_SERIAL		0x00
+#define MSC_KEYPAD		0x01
 #define MSC_MAX			0x07
 
 /*
@@ -473,7 +481,7 @@ struct input_event {
 #define BUS_USB			0x03
 #define BUS_HIL                 0x04
 
-#define BUS_ISA			0x10
+/*   #define BUS_ISA			0x10  --conflict with sysctl.h */
 #define BUS_I8042		0x11
 #define BUS_XTKBD		0x12
 #define BUS_RS232		0x13
@@ -482,6 +490,8 @@ struct input_event {
 #define BUS_AMIGA		0x16
 #define BUS_ADB			0x17
 #define BUS_I2C			0x18
+#define BUS_MAPLE		0x19
+#define BUS_ONCHIP		0x1a
 
 /*
  * Structures used in ioctls to upload effects to a device

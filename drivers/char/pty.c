@@ -10,7 +10,11 @@
  *
  *
  */
-
+/*
+ * Copyright (C) 2003-2005 Motorola Inc.
+ *
+ * modified by A18629, for EZX platform
+ */
 #include <linux/config.h>
 #include <linux/module.h>	/* For EXPORT_SYMBOL */
 
@@ -33,9 +37,25 @@
 #define BUILDING_PTY_C 1
 #include <linux/devpts_fs.h>
 
+#ifdef CONFIG_PTY_BLUETOOTH
+#include <linux/serial_reg.h>
+#endif
+
+
 struct pty_struct {
 	int	magic;
 	wait_queue_head_t open_wait;
+#ifdef CONFIG_PTY_BLUETOOTH
+	int pktms;
+	wait_queue_head_t ioctl_wait;
+	int M_MCR;
+	int M_MSR;
+	int S_MCR;
+	int S_MSR;
+
+	unsigned int LSR;
+	unsigned int LCR;
+#endif
 };
 
 #define PTY_MAGIC 0x5001
@@ -70,6 +90,10 @@ static struct pty_struct ptm_state[UNIX98_NR_MAJORS][NR_PTYS];
 
 static void pty_close(struct tty_struct * tty, struct file * filp)
 {
+#ifdef CONFIG_PTY_BLUETOOTH
+	struct pty_struct *pty;
+#endif
+
 	if (!tty)
 		return;
 	if (tty->driver.subtype == PTY_TYPE_MASTER) {
@@ -85,11 +109,27 @@ static void pty_close(struct tty_struct * tty, struct file * filp)
 	if (!tty->link)
 		return;
 	tty->link->packet = 0;
+#ifdef CONFIG_PTY_BLUETOOTH
+	pty = tty->driver_data;
+	if (pty && pty->pktms)
+	{
+	    tty->link->packet = 1;
+	    tty->packet = 1;
+	}
+#endif
+
 	wake_up_interruptible(&tty->link->read_wait);
 	wake_up_interruptible(&tty->link->write_wait);
 	set_bit(TTY_OTHER_CLOSED, &tty->link->flags);
 	if (tty->driver.subtype == PTY_TYPE_MASTER) {
 		set_bit(TTY_OTHER_CLOSED, &tty->flags);
+#ifdef CONFIG_PTY_BLUETOOTH
+		pty = tty->driver_data;
+		if(pty) {
+			pty->pktms = 0;
+			wake_up_interruptible(&pty->ioctl_wait);
+		}
+#endif
 #ifdef CONFIG_UNIX98_PTYS
 		{
 			unsigned int major = MAJOR(tty->device) - UNIX98_PTY_MASTER_MAJOR;
@@ -235,6 +275,20 @@ static int pty_chars_in_buffer(struct tty_struct *tty)
 	return ((count < N_TTY_BUF_SIZE/2) ? 0 : count);
 }
 
+#ifdef CONFIG_PTY_BLUETOOTH
+static int pty_get_chars_in_buffer(struct tty_struct *tty, unsigned int *value)
+{
+	struct tty_struct *to = tty->link;
+	int count = 0;
+	if (!to || !to->ldisc.chars_in_buffer)
+	{
+		return put_user(count, (int*)value);
+	}
+	count = to->ldisc.chars_in_buffer(to);
+	return put_user(count, (int*)value);
+}
+#endif
+
 /* 
  * Return the device number of a Unix98 PTY (only!).  This lets us open a
  * master pty with the multi-headed ptmx device, then find out which
@@ -262,6 +316,315 @@ static int pty_set_lock(struct tty_struct *tty, int * arg)
 	return 0;
 }
 
+#ifdef CONFIG_PTY_BLUETOOTH
+/*  Bluetooth ioctl handle  */
+static int switch_modem_mode(struct tty_struct *tty, unsigned int *value)
+{
+	int mode;
+	struct pty_struct *pty = tty->driver_data;
+
+	if (tty->driver.subtype != PTY_TYPE_MASTER || !pty)
+		return -ENOTTY;
+
+	if (get_user(mode, (int *) value))
+		return -EFAULT;
+	if (mode)
+		pty->pktms = 1;
+	else
+		pty->pktms = 0;
+	return 0;
+}
+
+static void send_sighup(struct tty_struct *tty)
+{
+	//struct task_struct *p;	
+	
+	if(tty->termios->c_cflag & CLOCAL)
+		return;
+
+#if 0
+	read_lock(&tasklist_lock);
+ 	for_each_task(p) {
+		if ((tty->session > 0) && (p->session == tty->session) &&
+		    p->leader) {
+			send_sig(SIGHUP,p,1);
+	//		send_sig(SIGCONT,p,1);
+	//		if (tty->pgrp > 0)
+	//			p->tty_old_pgrp = tty->pgrp;
+		}
+	//	if (p->tty == tty)
+	//		p->tty = NULL;
+	}
+	read_unlock(&tasklist_lock);
+#endif
+//      tty_vhangup(tty);
+
+        if (kill_sl(tty->session, SIGHUP, 1) != 0) {
+               printk("error info: fail to send SIGHUP to modem engine\n");
+        }
+}
+
+static int set_modem_info(struct tty_struct *tty, unsigned int cmd, unsigned int *value)
+{
+	unsigned int arg;
+	struct pty_struct *pty = tty->driver_data;
+	int control, status;
+	int flag = 0;
+	
+	if (!pty)
+		return -ENOTTY;
+
+	if (!pty->pktms)
+		return -ENOIOCTLCMD;	
+
+	if (copy_from_user(&arg, value, sizeof(int)))
+		return -EFAULT;
+
+	if(tty->driver.subtype == PTY_TYPE_MASTER)
+        {
+                control = pty->M_MCR;
+                status = pty->M_MSR;
+        }
+        else
+        {
+                control = pty->S_MCR;
+                status = pty->S_MSR;
+        }
+
+
+	switch (cmd) {
+		case TIOCMBIS:
+			if (arg & TIOCM_RTS)
+				control |= UART_MCR_RTS;
+			
+                        if (arg & TIOCM_DTR)
+				control |= UART_MCR_DTR;
+
+			if (arg & TIOCM_CAR)
+				status |= UART_MSR_DCD;
+                                       
+			if (arg & TIOCM_RNG)
+				status |= UART_MSR_RI;
+
+			if (arg & TIOCM_DSR)
+				status |= UART_MSR_DSR;
+
+			if (arg & TIOCM_CTS)
+				status |= UART_MSR_CTS;
+		break;
+			
+		case TIOCMBIC:
+			if (arg & TIOCM_RTS)
+				control &= ~UART_MCR_RTS;
+
+			if (arg & TIOCM_DTR)
+			{
+				if((tty->driver.subtype == PTY_TYPE_MASTER)
+				   && (control & UART_MCR_DTR))
+					flag = 1;
+				control &= ~UART_MCR_DTR;
+			}
+
+			if (arg & TIOCM_CAR)
+				status &= ~UART_MSR_DCD;
+
+			if (arg & TIOCM_RNG)
+				status &= ~UART_MSR_RI;
+
+			if (arg & TIOCM_DSR)
+			{
+				if((tty->driver.subtype == PTY_TYPE_MASTER)
+				   && (status & UART_MSR_DSR))
+					flag = 1;
+				status &= ~UART_MSR_DSR;
+			}
+
+			if(arg & TIOCM_CTS)
+				status &= ~UART_MSR_CTS;
+		break;
+			
+		case TIOCMSET:
+				
+			if((tty->driver.subtype == PTY_TYPE_MASTER)
+ 			   && (control & UART_MCR_DTR)
+			   && !(arg & TIOCM_DTR))
+				flag = 1;
+
+			if((tty->driver.subtype == PTY_TYPE_MASTER)
+			   && (status & UART_MSR_DSR)
+			   && !(arg & TIOCM_DSR))
+				flag = 1;
+			
+			control = ((control & ~(UART_MCR_RTS | UART_MCR_DTR))
+			                    | ((arg & TIOCM_RTS) ? UART_MCR_RTS : 0)
+			                    | ((arg & TIOCM_DTR) ? UART_MCR_DTR : 0));
+
+
+			status = ((status   & ~( UART_MSR_DCD | UART_MSR_RI
+                                               |UART_MSR_DSR | UART_MSR_CTS))			     
+			                    | ((arg & TIOCM_CAR) ? UART_MSR_DCD : 0)
+			                    | ((arg & TIOCM_RNG) ? UART_MSR_RI : 0)
+			                    | ((arg & TIOCM_DSR) ? UART_MSR_DSR : 0)
+			                    | ((arg & TIOCM_CTS) ? UART_MSR_CTS : 0));
+
+		break;
+
+		default:
+			return -EINVAL;
+		}
+		
+	if(tty->driver.subtype == PTY_TYPE_MASTER)
+        {
+                pty->M_MCR = control;
+                pty->M_MSR = status;
+        }
+        else
+        {
+                pty->S_MCR = control;
+                pty->S_MSR = status;
+        }
+
+	if(flag)
+		send_sighup(tty->link);
+			     
+	if(tty->driver.subtype == PTY_TYPE_SLAVE) {
+		/* notify poll return POLLPRI */
+		if (tty->link->packet) {
+			tty->ctrl_status |= TIOCPKT_MSC;
+			wake_up_interruptible(&tty->link->read_wait);
+		}
+		/* Sleep, waiting TIOCMGET awake */
+		interruptible_sleep_on(&pty->ioctl_wait);
+	}
+
+	if (test_bit(TTY_OTHER_CLOSED, &tty->flags))
+		return -EIO;
+	
+	return 0;
+}
+
+static int get_modem_info(struct tty_struct *tty, unsigned int *value)
+{
+	struct pty_struct *pty = tty->driver_data;
+	int m_control, m_status, s_control, s_status;
+	unsigned int result;
+
+	if (!pty)
+		return -ENOTTY;
+
+	if (!pty->pktms)
+		return -ENOIOCTLCMD;	
+
+	m_control = pty->M_MCR;
+	m_status = pty->M_MSR;
+	s_control = pty->S_MCR;
+	s_status = pty->S_MSR;
+
+	if(tty->driver.subtype == PTY_TYPE_MASTER) {
+	        result =  ((s_control & UART_MCR_RTS) ? TIOCM_RTS : 0)
+		        | ((s_control & UART_MCR_DTR) ? TIOCM_DTR : 0)
+		        | ((s_status  & UART_MSR_DCD) ? TIOCM_CAR : 0)
+		        | ((s_status  & UART_MSR_RI) ? TIOCM_RNG : 0)
+		        | ((s_status  & UART_MSR_DSR) ? TIOCM_DSR : 0)
+		        | ((s_status  & UART_MSR_CTS) ? TIOCM_CTS : 0);
+        }
+        else {
+	        result =  ((m_control & UART_MCR_RTS) ? TIOCM_RTS : 0)
+		        | ((m_control & UART_MCR_DTR) ? TIOCM_DTR : 0)
+		        | ((m_status  & UART_MSR_DCD) ? TIOCM_CAR : 0)
+		        | ((m_status  & UART_MSR_RI) ? TIOCM_RNG : 0)
+		        | ((m_status  & UART_MSR_DSR) ? TIOCM_DSR : 0)
+		        | ((m_status  & UART_MSR_CTS) ? TIOCM_CTS : 0);
+        }
+
+
+	if (copy_to_user(value, &result, sizeof(int)))
+		return -EFAULT;
+
+	if(tty->driver.subtype == PTY_TYPE_MASTER) {
+		/*  wakeup the set_modem_info */
+		wake_up_interruptible(&pty->ioctl_wait);
+	}
+
+	return 0; 
+}
+
+static int set_lsr_info(struct tty_struct *tty, unsigned int *value)
+{
+	unsigned int arg;
+	struct pty_struct *pty = tty->driver_data;
+
+	if (!pty)
+		return -ENOTTY;
+
+	if (!pty->pktms)
+		return -ENOIOCTLCMD;	
+
+	if (copy_from_user(&arg, value, sizeof(int)))
+		return -EFAULT;
+
+	if(tty->driver.subtype == PTY_TYPE_MASTER) {
+		if (arg & UART_LSR_FE)
+			pty->LSR |= UART_LSR_FE;
+		if (arg & UART_LSR_PE)
+			pty->LSR |= UART_LSR_PE;
+		if (arg & UART_LSR_OE)
+			pty->LSR |= UART_LSR_OE;
+	}
+	else {
+		/* slave */
+		/* TBD */
+	}
+
+	return 0;
+}
+
+static int get_lsr_info(struct tty_struct *tty, unsigned int *value)
+{
+	struct pty_struct *pty = tty->driver_data;
+ 
+	if (!pty)
+		return -ENOTTY;
+
+	if (!pty->pktms)
+		return -ENOIOCTLCMD;	
+
+	/* TBD */
+
+	return 0;
+
+}
+
+static int pty_enhance_ioctl(struct tty_struct *tty, struct file *file,
+	                unsigned int cmd, unsigned long arg)
+{
+		
+	if (!tty || !tty->link) {
+		printk("pty_ioctl called with NULL tty!\n");
+		return -EIO;
+	}
+
+	switch (cmd) {
+		case TIOCPKTMS:
+			return switch_modem_mode(tty, (unsigned int *) arg);
+		case TIOCMGET:
+			return get_modem_info(tty, (unsigned int *) arg);
+		case TIOCMBIS:
+		case TIOCMBIC:
+		case TIOCMSET:
+			return set_modem_info(tty, cmd, (unsigned int *) arg);
+		case TIOCSERSETLSR: /* Set line status register */
+			return set_lsr_info(tty, (unsigned int *) arg);
+		case TIOCSERGETLSR: /* Get line status register */
+			return get_lsr_info(tty, (unsigned int *) arg);
+                case TIOCMOUTQ:
+                        return pty_get_chars_in_buffer(tty, (unsigned int *)arg);
+		default:
+			return -ENOIOCTLCMD;
+		} 
+}
+#endif
+
 static int pty_bsd_ioctl(struct tty_struct *tty, struct file *file,
 			unsigned int cmd, unsigned long arg)
 {
@@ -273,7 +636,11 @@ static int pty_bsd_ioctl(struct tty_struct *tty, struct file *file,
 	case TIOCSPTLCK: /* Set PT Lock (disallow slave open) */
 		return pty_set_lock(tty, (int *) arg);
 	}
+#ifdef CONFIG_PTY_BLUETOOTH
+	return pty_enhance_ioctl(tty, file, cmd, arg);
+#else
 	return -ENOIOCTLCMD;
+#endif
 }
 
 #ifdef CONFIG_UNIX98_PTYS
@@ -337,6 +704,19 @@ static int pty_open(struct tty_struct *tty, struct file * filp)
 	set_bit(TTY_THROTTLED, &tty->flags);
 	set_bit(TTY_DO_WRITE_WAKEUP, &tty->flags);
 
+#ifdef CONFIG_PTY_BLUETOOTH
+	if (tty->driver.subtype == PTY_TYPE_MASTER) {
+		/*  Initial the pty bluetooth element  */
+		pty->pktms = 0;
+		pty->M_MCR = 0;
+		pty->M_MSR = 0;
+		pty->LSR = 0;
+		pty->LCR = 0;
+                pty->S_MCR = 0;
+                pty->S_MSR = 0;
+	}
+#endif
+
 	/*  Register a slave for the master  */
 	if (tty->driver.major == PTY_MASTER_MAJOR)
 		tty_register_devfs(&tty->link->driver,
@@ -362,7 +742,14 @@ int __init pty_init(void)
 
 	memset(&pty_state, 0, sizeof(pty_state));
 	for (i = 0; i < NR_PTYS; i++)
+#ifdef CONFIG_PTY_BLUETOOTH
+	{
+#endif
 		init_waitqueue_head(&pty_state[i].open_wait);
+#ifdef CONFIG_PTY_BLUETOOTH
+		init_waitqueue_head(&pty_state[i].ioctl_wait);
+	}
+#endif
 	memset(&pty_driver, 0, sizeof(struct tty_driver));
 	pty_driver.magic = TTY_DRIVER_MAGIC;
 	pty_driver.driver_name = "pty_master";
@@ -432,6 +819,9 @@ int __init pty_init(void)
 	 * pty_driver initialization. <cananian@alumni.princeton.edu>
 	 */
 	pty_driver.ioctl = pty_bsd_ioctl;
+#ifdef CONFIG_PTY_BLUETOOTH
+	pty_slave_driver.ioctl = pty_enhance_ioctl;
+#endif
 
 	/* Unix98 devices */
 #ifdef CONFIG_UNIX98_PTYS
@@ -455,8 +845,15 @@ int __init pty_init(void)
 		ptm_driver[i].driver_state = ptm_state[i];
 
 		for (j = 0; j < NR_PTYS; j++)
+#ifdef CONFIG_PTY_BLUETOOTH
+		{
+#endif
 			init_waitqueue_head(&ptm_state[i][j].open_wait);
-		
+#ifdef CONFIG_PTY_BLUETOOTH
+			init_waitqueue_head(&ptm_state[i][j].ioctl_wait);
+		}
+#endif
+
 		pts_driver[i] = pty_slave_driver;
 #ifdef CONFIG_DEVFS_FS
 		pts_driver[i].name = "pts/%d";
@@ -475,7 +872,7 @@ int __init pty_init(void)
 		pts_driver[i].driver_state = ptm_state[i];
 		
 		ptm_driver[i].ioctl = pty_unix98_ioctl;
-		
+
 		if (tty_register_driver(&ptm_driver[i]))
 			panic("Couldn't register Unix98 ptm driver major %d",
 			      ptm_driver[i].major);

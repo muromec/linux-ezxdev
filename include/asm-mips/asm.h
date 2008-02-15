@@ -96,7 +96,7 @@ symbol		=	value
 #define	PANIC(msg)                                      \
 		.set	push;				\
 		.set	reorder;                        \
-		PTR_LA	a0,8f;                          \
+		la	a0,8f;                          \
 		jal	panic;                          \
 9:		b	9b;                             \
 		.set	pop;				\
@@ -108,7 +108,7 @@ symbol		=	value
 #define PRINT(string)                                   \
 		.set	push;				\
 		.set	reorder;                        \
-		PTR_LA	a0,8f;                          \
+		la	a0,8f;                          \
 		jal	printk;                         \
 		.set	pop;				\
 		TEXT(string)
@@ -136,25 +136,15 @@ symbol		=	value
  * MIPS IV implementations are free to treat this as a nop.  The R5000
  * is one of them.  So we should have an option not to use this instruction.
  */
-#if CONFIG_CPU_HAS_PREFETCH
-
+#if (_MIPS_ISA == _MIPS_ISA_MIPS4 ) || (_MIPS_ISA == _MIPS_ISA_MIPS5) || \
+    (_MIPS_ISA == _MIPS_ISA_MIPS64)
 #define PREF(hint,addr)                                 \
-		.set	push;				\
-		.set	mips4;				\
-		pref	hint,addr;			\
-		.set	pop
-
+		pref	hint,addr
 #define PREFX(hint,addr)                                \
-		.set	push;				\
-		.set	mips4;				\
-		prefx	hint,addr;			\
-		.set	pop
-
+		prefx	hint,addr
 #else
-
 #define PREF(hint,addr)
 #define PREFX(hint,addr)
-
 #endif
 
 /*
@@ -172,7 +162,7 @@ symbol		=	value
 		.set	push;				\
 		.set	reorder;			\
 		bnez	rt,9f;                          \
-		move	rd,rs;                          \
+		move	rd,rt;                          \
 		.set	pop;				\
 9:
 #endif /* _MIPS_ISA == _MIPS_ISA_MIPS1 */
@@ -376,15 +366,15 @@ symbol		=	value
  */
 #if (_MIPS_ISA == _MIPS_ISA_MIPS1) || (_MIPS_ISA == _MIPS_ISA_MIPS2) || \
     (_MIPS_ISA == _MIPS_ISA_MIPS32)
-#define MFC0		mfc0
-#define MTC0		mtc0
+#define MFC0	mfc0
+#define MTC0	mtc0
 #endif
 #if (_MIPS_ISA == _MIPS_ISA_MIPS3) || (_MIPS_ISA == _MIPS_ISA_MIPS4) || \
     (_MIPS_ISA == _MIPS_ISA_MIPS5) || (_MIPS_ISA == _MIPS_ISA_MIPS64)
-#define MFC0		dmfc0
-#define MTC0		dmtc0
+#define MFC0	dmfc0
+#define MTC0	dmtc0
 #endif
 
-#define SSNOP		sll zero,zero,1
+#define SSNOP	sll zero, zero, 1
 
 #endif /* __ASM_ASM_H */

@@ -13,24 +13,27 @@
 #include <linux/adfs_fs.h>
 #include <linux/spinlock.h>
 
+#include <asm/unaligned.h>
+
 #include "adfs.h"
 
 /*
  * For the future...
  */
-static rwlock_t adfs_map_lock;
+static rwlock_t adfs_map_lock = RW_LOCK_UNLOCKED;
 
+/*
+ * This is fun.  We need to load up to 19 bits from the map at an
+ * arbitary bit alignment.  (We're limited to 19 bits by F+ version
+ * 2).
+ */
 #define GET_FRAG_ID(_map,_start,_idmask)				\
 	({								\
-		unsigned long _v2, _frag;				\
-		unsigned int _tmp;					\
-		_tmp = _start >> 5;					\
-		_frag = le32_to_cpu(_map[_tmp]);			\
-		_v2   = le32_to_cpu(_map[_tmp + 1]);			\
-		_tmp = start & 31;					\
-		_frag = (_frag >> _tmp) | (_v2 << (32 - _tmp));		\
+		unsigned char *_m = _map + (_start >> 3);		\
+		u32 _frag = get_unaligned((u32 *)_m);			\
+		_frag >>= (_start & 7);					\
 		_frag & _idmask;					\
-	})
+	})	
 
 /*
  * return the map bit offset of the fragment frag_id in
@@ -44,14 +47,13 @@ lookup_zone(const struct adfs_discmap *dm, const unsigned int idlen,
 	    const unsigned int frag_id, unsigned int *offset)
 {
 	const unsigned int mapsize = dm->dm_endbit;
-	const unsigned int idmask = (1 << idlen) - 1;
-	unsigned long *map = ((unsigned long *)dm->dm_bh->b_data) + 1;
+	const u32 idmask = (1 << idlen) - 1;
+	unsigned char *map = dm->dm_bh->b_data + 4;
 	unsigned int start = dm->dm_startbit;
 	unsigned int mapptr;
+	u32 frag;
 
 	do {
-		unsigned long frag;
-
 		frag = GET_FRAG_ID(map, start, idmask);
 		mapptr = start + idlen;
 
@@ -59,15 +61,17 @@ lookup_zone(const struct adfs_discmap *dm, const unsigned int idlen,
 		 * find end of fragment
 		 */
 		{
-			unsigned long v2;
+			u32 v, *_map = (u32 *)map;
 
-			while ((v2 = map[mapptr >> 5] >> (mapptr & 31)) == 0) {
+			v = le32_to_cpu(_map[mapptr >> 5]) >> (mapptr & 31);
+			while (v == 0) {
 				mapptr = (mapptr & ~31) + 32;
 				if (mapptr >= mapsize)
 					goto error;
+				v = le32_to_cpu(_map[mapptr >> 5]);
 			}
 
-			mapptr += 1 + ffz(~v2);
+			mapptr += 1 + ffz(~v);
 		}
 
 		if (frag == frag_id)
@@ -75,8 +79,11 @@ lookup_zone(const struct adfs_discmap *dm, const unsigned int idlen,
 again:
 		start = mapptr;
 	} while (mapptr < mapsize);
+	return -1;
 
 error:
+	printk(KERN_ERR "adfs: oversized fragment 0x%x at 0x%x-0x%x\n",
+		frag, start, mapptr);
 	return -1;
 
 found:
@@ -102,10 +109,10 @@ scan_free_map(struct adfs_sb_info *asb, struct adfs_discmap *dm)
 	const unsigned int mapsize = dm->dm_endbit + 32;
 	const unsigned int idlen  = asb->s_idlen;
 	const unsigned int frag_idlen = idlen <= 15 ? idlen : 15;
-	const unsigned int idmask = (1 << frag_idlen) - 1;
-	unsigned long *map = (unsigned long *)dm->dm_bh->b_data;
+	const u32 idmask = (1 << frag_idlen) - 1;
+	unsigned char *map = dm->dm_bh->b_data;
 	unsigned int start = 8, mapptr;
-	unsigned long frag;
+	u32 frag;
 	unsigned long total = 0;
 
 	/*
@@ -133,15 +140,17 @@ scan_free_map(struct adfs_sb_info *asb, struct adfs_discmap *dm)
 		 * find end of fragment
 		 */
 		{
-			unsigned long v2;
+			u32 v, *_map = (u32 *)map;
 
-			while ((v2 = map[mapptr >> 5] >> (mapptr & 31)) == 0) {
+			v = le32_to_cpu(_map[mapptr >> 5]) >> (mapptr & 31);
+			while (v == 0) {
 				mapptr = (mapptr & ~31) + 32;
 				if (mapptr >= mapsize)
 					goto error;
+				v = le32_to_cpu(_map[mapptr >> 5]);
 			}
 
-			mapptr += 1 + ffz(~v2);
+			mapptr += 1 + ffz(~v);
 		}
 
 		total += mapptr - start;

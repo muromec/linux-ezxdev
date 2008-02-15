@@ -6,15 +6,22 @@
  * Common interfaces for "ptrace()" which we do not want
  * to continually duplicate across every architecture.
  */
+/*
+ *
+ * 2005-Apr-04  Motorola  Add security patch
+ */
+
 
 #include <linux/sched.h>
 #include <linux/errno.h>
 #include <linux/mm.h>
 #include <linux/highmem.h>
 #include <linux/smp_lock.h>
+#include <linux/security.h>
 
 #include <asm/pgtable.h>
 #include <asm/uaccess.h>
+#include <asm/io.h> 
 
 /*
  * Check that we have indeed attached to the thing..
@@ -31,20 +38,7 @@ int ptrace_check_attach(struct task_struct *child, int kill)
 		if (child->state != TASK_STOPPED)
 			return -ESRCH;
 #ifdef CONFIG_SMP
-		/* Make sure the child gets off its CPU.. */
-		for (;;) {
-			task_lock(child);
-			if (!task_has_cpu(child))
-				break;
-			task_unlock(child);
-			do {
-				if (child->state != TASK_STOPPED)
-					return -ESRCH;
-				barrier();
-				cpu_relax();
-			} while (task_has_cpu(child));
-		}
-		task_unlock(child);
+		wait_task_inactive(child);
 #endif		
 	}
 
@@ -54,7 +48,9 @@ int ptrace_check_attach(struct task_struct *child, int kill)
 
 int ptrace_attach(struct task_struct *task)
 {
+    int retval;
 	task_lock(task);
+    retval = -EPERM;
 	if (task->pid <= 1)
 		goto bad;
 	if (task == current)
@@ -74,6 +70,9 @@ int ptrace_attach(struct task_struct *task)
 		goto bad;
 	/* the same process cannot be attached many times */
 	if (task->ptrace & PT_PTRACED)
+		goto bad;
+	retval = security_ptrace(current, task);
+	if (retval)
 		goto bad;
 
 	/* Go */
@@ -95,7 +94,7 @@ int ptrace_attach(struct task_struct *task)
 
 bad:
 	task_unlock(task);
-	return -EPERM;
+	return retval;
 }
 
 int ptrace_detach(struct task_struct *child, unsigned int data)
@@ -132,6 +131,7 @@ int access_process_vm(struct task_struct *tsk, unsigned long addr, void *buf, in
 	struct vm_area_struct *vma;
 	struct page *page;
 	void *old_buf = buf;
+	
 
 	/* Worry about races with exit() */
 	task_lock(tsk);
@@ -163,6 +163,9 @@ int access_process_vm(struct task_struct *tsk, unsigned long addr, void *buf, in
 		maddr = kmap(page);
 		if (write) {
 			memcpy(maddr + offset, buf, bytes);
+#ifdef CONFIG_SUPERH
+			flush_dcache_page(page);
+#endif
 			flush_page_to_ram(page);
 			flush_icache_user_range(vma, page, addr, len);
 		} else {
@@ -229,4 +232,73 @@ int ptrace_writedata(struct task_struct *tsk, char * src, unsigned long dst, int
 		len -= retval;			
 	}
 	return copied;
+}
+
+static int ptrace_setoptions(struct task_struct *child, long data)
+{
+	if (data & PTRACE_O_TRACESYSGOOD)
+		child->ptrace |= PT_TRACESYSGOOD;
+	else
+		child->ptrace &= ~PT_TRACESYSGOOD;
+
+	if (data & PTRACE_O_TRACEFORK)
+		child->ptrace |= PT_TRACE_FORK;
+	else
+		child->ptrace &= ~PT_TRACE_FORK;
+
+	if (data & PTRACE_O_TRACEVFORK)
+		child->ptrace |= PT_TRACE_VFORK;
+	else
+		child->ptrace &= ~PT_TRACE_VFORK;
+
+	if (data & PTRACE_O_TRACECLONE)
+		child->ptrace |= PT_TRACE_CLONE;
+	else
+		child->ptrace &= ~PT_TRACE_CLONE;
+
+	if (data & PTRACE_O_TRACEEXEC)
+		child->ptrace |= PT_TRACE_EXEC;
+	else
+		child->ptrace &= ~PT_TRACE_EXEC;
+
+	if ((data & (PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK
+		    | PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE
+		    | PTRACE_O_TRACEEXEC))
+	    != data)
+		return -EINVAL;
+
+	return 0;
+}
+
+int ptrace_request(struct task_struct *child, long request,
+		   long addr, long data)
+{
+	int ret = -EIO;
+
+	switch (request) {
+#ifdef PTRACE_OLDSETOPTIONS
+	case PTRACE_OLDSETOPTIONS:
+#endif
+	case PTRACE_SETOPTIONS:
+		ret = ptrace_setoptions(child, data);
+		break;
+	case PTRACE_GETEVENTMSG:
+		ret = put_user(child->ptrace_message, (unsigned long *) data);
+		break;
+	default:
+		break;
+	}
+
+	return ret;
+}
+
+void ptrace_notify(int exit_code)
+{
+	if (!(current->ptrace & PT_PTRACED)) BUG ();
+
+	/* Let the debugger run.  */
+	current->exit_code = exit_code;
+	set_current_state(TASK_STOPPED);
+	notify_parent(current, SIGCHLD);
+	schedule();
 }

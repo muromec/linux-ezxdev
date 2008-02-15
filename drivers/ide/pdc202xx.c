@@ -682,7 +682,7 @@ static int config_chipset_for_dma (ide_drive_t *drive, byte ultra)
 	byte			AP;
 	unsigned short		EP;
 	byte CLKSPD		= 0;
-	byte clockreg		= high_16 + 0x11;
+	unsigned long clockreg	= high_16 + 0x11;
 	byte udma_33		= ultra;
 	byte udma_66		= ((eighty_ninty_three(drive)) && udma_33) ? 1 : 0;
 	byte udma_100		= 0;
@@ -974,7 +974,7 @@ int pdc202xx_dmaproc (ide_dma_action_t func, ide_drive_t *drive)
 				struct request *rq = HWGROUP(drive)->rq;
 				unsigned long word_count = 0;
 				unsigned long hankval = 0;
-				byte	clockreg = high_16 + 0x11;
+				unsigned long clockreg = high_16 + 0x11;
 				
 				OUT_BYTE(clock|(hwif->channel ? 0x08:0x02), clockreg);
 				word_count = (rq->nr_sectors << 8);
@@ -987,7 +987,7 @@ int pdc202xx_dmaproc (ide_dma_action_t func, ide_drive_t *drive)
 			/* Disable ATAPI UDMA port for 48bit data on PDC20267 */
 			if ((drive->addressing) && (hardware48fix)) {
 				unsigned long hankval = 0;
-				byte	clockreg = high_16 + 0x11;
+				unsigned long clockreg = high_16 + 0x11;
 				
 			    	outl(hankval, atapi_port);	/* zero out extra */
 				clock = IN_BYTE(clockreg);
@@ -1121,6 +1121,7 @@ unsigned int __init ata66_pdc202xx (ide_hwif_t *hwif)
 {
 	unsigned short mask = (hwif->channel) ? (1<<11) : (1<<10);
 	unsigned short CIS;
+	unsigned long  dma_base;
 
         	switch(hwif->pci_dev->device) {
 		case PCI_DEVICE_ID_PROMISE_20276:
@@ -1128,8 +1129,13 @@ unsigned int __init ata66_pdc202xx (ide_hwif_t *hwif)
 		case PCI_DEVICE_ID_PROMISE_20269:
 		case PCI_DEVICE_ID_PROMISE_20268:
 		case PCI_DEVICE_ID_PROMISE_20270:
-			OUT_BYTE(0x0b, (hwif->dma_base + 1));
-			return (!(IN_BYTE((hwif->dma_base + 3)) & 0x04));
+			dma_base = pci_resource_start(hwif->pci_dev, 4);
+
+			if (hwif->channel)
+				dma_base += 8;
+
+			OUT_BYTE(0x0b, dma_base + 1);
+			return (!(IN_BYTE(dma_base + 3) & 0x04));
 			/* check 80pin cable */
 		default:
 			pci_read_config_word(hwif->pci_dev, 0x50, &CIS);

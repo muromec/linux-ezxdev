@@ -57,9 +57,10 @@ typedef struct { volatile int counter; } atomic_t;
  */
 extern __inline__ void atomic_add(int i, atomic_t * v)
 {
-	unsigned long flags;
+	int	flags;
 
-	save_and_cli(flags);
+	save_flags(flags);
+	cli();
 	v->counter += i;
 	restore_flags(flags);
 }
@@ -74,19 +75,20 @@ extern __inline__ void atomic_add(int i, atomic_t * v)
  */
 extern __inline__ void atomic_sub(int i, atomic_t * v)
 {
-	unsigned long flags;
+	int	flags;
 
-	save_and_cli(flags);
+	save_flags(flags);
+	cli();
 	v->counter -= i;
 	restore_flags(flags);
 }
 
 extern __inline__ int atomic_add_return(int i, atomic_t * v)
 {
-	unsigned long flags;
-	int temp;
+	int	temp, flags;
 
-	save_and_cli(flags);
+	save_flags(flags);
+	cli();
 	temp = v->counter;
 	temp += i;
 	v->counter = temp;
@@ -97,10 +99,10 @@ extern __inline__ int atomic_add_return(int i, atomic_t * v)
 
 extern __inline__ int atomic_sub_return(int i, atomic_t * v)
 {
-	unsigned long flags;
-	int temp;
+	int	temp, flags;
 
-	save_and_cli(flags);
+	save_flags(flags);
+	cli();
 	temp = v->counter;
 	temp -= i;
 	v->counter = temp;
@@ -228,7 +230,7 @@ extern __inline__ int atomic_sub_return(int i, atomic_t * v)
  * other cases.  Note that the guaranteed
  * useful range of an atomic_t is only 24 bits.
  */
-#define atomic_inc_and_test(v) (atomic_inc_return(1, (v)) == 0)
+#define atomic_inc_and_test(v) (atomic_add_return(1, (v)) == 0)
 
 /*
  * atomic_dec_and_test - decrement by 1 and test

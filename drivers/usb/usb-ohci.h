@@ -1,3 +1,6 @@
+#ifndef _USB_OHCI_H
+#define _USB_OHCI_H
+
 /*
  * URB OHCI HCD (Host Controller Driver) for USB.
  * 
@@ -6,28 +9,12 @@
  * 
  * usb-ohci.h
  */
-
- 
-static int cc_to_error[16] = { 
-
-/* mapping of the OHCI CC status to error codes */ 
-	/* No  Error  */               USB_ST_NOERROR,
-	/* CRC Error  */               USB_ST_CRC,
-	/* Bit Stuff  */               USB_ST_BITSTUFF,
-	/* Data Togg  */               USB_ST_CRC,
-	/* Stall      */               USB_ST_STALL,
-	/* DevNotResp */               USB_ST_NORESPONSE,
-	/* PIDCheck   */               USB_ST_BITSTUFF,
-	/* UnExpPID   */               USB_ST_BITSTUFF,
-	/* DataOver   */               USB_ST_DATAOVERRUN,
-	/* DataUnder  */               USB_ST_DATAUNDERRUN,
-	/* reservd    */               USB_ST_NORESPONSE,
-	/* reservd    */               USB_ST_NORESPONSE,
-	/* BufferOver */               USB_ST_BUFFEROVERRUN,
-	/* BuffUnder  */               USB_ST_BUFFERUNDERRUN,
-	/* Not Access */               USB_ST_NORESPONSE,
-	/* Not Access */               USB_ST_NORESPONSE 
-};
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ *  2005-Nov-11  remove some warning code, Wang jordan
+ *
+ */
 
 #include <linux/config.h>
 
@@ -404,6 +391,7 @@ typedef struct ohci {
 
 	/* PCI device handle, settings, ... */
 	struct pci_dev	*ohci_dev;
+	const char	*slot_name;
 	u8		pci_latency;
 	struct pci_pool	*td_cache;
 	struct pci_pool	*dev_cache;
@@ -424,20 +412,6 @@ struct ohci_device {
 // #define ohci_to_usb(ohci)	((ohci)->usb)
 #define usb_to_ohci(usb)	((struct ohci_device *)(usb)->hcpriv)
 
-/* hcd */
-/* endpoint */
-static int ep_link(ohci_t * ohci, ed_t * ed);
-static int ep_unlink(ohci_t * ohci, ed_t * ed);
-static ed_t * ep_add_ed(struct usb_device * usb_dev, unsigned int pipe, int interval, int load, int mem_flags);
-static void ep_rm_ed(struct usb_device * usb_dev, ed_t * ed);
-/* td */
-static void td_fill(ohci_t * ohci, unsigned int info, dma_addr_t data, int len, struct urb * urb, int index);
-static void td_submit_urb(struct urb * urb);
-/* root hub */
-static int rh_submit_urb(struct urb * urb);
-static int rh_unlink_urb(struct urb * urb);
-static int rh_init_int_timer(struct urb * urb);
-
 /*-------------------------------------------------------------------------*/
 
 #define ALLOC_FLAGS (in_interrupt () || current->state != TASK_RUNNING ? GFP_ATOMIC : GFP_KERNEL)
@@ -449,7 +423,7 @@ static int rh_init_int_timer(struct urb * urb);
 #endif
  
 #ifndef CONFIG_PCI
-#	error "usb-ohci currently requires PCI-based controllers"
+//#	error "usb-ohci currently requires PCI-based controllers"
 	/* to support non-PCI OHCIs, you need custom bus/mem/... glue */
 #endif
 
@@ -556,38 +530,6 @@ hash_free_td (struct ohci * hc, struct td * td)
 	hash_free_ed_td (&(hc->td_hash[TD_HASH_FUNC(td->td_dma)]), td);
 }
 
-
-static int ohci_mem_init (struct ohci *ohci)
-{
-	ohci->td_cache = pci_pool_create ("ohci_td", ohci->ohci_dev,
-		sizeof (struct td),
-		32 /* byte alignment */,
-		0 /* no page-crossing issues */,
-		GFP_KERNEL | OHCI_MEM_FLAGS);
-	if (!ohci->td_cache)
-		return -ENOMEM;
-	ohci->dev_cache = pci_pool_create ("ohci_dev", ohci->ohci_dev,
-		sizeof (struct ohci_device),
-		16 /* byte alignment */,
-		0 /* no page-crossing issues */,
-		GFP_KERNEL | OHCI_MEM_FLAGS);
-	if (!ohci->dev_cache)
-		return -ENOMEM;
-	return 0;
-}
-
-static void ohci_mem_cleanup (struct ohci *ohci)
-{
-	if (ohci->td_cache) {
-		pci_pool_destroy (ohci->td_cache);
-		ohci->td_cache = 0;
-	}
-	if (ohci->dev_cache) {
-		pci_pool_destroy (ohci->dev_cache);
-		ohci->dev_cache = 0;
-	}
-}
-
 /* TDs ... */
 static inline struct td *
 td_alloc (struct ohci *hc, int mem_flags)
@@ -642,3 +584,4 @@ dev_free (struct ohci *hc, struct ohci_device *dev)
 	pci_pool_free (hc->dev_cache, dev, dev->dma);
 }
 
+#endif

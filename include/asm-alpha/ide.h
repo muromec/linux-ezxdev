@@ -21,35 +21,15 @@
 
 #define ide__sti()	__sti()
 
-static __inline__ int ide_default_irq(ide_ioreg_t base)
-{
-	switch (base) {
-		case 0x1f0: return 14;
-		case 0x170: return 15;
-		case 0x1e8: return 11;
-		case 0x168: return 10;
-		default:
-			return 0;
-	}
-}
-
-static __inline__ ide_ioreg_t ide_default_io_base(int index)
-{
-	switch (index) {
-		case 0:	return 0x1f0;
-		case 1:	return 0x170;
-		case 2: return 0x1e8;
-		case 3: return 0x168;
-		default:
-			return 0;
-	}
-}
+#define ide_default_io_base(i)	((ide_ioreg_t)0)
+#define ide_default_irq(b)	(0)
 
 static __inline__ void ide_init_hwif_ports(hw_regs_t *hw, ide_ioreg_t data_port, ide_ioreg_t ctrl_port, int *irq)
 {
 	ide_ioreg_t reg = data_port;
 	int i;
 
+	memset(hw, 0, sizeof(*hw));
 	for (i = IDE_DATA_OFFSET; i <= IDE_STATUS_OFFSET; i++) {
 		hw->io_ports[i] = reg;
 		reg += 1;
@@ -57,7 +37,7 @@ static __inline__ void ide_init_hwif_ports(hw_regs_t *hw, ide_ioreg_t data_port,
 	if (ctrl_port) {
 		hw->io_ports[IDE_CONTROL_OFFSET] = ctrl_port;
 	} else {
-		hw->io_ports[IDE_CONTROL_OFFSET] = hw->io_ports[IDE_DATA_OFFSET] + 0x206;
+		hw->io_ports[IDE_CONTROL_OFFSET] = data_port + 0x206;
 	}
 	if (irq != NULL)
 		*irq = 0;
@@ -72,13 +52,19 @@ static __inline__ void ide_init_default_hwifs(void)
 {
 #ifndef CONFIG_BLK_DEV_IDEPCI
 	hw_regs_t hw;
-	int index;
 
-	for (index = 0; index < MAX_HWIFS; index++) {
-		ide_init_hwif_ports(&hw, ide_default_io_base(index), 0, NULL);
-		hw.irq = ide_default_irq(ide_default_io_base(index));
-		ide_register_hw(&hw, NULL);
-	}
+	ide_init_hwif_ports(&hw, 0x1f0, 0x3f6, NULL);
+	hw.irq = 14;
+	ide_register_hw(&hw, NULL);
+	ide_init_hwif_ports(&hw, 0x170, 0x376, NULL);
+	hw.irq = 15;
+	ide_register_hw(&hw, NULL);
+	ide_init_hwif_ports(&hw, 0x1e8, 0x3ee, NULL);
+	hw.irq = 11;
+	ide_register_hw(&hw, NULL);
+	ide_init_hwif_ports(&hw, 0x168, 0x36e, NULL);
+	hw.irq = 10;
+	ide_register_hw(&hw, NULL);
 #endif /* CONFIG_BLK_DEV_IDEPCI */
 }
 

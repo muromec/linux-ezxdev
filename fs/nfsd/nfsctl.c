@@ -4,6 +4,8 @@
  * Syscall interface to knfsd.
  *
  * Copyright (C) 1995, 1996 Olaf Kirch <okir@monad.swb.de>
+ *
+ * 2005-Apr-04 Motorola   Add security patch 
  */
 
 #include <linux/config.h>
@@ -21,6 +23,7 @@
 #include <linux/slab.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
+#include <linux/security.h>
 
 #include <linux/nfs.h>
 #include <linux/sunrpc/svc.h>
@@ -250,6 +253,10 @@ asmlinkage handle_sys_nfsservctl(int cmd, void *opaque_argp, void *opaque_resp)
 		printk(KERN_WARNING "nfsd: incompatible version in syscall.\n");
 		goto done;
 	}
+
+	err = security_nfsservctl(cmd, arg);
+	if (err)
+		goto done;
 
 	switch(cmd) {
 	case NFSCTL_SVC:

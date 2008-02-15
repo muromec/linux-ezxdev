@@ -29,6 +29,12 @@
  *   defaults.   Only -I is supported, no attempt is made to handle -idirafter,
  *   -isystem, -I- etc.
  */
+/*
+ * Copyright (C) 2005 Motorola Inc.
+ *
+ * modified by w15879, for EZX platform
+ */
+
 
 #include <ctype.h>
 #include <fcntl.h>
@@ -43,10 +49,105 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#define MAX_PATH_LENGTH	1024
+#define MAX_INCLUDE	1000
+#define MAX_SUB_INCLUDE 100
+#define MAX_HASH	512
 
+/*
+ * include tree + hash table access 
+ */
 
-char __depname[512] = "\n\t@touch ";
-#define depname (__depname+9)
+typedef struct include_dep {
+    struct include_dep *next; /* hash table link */
+    char *name;               /* complete absolute filename */
+    int nb_includes;          /* number of sub_includes or -1 if not filled */
+    char *includes[MAX_SUB_INCLUDE]; /* full name of dependancies */
+} *inc_dep;
+
+inc_dep inc_hash[MAX_HASH];
+int nb_include_in_hash = 0;
+
+void init_dep(void)
+{
+    int i;
+
+    for (i = 0;i < MAX_HASH;i++) inc_hash[i] = NULL;
+    nb_include_in_hash = 0;
+}
+
+int get_hash(char *filename)
+{
+    char idx;
+    char *cour = &filename[strlen(filename)];
+
+    do {
+        idx = *cour;
+        cour--;
+        if (*cour == '/') return((int) idx);
+    } while (cour > filename);
+    return((int) idx);
+}
+
+inc_dep add_inc(char *filename)
+{
+    inc_dep prev = NULL, cour;
+    int res;
+    int hash = get_hash(filename);
+
+    cour = inc_hash[hash];
+
+    /*
+     * go through the list looking for the include.
+     */
+    while (cour != NULL) {
+        res = strcmp(cour->name, filename);
+        if (res == 0) return(cour);
+        if (res < 0) break;
+        prev = cour;
+        cour = cour->next;
+    }
+
+    /*
+     * not found, allocate and fill a new one.
+     */
+    nb_include_in_hash++;
+    cour = (inc_dep) malloc(sizeof(struct include_dep));
+    cour->name = strdup(filename);
+    cour->nb_includes = -1;
+
+    /*
+     * not found, allocate and fill a new one.
+     */
+    if (prev == NULL) {
+        /*
+         * add at the head of the hash list.
+         */
+        cour->next = inc_hash[hash];
+        inc_hash[hash] = cour;
+    } else {
+        /*
+         * add if after prev.
+         */
+        cour->next = prev->next;
+        prev->next = cour;
+    }
+    return(cour);
+}
+
+void add_inc_dep(inc_dep cour, char *filename)
+{
+    if (cour->nb_includes < 0)
+        cour->nb_includes = 0;
+    if (cour->nb_includes == MAX_SUB_INCLUDE) {
+	fprintf(stderr,"increase MAX_SUB_INCLUDE : %d not sufficient\n",
+                MAX_SUB_INCLUDE);
+        return;
+    }
+    cour->includes[cour->nb_includes++] = strdup(filename);
+}
+
+char depname[MAX_PATH_LENGTH] = "";
 int hasdep;
 
 struct path_struct {
@@ -56,6 +157,32 @@ struct path_struct {
 struct path_struct *path_array;
 int paths;
 
+int nb_path = 0;
+
+typedef char include_name[MAX_PATH_LENGTH];
+
+include_name include_list[MAX_INCLUDE];
+
+int nb_include = 0;
+
+int handling_includes = 0;
+inc_dep current_include = NULL;
+
+static void add_local_include(char *name)
+{
+	int i = 0;
+
+        add_inc(name);
+        if ((handling_includes != 0) &&
+            (current_include != NULL))
+            add_inc_dep(current_include, name);
+
+        for (i = 0;i < nb_include;i++) {
+	    if (!strcmp(include_list[i], name)) return;
+	}
+	strcpy(include_list[nb_include], name);
+	nb_include++;
+}
 
 /* Current input file */
 static const char *g_filename;
@@ -69,17 +196,6 @@ static const char *g_filename;
 char * str_config  = NULL;
 int    size_config = 0;
 int    len_config  = 0;
-
-static void
-do_depname(void)
-{
-	if (!hasdep) {
-		hasdep = 1;
-		printf("%s:", depname);
-		if (g_filename)
-			printf(" %s", g_filename);
-	}
-}
 
 /*
  * Grow the configuration string to a desired length.
@@ -142,49 +258,6 @@ void clear_config(void)
 
 
 /*
- * This records all the precious .h filenames.  No need for a hash,
- * it's a long string of values enclosed in tab and newline.
- */
-char * str_precious  = NULL;
-int    size_precious = 0;
-int    len_precious  = 0;
-
-
-
-/*
- * Grow the precious string to a desired length.
- * Usually the first growth is plenty.
- */
-void grow_precious(int len)
-{
-	while (len_precious + len > size_precious) {
-		if (size_precious == 0)
-			size_precious = 2048;
-		str_precious = realloc(str_precious, size_precious *= 2);
-		if (str_precious == NULL)
-			{ perror("malloc"); exit(1); }
-	}
-}
-
-
-
-/*
- * Add a new value to the precious string.
- */
-void define_precious(const char * filename)
-{
-	int len = strlen(filename);
-	grow_precious(len + 4);
-	*(str_precious+len_precious++) = '\t';
-	memcpy(str_precious+len_precious, filename, len);
-	len_precious += len;
-	memcpy(str_precious+len_precious, " \\\n", 3);
-	len_precious += 3;
-}
-
-
-
-/*
  * Handle an #include line.
  */
 void handle_include(int start, const char * name, int len)
@@ -202,8 +275,7 @@ void handle_include(int start, const char * name, int len)
 		memcpy(path->buffer+path->len, name, len);
 		path->buffer[path->len+len] = '\0';
 		if (access(path->buffer, F_OK) == 0) {
-			do_depname();
-			printf(" \\\n   %s", path->buffer);
+			add_local_include(path->buffer);
 			return;
 		}
 	}
@@ -253,7 +325,6 @@ void add_path(const char * name)
 }
 
 
-
 /*
  * Record the use of a CONFIG_* word.
  */
@@ -261,6 +332,7 @@ void use_config(const char * name, int len)
 {
 	char *pc;
 	int i;
+	char config_path[MAX_PATH_LENGTH]="$(wildcard ";
 
 	pc = path_array[paths-1].buffer + path_array[paths-1].len;
 	memcpy(pc, "config/", 7);
@@ -279,8 +351,10 @@ void use_config(const char * name, int len)
 
 	define_config(pc, len);
 
-	do_depname();
-	printf(" \\\n   $(wildcard %s.h)", path_array[paths-1].buffer);
+	memcpy(config_path+11, path_array[paths-1].buffer, path_array[paths-1].len+len+7);
+	memcpy(config_path+path_array[paths-1].len+len+18, ".h)\0", 4);
+	
+	add_local_include(config_path);
 }
 
 
@@ -520,13 +594,15 @@ cee_CONFIG_word:
 /*
  * Generate dependencies for one file.
  */
-void do_depend(const char * filename, const char * command)
+void do_depend(const char * filename)
 {
 	int mapsize;
 	int pagesizem1 = getpagesize()-1;
 	int fd;
 	struct stat st;
 	char * map;
+
+	if (!memcmp(filename, "$(wildcard", 10)) return;
 
 	fd = open(filename, O_RDONLY);
 	if (fd < 0) {
@@ -558,11 +634,6 @@ void do_depend(const char * filename, const char * command)
 	hasdep = 0;
 	clear_config();
 	state_machine(map, map+st.st_size);
-	if (hasdep) {
-		puts(command);
-		if (*command)
-			define_precious(filename);
-	}
 
 	munmap(map, mapsize);
 	close(fd);
@@ -577,6 +648,9 @@ int main(int argc, char **argv)
 {
 	int len;
 	const char *hpath;
+
+	/* Initialize include hash tabel */
+        init_dep();
 
 	hpath = getenv("HPATH");
 	if (!hpath) {
@@ -607,7 +681,7 @@ int main(int argc, char **argv)
 
 	while (--argc > 0) {
 		const char * filename = *++argv;
-		const char * command  = __depname;
+		int i;
 		g_filename = 0;
 		len = strlen(filename);
 		memcpy(depname, filename, len+1);
@@ -615,14 +689,61 @@ int main(int argc, char **argv)
 			if (filename[len-1] == 'c' || filename[len-1] == 'S') {
 			    depname[len-1] = 'o';
 			    g_filename = filename;
-			    command = "";
 			}
 		}
-		do_depend(filename, command);
+		nb_include = 0;
+
+                /*
+		 * print the base dependancy between the .o and .c file.
+		 */
+		if (depname[len-1] == 'h') {
+			continue;
+		}
+		printf("%s: %s", depname,filename);
+
+		/*
+		 * do basic dependancies on the C source file.
+		 */
+                handling_includes = 0;
+		do_depend(filename);
+
+		/*
+		 * recurse dependancies on the included files.
+		 * Warning, nb_include will grow over the loop.
+		 */
+                handling_includes = 1;
+		for (i = 0;i < nb_include;i++) {
+		    filename = include_list[i];
+		    /*
+		     * check the hash for existing dependencies.
+		     * !!!
+		     */
+		    if (handling_includes) {
+		        current_include = add_inc((char *)filename);
+		        if (current_include->nb_includes >= 0) {
+			    int i;
+
+			    /*
+			     * do not load and parse the file,
+                             * dump the cache instead.
+			     */
+		            for (i = 0;i < current_include->nb_includes;i++)
+                                add_local_include(current_include->includes[i]);
+
+                            continue;
+		        }
+		    }
+		    current_include = NULL;
+		    do_depend(filename);
+		}
+
+                /*
+		 * dump the dependancies found.
+		 */
+		for (i = 0;i < nb_include;i++)
+			printf(" \\\n   %s", include_list[i]);
+		printf("\n");
 	}
-	if (len_precious) {
-		*(str_precious+len_precious) = '\0';
-		printf(".PRECIOUS:%s\n", str_precious);
-	}
+
 	return 0;
 }

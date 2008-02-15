@@ -6,6 +6,8 @@
  * Copyright (C) 1995, 1996 Olaf Kirch <okir@monad.swb.de>
  * Portions Copyright (C) 1999 G. Allen Morris III <gam3@acm.org>
  * Extensive rewrite by Neil Brown <neilb@cse.unsw.edu.au> Southern-Spring 1999
+ *
+ * 2005-Apr-04 Motorola  Add security patch
  */
 
 #include <linux/sched.h>
@@ -85,7 +87,7 @@ static int nfsd_get_name(struct dentry *dentry, char *name,
 	/*
 	 * Open the directory ...
 	 */
-	error = init_private_file(&file, dentry, FMODE_READ);
+	error = open_private_file(&file, dentry, O_RDONLY);
 	if (error)
 		goto out;
 	error = -EINVAL;
@@ -113,8 +115,7 @@ static int nfsd_get_name(struct dentry *dentry, char *name,
 	}
 
 out_close:
-	if (file.f_op->release)
-		file.f_op->release(dir, &file);
+	close_private_file(&file);
 out:
 	return error;
 }

@@ -183,6 +183,10 @@ extern void set_GPIO_IRQ_edge( int gpio_mask, int edge_mask );
 #include "simpad.h"
 #endif
 
+#ifdef CONFIG_SA1100_SIMPUTER
+#include "simputer.h"
+#endif
+
 #if defined(CONFIG_SA1100_GRAPHICSMASTER)
 #include "graphicsmaster.h"
 #endif

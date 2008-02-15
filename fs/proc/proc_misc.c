@@ -3,6 +3,8 @@
  *
  *  linux/fs/proc/array.c
  *  Copyright (C) 1992  by Linus Torvalds
+ *  Copyright (c) 2005 Motorola Inc.
+ *
  *  based on ideas by Darren Senn
  *
  *  This used to be the part of array.c. See the rest of history and credits
@@ -13,6 +15,8 @@
  * Changes:
  * Fulton Green      :  Encapsulated position metric calculations.
  *			<kernel@FultonGreen.com>
+ * Susan Gu          :  Calculate the slab free space for EzX
+ *                      <w15879@motorola.com> 
  */
 
 #include <linux/types.h>
@@ -36,7 +40,16 @@
 #include <linux/init.h>
 #include <linux/smp_lock.h>
 #include <linux/seq_file.h>
+#include <linux/vmalloc.h>
 
+#include <linux/dcache.h>
+#include <linux/fs.h>
+
+
+#ifdef CONFIG_MEMORY_ACCOUNTING
+#include <asm/page.h>
+#include <asm/memory.h>
+#endif
 #include <asm/uaccess.h>
 #include <asm/pgtable.h>
 #include <asm/io.h>
@@ -106,11 +119,11 @@ static int loadavg_read_proc(char *page, char **start, off_t off,
 	a = avenrun[0] + (FIXED_1/200);
 	b = avenrun[1] + (FIXED_1/200);
 	c = avenrun[2] + (FIXED_1/200);
-	len = sprintf(page,"%d.%02d %d.%02d %d.%02d %d/%d %d\n",
+	len = sprintf(page,"%d.%02d %d.%02d %d.%02d %ld/%d %d\n",
 		LOAD_INT(a), LOAD_FRAC(a),
 		LOAD_INT(b), LOAD_FRAC(b),
 		LOAD_INT(c), LOAD_FRAC(c),
-		nr_running, nr_threads, last_pid);
+		nr_running(), nr_threads, last_pid);
 	return proc_calc_metrics(page, start, off, count, eof, len);
 }
 
@@ -122,7 +135,7 @@ static int uptime_read_proc(char *page, char **start, off_t off,
 	int len;
 
 	uptime = jiffies;
-	idle = init_tasks[0]->times.tms_utime + init_tasks[0]->times.tms_stime;
+	idle = init_task.times.tms_utime + init_task.times.tms_stime;
 
 	/* The formula for the fraction parts really is ((t * 100) / HZ) % 100, but
 	   that would overflow about every five days at HZ == 100.
@@ -149,12 +162,120 @@ static int uptime_read_proc(char *page, char **start, off_t off,
 	return proc_calc_metrics(page, start, off, count, eof, len);
 }
 
+#if defined(CONFIG_MEMORY_ACCOUNTING) && !defined(CONFIG_DISCONTIGMEM)
+/*
+ * We walk all the page structs and translate them to pfns
+ * We get the free pages by the page count, count == 0.
+ *
+ * We have an array of unsigned ints of which each bit in an int 
+ * represents one page in memory.
+ *
+ * The pfn is the index into the array, pfn 0 == index 0 (index = pfn / 32).  
+ * We figure out which bit of the unsigned int to set by the following:
+ * bit = pfn % 32, we then set that bit to zero to denote it's free via:
+ * array[index] &= ~(1<<bit);   then we pump the data to /proc 
+ */
+
+#define BITS_PER_INT 	32
+#define ONE_LINE	65
+static int highwater = 0;
+static int lowwater = 0;
+static int mem_acc_debug = 0;
+static int index = 0;
+
+static int memmap_read_proc(char *page, char **start, off_t off,
+    int count, int *eof, void *data)
+{
+	static  int *bitmap = NULL;
+	struct page *p, *end;
+	int mark;
+	int len = 0;
+	int free = 0;
+	int total = 0;
+	int i, bit, start_pfn, end_pfn, array_size = 0;
+	int array_bounds, pfn = 0;
+
+        p = NODE_MEM_MAP(0);
+        start_pfn = (int)page_to_pfn(p);
+	end_pfn = start_pfn + num_physpages;
+        end = pfn_to_page(end_pfn);
+	array_size = end_pfn - start_pfn;
+	array_bounds = array_size / BITS_PER_INT;
+
+	if (bitmap == NULL) {
+		bitmap = (unsigned int *)kmalloc(array_size / sizeof (int),
+	    	    GFP_KERNEL);
+	}
+
+	/*
+	 * one means used, zero means free, set them all to 1,
+	 * clear them as we find them free.
+	 */
+
+	for (i = 0; i < array_bounds; i++) {
+		bitmap[i] = 0xffffffff;
+	}
+
+	total = free = 0;
+	do {
+		total++;
+		pfn = page_to_pfn(p);
+		if (!PageReserved(p) && page_count(p) == 0 && pfn_valid(pfn)) {
+			i = pfn - start_pfn;
+			bit = i % BITS_PER_INT;
+			i /= BITS_PER_INT;
+			free++;
+			bitmap[i] &= ~(1<<bit);
+			if (mem_acc_debug)
+				printk("i %d bit %d pfn %d pa 0x%x c %d\n",
+			    	    index, bit, pfn, page_to_phys(p),
+				    page_count(p));
+		}
+		p++;
+	} while (p < end);
+
+	mark = total - free;
+	if (mark < lowwater) {
+		lowwater = mark;
+	}
+	if (mark > highwater) {
+		highwater = mark;
+	}
+	if (off == 0) {
+		index  = 0;
+		len = sprintf(page,
+	    "High water used pages %d Low water used pages %d\n",
+		       highwater, lowwater);
+	} else if (index == -1) {
+		index = 0;
+		*eof = 1;
+		return 0;
+	}
+
+	for (index; index < array_bounds && len+ONE_LINE < count; index += 8) {
+		len += sprintf(page + len, "%08x%08x%08x%08x%08x%08x%08x%08x\n",
+		    bitmap[index], bitmap[index + 1], bitmap[index + 2],
+		    bitmap[index + 3], bitmap[index + 4], bitmap[index + 5],
+		    bitmap[index + 6], bitmap[index + 7]);
+	}
+	if (index >= array_bounds || len > count) {
+		index == -1;
+		kfree(bitmap);
+		bitmap = NULL;
+	}
+	*start = page;
+	return len;
+}
+#endif
+
+extern atomic_t vm_committed_space;
+
 static int meminfo_read_proc(char *page, char **start, off_t off,
 				 int count, int *eof, void *data)
 {
 	struct sysinfo i;
 	int len;
-	int pg_size ;
+	int pg_size, committed;
 
 /*
  * display in kilobytes.
@@ -164,6 +285,7 @@ static int meminfo_read_proc(char *page, char **start, off_t off,
 	si_meminfo(&i);
 	si_swapinfo(&i);
 	pg_size = atomic_read(&page_cache_size) - i.bufferram ;
+	committed = atomic_read(&vm_committed_space);
 
 	len = sprintf(page, "        total:    used:    free:  shared: buffers:  cached:\n"
 		"Mem:  %8Lu %8Lu %8Lu %8Lu %8Lu %8Lu\n"
@@ -191,7 +313,8 @@ static int meminfo_read_proc(char *page, char **start, off_t off,
 		"LowTotal:     %8lu kB\n"
 		"LowFree:      %8lu kB\n"
 		"SwapTotal:    %8lu kB\n"
-		"SwapFree:     %8lu kB\n",
+		"SwapFree:     %8lu kB\n"
+		"Committed_AS: %8u kB\n",
 		K(i.totalram),
 		K(i.freeram),
 		K(i.sharedram),
@@ -205,7 +328,8 @@ static int meminfo_read_proc(char *page, char **start, off_t off,
 		K(i.totalram-i.totalhigh),
 		K(i.freeram-i.freehigh),
 		K(i.totalswap),
-		K(i.freeswap));
+		K(i.freeswap),
+		K(committed));
 
 	return proc_calc_metrics(page, start, off, count, eof, len);
 #undef B
@@ -371,10 +495,10 @@ static int kstat_read_proc(char *page, char **start, off_t off,
 	}
 
 	proc_sprintf(page, &off, &len,
-		"\nctxt %u\n"
+		"\nctxt %lu\n"
 		"btime %lu\n"
 		"processes %lu\n",
-		kstat.context_swtch,
+		nr_context_switches(),
 		xtime.tv_sec - jif / HZ,
 		total_forks);
 
@@ -404,12 +528,14 @@ static int filesystems_read_proc(char *page, char **start, off_t off,
 	return proc_calc_metrics(page, start, off, count, eof, len);
 }
 
+#ifdef CONFIG_GENERIC_ISA_DMA
 static int dma_read_proc(char *page, char **start, off_t off,
 				 int count, int *eof, void *data)
 {
 	int len = get_dma_list(page);
 	return proc_calc_metrics(page, start, off, count, eof, len);
 }
+#endif
 
 static int ioports_read_proc(char *page, char **start, off_t off,
 				 int count, int *eof, void *data)
@@ -462,13 +588,287 @@ static int swaps_read_proc(char *page, char **start, off_t off,
 	return proc_calc_metrics(page, start, off, count, eof, len);
 }
 
+extern struct list_head active_list;
+extern struct list_head inactive_list;
+
+static int mmlist_read_proc(char *page, char **start, off_t off,
+				 int count, int *eof, void *data)
+{
+	struct list_head *active_head;
+	struct list_head *inactive_head;
+	struct list_head *active_next;
+	struct list_head *inactive_next;
+	
+	active_head = &(active_list);
+	active_next = active_list.next;
+
+	inactive_head = &(inactive_list);
+	inactive_next = inactive_list.next;
+
+	printk(KERN_NOTICE "ACTIVE list(%d)\n",nr_active_pages);
+	while (active_next != active_head)
+	{
+		struct page *this_page = list_entry(active_next,struct page,lru);
+		struct dentry *this_dentry;
+		struct inode *this_inode;
+		struct list_head *tmp;
+		struct list_head *tmp_head;
+
+		if (!this_page->mapping)
+			printk(KERN_NOTICE "PAGE(0x%x) is from malloc\n", (unsigned int)this_page);
+		else
+		{
+			this_inode = this_page->mapping->host;
+			tmp_head = &(this_inode->i_dentry);
+			tmp = tmp_head->next;
+			while(tmp != tmp_head)
+			{
+				this_dentry = list_entry(tmp,struct dentry,d_alias);
+				printk(KERN_NOTICE "PAGE(0x%x)--(%s)\n",(unsigned int)this_page,this_dentry->d_name.name);
+				tmp = tmp->next;
+			}
+		}
+		active_next = active_next->next;
+	}
+
+	printk(KERN_NOTICE "INACTIVE list(%d)\n",nr_inactive_pages);
+	while (inactive_next != inactive_head)
+	{
+		struct page *this_page = list_entry(inactive_next,struct page,lru);
+		struct dentry *this_dentry;
+		struct inode *this_inode;
+		struct list_head *tmp;
+		struct list_head *tmp_head;
+
+		if (!this_page->mapping)
+			printk(KERN_NOTICE "PAGE(0x%x) is from malloc\n", (unsigned int)this_page);
+		else
+		{
+			this_inode = this_page->mapping->host;
+			tmp_head = &(this_inode->i_dentry);
+			tmp = tmp_head->next;
+			while (tmp != tmp_head)
+			{
+				this_dentry = list_entry(tmp,struct dentry,d_alias);
+				printk(KERN_NOTICE "PAGE(0x%x)--(%s)\n",(unsigned int)this_page,this_dentry->d_name.name);
+				tmp = tmp->next;
+			}
+		}
+		inactive_next = inactive_next->next;
+	}
+	return 0;
+}
+static int show_vma_pages(pmd_t *dir, unsigned long start, unsigned long end, unsigned long *total_pages, unsigned long *total_fpages, struct task_struct *ptask)
+{
+	pte_t *pte;
+	struct page *page;
+	unsigned long address = start;
+
+	////printk(KERN_NOTICE "SHOW_VMA_PAGES(*PMD(0x%x))\n", pmd_val(*dir));////
+	if (pmd_none(*dir))
+		return 0;
+
+	while (address < end)
+	{
+		pte = pte_offset(dir,address);
+		////printk(KERN_NOTICE "PTE(0x%x)\n",pte_val(*pte)); ////
+		if (pte_present(*pte))
+		{
+			*total_pages = (*total_pages) + 1;
+			page = pte_page(*pte);
+			////printk(KERN_NOTICE "PAGE(0x%x)\n", page);////
+			if (page->mapping)
+			{
+				struct inode *inode;
+				struct dentry *dentry;
+				struct list_head *head;
+				struct list_head *next;
+
+				*total_fpages = (*total_fpages) + 1;
+				inode = page->mapping->host;
+				head = &(inode->i_dentry);
+				next = head->next;
+				while (next != head)
+				{
+					dentry = list_entry(next, struct dentry, d_alias);
+					next = next->next;
+					printk(KERN_NOTICE "(%s):PAGE(0x%x) of FILE(%s)\n", ptask->comm, (unsigned int)page, dentry->d_name.name);
+				}
+			}
+			else
+				printk(KERN_NOTICE "(%s):PAGE(0x%x)\n", ptask->comm, (unsigned int)page);
+		}
+
+		address += PAGE_SIZE;
+	}
+	return 0;
+}
+static int ppages_read_proc(char *page, char **start, off_t off,
+				 int count, int *eof, void *data)
+{
+	struct task_struct *ptask;
+	struct vm_area_struct *pvma;
+	pgd_t *pgd;
+	pmd_t *pmd;
+	unsigned long total_pages;
+	unsigned long total_file_pages;
+
+	unsigned long address,end,tmp_addr;
+	unsigned long length;
+
+	unsigned char str[6];
+
+	printk(KERN_NOTICE "PROCESS MEMORY REGIONS (start)\n");
+
+	for_each_task(ptask)
+	{
+		printk(KERN_NOTICE "TASK-TASK-TASK(%s--%d)\n",ptask->comm,ptask->pid);
+		
+		if (!ptask->mm)
+		{
+			printk(KERN_NOTICE "TASK-TASK-TASK(%s--%d) is a kernel thread\n", ptask->comm, ptask->pid);
+			continue;
+		}
+		
+		total_pages = 0;
+		total_file_pages = 0;
+
+		pvma = ptask->mm->mmap;
+		if (!pvma)
+		{
+			printk(KERN_NOTICE "TASK-TASK-TASK(%s--%d), VMA is NULL\n", ptask->comm, ptask->pid);
+			continue;
+		}
+
+		while (pvma)
+		{
+			int flags = pvma->vm_flags;
+
+			str[0] = (flags & VM_READ)? 'r':'-';
+			str[1] = (flags & VM_WRITE)? 'w':'-';
+			str[2] = (flags & VM_EXEC)? 'x':'-';
+			str[3] = (flags & VM_SHARED)? 's':'p';
+			str[4] = (flags & VM_GROWSDOWN)? 'k':0;
+			str[5] = 0;
+			
+			printk(KERN_NOTICE "(%s) VMA (0x%x -- 0x%x)(%s)\n",ptask->comm,(unsigned int)pvma->vm_start,(unsigned int)pvma->vm_end,str);
+
+			/* Check if this vma belongs to pxafb framebuffer, if so, just go to next */
+			if ((pvma->vm_file) && (MAJOR(pvma->vm_file->f_dentry->d_inode->i_rdev) == 29))
+			{
+				printk(KERN_NOTICE "(%s) This VMA is framebuffer mapping\n", ptask->comm);
+				pvma = pvma->vm_next;
+				continue;
+			}
+
+			address = pvma->vm_start;
+			end = pvma->vm_end;
+	
+			pgd = pgd_offset(ptask->mm,address);
+			pmd = (pmd_t *)pgd;
+	
+			do
+			{
+				tmp_addr = (address + PMD_SIZE) & PMD_MASK;
+				if (tmp_addr < end)
+					length = tmp_addr - address;
+				else
+					length = end - address;
+				
+				////printk(KERN_NOTICE "SHOW_VMA_PAGES(0x%x -- 0x%x)\n",address,address+length);////
+				show_vma_pages(pmd, address, address + length, &total_pages,&total_file_pages, ptask);
+				////printk(KERN_NOTICE "SHOW_VMA_PAGES(END 0x%x -- 0x%x)\n",address, address+length);////
+				
+				pmd ++;
+				address += length;
+			}while (address < end);
+		
+			//Susan for APLOGGER to print out
+			schedule();
+
+			pvma = pvma->vm_next;
+		}
+
+		printk(KERN_NOTICE "TASK-TASK-TASK(%s--%d),total_pages(%d),total_fpages(%d),s_code(0x%x),code(0x%x),s_data(0x%x),data(0x%x),s_brk(0x%x),brk(0x%x)\n",ptask->comm,(unsigned int)ptask->pid,(unsigned int)total_pages,(unsigned int)total_file_pages,(unsigned int)current->mm->start_code,(unsigned int)current->mm->end_code,(unsigned int)current->mm->start_data,(unsigned int)current->mm->end_data,(unsigned int)current->mm->start_brk,(unsigned int)current->mm->brk);
+
+	}
+
+	printk(KERN_NOTICE "PROCESS MEMORY REGIONS (end)\n");
+
+	return 0;
+}
+
+static int nrlocals_read_proc(char *page, char **start, off_t off,
+				 int count, int *eof, void *data)
+{
+	struct task_struct *ptask;
+
+	for_each_task(ptask)
+	{
+		printk(KERN_NOTICE "TASK-TASK-TASK(%s--%d), nr_local_pages(%d)\n",ptask->comm,ptask->pid,ptask->nr_local_pages);
+	}
+
+	return 0;
+}
+
+
 static int memory_read_proc(char *page, char **start, off_t off,
 				 int count, int *eof, void *data)
 {
 	int len = get_mem_list(page);
 	return proc_calc_metrics(page, start, off, count, eof, len);
 }
+//Susan for reporting potential free pages
+extern int slab_cache_freeable_info(void);
+static int slabfree_read_proc(char *page, char **start, off_t off, int count, int *eof, void *data)
+{
+	int ret = 0;
+	int len = 0;
 
+	ret = slab_cache_freeable_info();
+	if (ret == -EAGAIN)
+		len = sprintf(page, "BUSY: %d\n", -1);
+	else
+		len = sprintf(page, "SLABFREE: %d\n", (unsigned int)(ret * PAGE_SIZE));
+
+	return proc_calc_metrics(page, start, off, count, eof, len);
+}
+
+/* For pxafb LCD status checking */
+static int pxafbs_read_proc(char *page, char **start, off_t off, int count, int *eof, void *data)
+{
+#if (0)
+	extern struct global_state pxafb_global_state;
+	
+	unsigned long pxafb_data[16];
+	pxafb_db_proc(pxafb_data);
+	
+	printk(KERN_NOTICE "LCD active panel(%d)\n",pxafb_global_state.active_panel);
+	printk(KERN_NOTICE "LCD main panel state(0x%x)\n",pxafb_global_state.main_state);
+	printk(KERN_NOTICE "LCD cli panel state(0x%x)\n",pxafb_global_state.cli_state);
+	printk(KERN_NOTICE "LCD backlight for main dutycycle (%d)\n", pxafb_global_state.bklight_main_dutycycle);
+	printk(KERN_NOTICE "LCD backlight for cli dutycycle (%d)\n", pxafb_global_state.bklight_cli_dutycycle);
+	printk(KERN_NOTICE "LCD main base frame is exported?(%x)\n",pxafb_data[0]);
+	printk(KERN_NOTICE "pxafb_main: FIX.smem_len(%d)\n",pxafb_data[1]);
+	printk(KERN_NOTICE "pxafb_main: VAR.yres_virtual(%d)\n",pxafb_data[1]);
+	printk(KERN_NOTICE "pxafb_main: VAR.yoffset(%d)\n",pxafb_data[2]);
+	printk(KERN_NOTICE "pxafb_main: FIRST_FB.dmsdesc_fb_dma(0x%x)\n",pxafb_data[3]);
+	printk(KERN_NOTICE "pxafb_main: FIRST_FB.screen_dma(0x%x)\n",pxafb_data[1]);
+	printk(KERN_NOTICE "pxafb_main: SECOND_FB.fmadesc_fb_dma(0x%x)\n",pxafb_data[1]);
+	printk(KERN_NOTICE "pxafb_main: SECOND_FB.screen_dma(0x%x)\n",pxafb_data[2]);
+#ifdef CONFIG_PXAFB_CLI
+	printk(KERN_NOTICE "LCD CLI base frame is exported?(%x)\n",pxafb_data[0]);
+	printk(KERN_NOTICE "pxafb_main: FIX.smem_len(%d)\n",pxafb_data[1]);
+	printk(KERN_NOTICE "pxafb_main: VAR.yres_virtual(%d)\n",pxafb_data[1]);
+	printk(KERN_NOTICE "pxafb_main: VAR.yoffset(%d)\n",pxafb_data[2]);
+	printk(KERN_NOTICE "pxafb_main: FIRST_FB.dmsdesc_fb_dma(0x%x)\n",pxafb_data[3]);
+	printk(KERN_NOTICE "pxafb_main: FIRST_FB.screen_dma(0x%x)\n",pxafb_data[1]);
+	printk(KERN_NOTICE "pxafb_main: SECOND_FB.fmadesc_fb_dma(0x%x)\n",pxafb_data[1]);
+	printk(KERN_NOTICE "pxafb_main: SECOND_FB.screen_dma(0x%x)\n",pxafb_data[2]);
+#endif
+#endif
+	return 0;
+}
 /*
  * This function accesses profiling information. The returned data is
  * binary: the sampling step and the actual contents of the profile
@@ -494,7 +894,8 @@ static ssize_t read_profile(struct file *file, char *buf,
 		buf++; p++; count--; read++;
 	}
 	pnt = (char *)prof_buffer + p - sizeof(unsigned int);
-	copy_to_user(buf,(void *)pnt,count);
+	if (copy_to_user(buf,(void *)pnt,count))
+		return -EFAULT;
 	read += count;
 	*ppos += read;
 	return read;
@@ -568,7 +969,9 @@ void __init proc_misc_init(void)
 		{"interrupts",	interrupts_read_proc},
 #endif
 		{"filesystems",	filesystems_read_proc},
+#ifdef CONFIG_GENERIC_ISA_DMA
 		{"dma",		dma_read_proc},
+#endif		
 		{"ioports",	ioports_read_proc},
 		{"cmdline",	cmdline_read_proc},
 #ifdef CONFIG_SGI_DS1286
@@ -578,10 +981,30 @@ void __init proc_misc_init(void)
 		{"swaps",	swaps_read_proc},
 		{"iomem",	memory_read_proc},
 		{"execdomains",	execdomains_read_proc},
+#if defined(CONFIG_MEMORY_ACCOUNTING) && !defined(CONFIG_DISCONTIGMEM)
+		{"memmap",	memmap_read_proc},
+#endif
+		{"mmlist",  mmlist_read_proc},
+		{"ppages",  ppages_read_proc},
+		{"nrlocals", nrlocals_read_proc},
+	//Susan for reporting potential free pages
+		{"slabfree", slabfree_read_proc},
+		{"pxafbs",	pxafbs_read_proc},
+
 		{NULL,}
 	};
 	for (p = simple_ones; p->name; p++)
 		create_proc_read_entry(p->name, 0, NULL, p->read_proc, NULL);
+
+#if defined(CONFIG_MEMORY_ACCOUNTING) && !defined(CONFIG_DISCONTIGMEM)
+	/*
+	 * get the amount of free pages right here, as this
+	 * should be the lowest amount of allocated pages
+	 * the system ever sees.  After log in there
+	 * should just be more allocated pages.
+	 */
+	lowwater = num_physpages - nr_free_pages();
+#endif
 
 	proc_symlink("mounts", NULL, "self/mounts");
 

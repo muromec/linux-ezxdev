@@ -1,23 +1,23 @@
 /*  *********************************************************************
     *  SB1250 Board Support Package
-    *
+    *  
     *  Generic Bus Constants                     File: sb1250_genbus.h
-    *
-    *  This module contains constants and macros useful for
+    *  
+    *  This module contains constants and macros useful for 
     *  manipulating the SB1250's Generic Bus interface
-    *
-    *  SB1250 specification level:  User's manual 1/02/02
-    *
-    *  Author:  Mitch Lichtenberg (mpl@broadcom.com)
-    *
-    *********************************************************************
+    *  
+    *  SB1250 specification level:  0.2
+    *  
+    *  Author:  Mitch Lichtenberg (mitch@sibyte.com)
+    *  
+    *********************************************************************  
     *
     *  Copyright 2000,2001
     *  Broadcom Corporation. All rights reserved.
-    *
-    *  This program is free software; you can redistribute it and/or
-    *  modify it under the terms of the GNU General Public License as
-    *  published by the Free Software Foundation; either version 2 of
+    *  
+    *  This program is free software; you can redistribute it and/or 
+    *  modify it under the terms of the GNU General Public License as 
+    *  published by the Free Software Foundation; either version 2 of 
     *  the License, or (at your option) any later version.
     *
     *  This program is distributed in the hope that it will be useful,
@@ -27,7 +27,7 @@
     *
     *  You should have received a copy of the GNU General Public License
     *  along with this program; if not, write to the Free Software
-    *  Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+    *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, 
     *  MA 02111-1307 USA
     ********************************************************************* */
 
@@ -48,13 +48,11 @@
 #define M_IO_WIDTH_SEL		_SB_MAKEMASK(2,S_IO_WIDTH_SEL)
 #define K_IO_WIDTH_SEL_1	0
 #define K_IO_WIDTH_SEL_2	1
-#define K_IO_WIDTH_SEL_1L       2		/* PASS2 */
 #define K_IO_WIDTH_SEL_4	3
 #define V_IO_WIDTH_SEL(x)	_SB_MAKEVALUE(x,S_IO_WIDTH_SEL)
 #define G_IO_WIDTH_SEL(x)	_SB_GETVALUE(x,S_IO_WIDTH_SEL,M_IO_WIDTH_SEL)
 
 #define M_IO_PARITY_ENA		_SB_MAKEMASK1(4)
-#define M_IO_BURST_EN		_SB_MAKEMASK1(5)	/* PASS2 */
 #define M_IO_PARITY_ODD		_SB_MAKEMASK1(6)
 #define M_IO_NONMUX		_SB_MAKEMASK1(7)
 
@@ -94,17 +92,10 @@
 #define V_IO_ALE_WIDTH(x)	_SB_MAKEVALUE(x,S_IO_ALE_WIDTH)
 #define G_IO_ALE_WIDTH(x)	_SB_GETVALUE(x,S_IO_ALE_WIDTH,M_IO_ALE_WIDTH)
 
-#define M_IO_EARLY_CS	        _SB_MAKEMASK1(3)	/* PASS2 */
-
 #define S_IO_ALE_TO_CS		4
 #define M_IO_ALE_TO_CS		_SB_MAKEMASK(2,S_IO_ALE_TO_CS)
 #define V_IO_ALE_TO_CS(x)	_SB_MAKEVALUE(x,S_IO_ALE_TO_CS)
 #define G_IO_ALE_TO_CS(x)	_SB_GETVALUE(x,S_IO_ALE_TO_CS,M_IO_ALE_TO_CS)
-
-#define S_IO_BURST_WIDTH           _SB_MAKE64(6)			/* PASS2 */
-#define M_IO_BURST_WIDTH           _SB_MAKEMASK(2,S_IO_BURST_WIDTH)	/* PASS2 */
-#define V_IO_BURST_WIDTH(x)        _SB_MAKEVALUE(x,S_IO_BURST_WIDTH)	/* PASS2 */
-#define G_IO_BURST_WIDTH(x)        _SB_GETVALUE(x,S_IO_BURST_WIDTH,M_IO_BURST_WIDTH)	/* PASS2 */
 
 #define S_IO_CS_WIDTH		8
 #define M_IO_CS_WIDTH		_SB_MAKEMASK(5,S_IO_CS_WIDTH)
@@ -126,8 +117,6 @@
 #define V_IO_ALE_TO_WRITE(x)	_SB_MAKEVALUE(x,S_IO_ALE_TO_WRITE)
 #define G_IO_ALE_TO_WRITE(x)	_SB_GETVALUE(x,S_IO_ALE_TO_WRITE,M_IO_ALE_TO_WRITE)
 
-#define M_IO_RDY_SYNC	        _SB_MAKEMASK1(3)	/* PASS2 */
-
 #define S_IO_WRITE_WIDTH	4
 #define M_IO_WRITE_WIDTH	_SB_MAKEMASK(4,S_IO_WRITE_WIDTH)
 #define V_IO_WRITE_WIDTH(x)	_SB_MAKEVALUE(x,S_IO_WRITE_WIDTH)
@@ -138,15 +127,15 @@
 #define V_IO_IDLE_CYCLE(x)	_SB_MAKEVALUE(x,S_IO_IDLE_CYCLE)
 #define G_IO_IDLE_CYCLE(x)	_SB_GETVALUE(x,S_IO_IDLE_CYCLE,M_IO_IDLE_CYCLE)
 
-#define S_IO_OE_TO_CS		12
-#define M_IO_OE_TO_CS		_SB_MAKEMASK(2,S_IO_OE_TO_CS)
-#define V_IO_OE_TO_CS(x)	_SB_MAKEVALUE(x,S_IO_OE_TO_CS)
-#define G_IO_OE_TO_CS(x)	_SB_GETVALUE(x,S_IO_OE_TO_CS,M_IO_OE_TO_CS)
-
-#define S_IO_CS_TO_OE		14
+#define S_IO_CS_TO_OE		12
 #define M_IO_CS_TO_OE		_SB_MAKEMASK(2,S_IO_CS_TO_OE)
 #define V_IO_CS_TO_OE(x)	_SB_MAKEVALUE(x,S_IO_CS_TO_OE)
 #define G_IO_CS_TO_OE(x)	_SB_GETVALUE(x,S_IO_CS_TO_OE,M_IO_CS_TO_OE)
+
+#define S_IO_OE_TO_CS		14
+#define M_IO_OE_TO_CS		_SB_MAKEMASK(2,S_IO_OE_TO_CS)
+#define V_IO_OE_TO_CS(x)	_SB_MAKEVALUE(x,S_IO_OE_TO_CS)
+#define G_IO_OE_TO_CS(x)	_SB_GETVALUE(x,S_IO_OE_TO_CS,M_IO_OE_TO_CS)
 
 /*
  * Generic Bus Interrupt Status Register (Table 11-9)
@@ -166,7 +155,6 @@
 #define M_IO_TIMEOUT_INT	_SB_MAKEMASK1(10)
 #define M_IO_ILL_ADDR_INT	_SB_MAKEMASK1(11)
 #define M_IO_MULT_CS_INT	_SB_MAKEMASK1(12)
-#define M_IO_COH_ERR	        _SB_MAKEMASK1(14)	/* PASS2 */
 
 /*
  * PCMCIA configuration register (Table 12-6)

@@ -162,6 +162,8 @@
 
 #define OSST_MAJOR	206	/* OnStream-SCx0 SCSI tape */
 
+#define LTT_TRACER_MAJOR	217	/* Linux Trace Toolkit */
+
 #define IBM_TTY3270_MAJOR       227	/* Official allocations now */
 #define IBM_FS3270_MAJOR        228
 

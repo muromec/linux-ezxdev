@@ -1,5 +1,7 @@
 #
-# Network device configuration
+# Copyright (C) 2005 Motorola Inc.
+#
+# modified by MKARTHIK, for EZX platform
 #
 
 source drivers/net/arcnet/Config.in
@@ -29,6 +31,12 @@ if [ "$CONFIG_NET_ETHERNET" = "y" ]; then
       if [ "$CONFIG_ARCH_ACORN" = "y" ]; then
          source drivers/acorn/net/Config.in
       fi
+      if [ "$CONFIG_SA1100_CERF" = "y" ]; then
+         tristate '  CerfBoard onboard CS8900A support' CONFIG_CERF_CS8900A
+      fi
+   fi
+   if [ "$CONFIG_ARCH_CAMELOT" = "y" ]; then
+	tristate ' Altera Ether00 support' CONFIG_ETHER00
    fi
    if [ "$CONFIG_PPC" = "y" ]; then
       dep_tristate '  MACE (Power Mac ethernet) support' CONFIG_MACE $CONFIG_ALL_PPC
@@ -41,6 +49,12 @@ if [ "$CONFIG_NET_ETHERNET" = "y" ]; then
          if [ "$CONFIG_STB03xxx" = "y" -o "$CONFIG_403GCX" = "y" ]; then
 	    tristate '  National DP83902AV (Oak ethernet) support' CONFIG_OAKNET
 	 fi
+      fi
+      if [ "$CONFIG_BEECH" = "y" ]; then
+         tristate '  Beech onboard CS8900A Ethernet support' CONFIG_CS89x0 
+      fi 
+      if [ "$CONFIG_ARCTIC2" = "y" ]; then
+         tristate '  Arctic-II debug sled ethernet support' CONFIG_ARCTIC_ENET
       fi
    fi
    if [ "$CONFIG_ZORRO" = "y" ]; then
@@ -55,17 +69,26 @@ if [ "$CONFIG_NET_ETHERNET" = "y" ]; then
    if [ "$CONFIG_MIPS_JAZZ" = "y" ]; then
       tristate '  MIPS JAZZ onboard SONIC Ethernet support' CONFIG_MIPS_JAZZ_SONIC
    fi
+   if [ "$CONFIG_XTENSA_PLATFORM_XT2000" = "y" ]; then
+      tristate '  Xtensa XT2000 onboard SONIC Ethernet support' CONFIG_XTENSA_PLATFORM_XT2000_SONIC
+   fi
    if [ "$CONFIG_MIPS_GT96100" = "y" ]; then
       bool '  MIPS GT96100 Ethernet support' CONFIG_MIPS_GT96100ETH
    fi
    if [ "$CONFIG_MIPS_AU1000" = "y" ]; then
       bool '  MIPS AU1000 Ethernet support' CONFIG_MIPS_AU1000_ENET
    fi
+   if [ "$CONFIG_MIPS_RC32355" = "y" ]; then
+      bool '  IDT RC32355 Ethernet support' CONFIG_MIPS_RC32355_ETH
+   fi
    if [ "$CONFIG_SIBYTE_SB1250" = "y" ]; then
       tristate '  SB1250 Ethernet support' CONFIG_NET_SB1250_MAC
    fi
    if [ "$CONFIG_SGI_IP27" = "y" ]; then
       bool '  SGI IOC3 Ethernet' CONFIG_SGI_IOC3_ETH
+   fi
+   if [ "$CONFIG_SGI_IP32" = "y" ]; then
+      tristate '  SGI O2 MACE Fast Ethernet support' CONFIG_SGI_O2MACE_ETH
    fi
    if [ "$CONFIG_SGI_IP32" = "y" ]; then
       tristate '  SGI O2 MACE Fast Ethernet support' CONFIG_SGI_O2MACE_ETH
@@ -108,7 +131,21 @@ if [ "$CONFIG_NET_ETHERNET" = "y" ]; then
       dep_tristate '    SMC Ultra MCA support' CONFIG_ULTRAMCA $CONFIG_MCA
       dep_tristate '    SMC Ultra support' CONFIG_ULTRA $CONFIG_ISA
       dep_tristate '    SMC Ultra32 EISA support' CONFIG_ULTRA32 $CONFIG_EISA
-      dep_tristate '    SMC 9194 support' CONFIG_SMC9194 $CONFIG_ISA
+      tristate '    SMC 9194 support' CONFIG_SMC9194
+      tristate '    SMC 91111 support' CONFIG_SMC91111
+      if [ "$CONFIG_SMC91111" != "n" ]; then
+	 bool '      Advanced configuration options for SMC91111' CONFIG_SMC91111_ADVANCED
+	 if [ "$CONFIG_SMC91111_ADVANCED" = "n" ]; then
+	    define_bool CONFIG_SMC91111_BYTE_SWAP n
+	    define_bool CONFIG_SMC91111_USE_8_BIT y
+	    define_bool CONFIG_SMC91111_USE_32_BIT y
+	 else
+	    bool '      Byte swap device accesses' CONFIG_SMC91111_BYTE_SWAP
+	    bool '      Allow 8 bit device accesses' CONFIG_SMC91111_USE_8_BIT
+	    bool '      Allow 32 bit device accesses' CONFIG_SMC91111_USE_32_BIT
+ 	 fi
+      fi
+      tristate '    SMC 919x/911xx support' CONFIG_SMC91X
    fi
    bool '  Racal-Interlan (Micom) NI cards' CONFIG_NET_VENDOR_RACAL
    if [ "$CONFIG_NET_VENDOR_RACAL" = "y" ]; then
@@ -138,18 +175,24 @@ if [ "$CONFIG_NET_ETHERNET" = "y" ]; then
       tristate '    HP PCLAN (27245 and other 27xxx series) support' CONFIG_HPLAN
       tristate '    LP486E on board Ethernet' CONFIG_LP486E
       tristate '    ICL EtherTeam 16i/32 support' CONFIG_ETH16I
-      tristate '    NE2000/NE1000 support' CONFIG_NE2000
       if [ "$CONFIG_OBSOLETE" = "y" ]; then
 	 dep_tristate '    SEEQ8005 support (EXPERIMENTAL)' CONFIG_SEEQ8005 $CONFIG_EXPERIMENTAL
       fi
       if [ "$CONFIG_OBSOLETE" = "y" ]; then
          tristate '    SK_G16 support' CONFIG_SK_G16
       fi
+      tristate '    CS89x0 support' CONFIG_CS89x0
+   fi
+   if [ "$CONFIG_NET_ISA" = "y" -o "$CONFIG_NEC_OSPREY" = "y" ]; then
+      tristate '    NE2000/NE1000 support' CONFIG_NE2000
    fi
    if [ "$CONFIG_MCA" = "y" ]; then
       tristate '  SKnet MCA support' CONFIG_SKMC
       tristate '  NE/2 (ne2000 MCA version) support' CONFIG_NE2_MCA
       tristate '  IBM LAN Adapter/A support' CONFIG_IBMLANA
+   fi
+   if [ "$CONFIG_GT64260" = "y" ]; then
+     bool '  GT64260 Embedded Ethernet Controllers' CONFIG_GT64260_ETH
    fi
    if [ "$CONFIG_ISA" = "y" -o "$CONFIG_EISA" = "y" -o "$CONFIG_PCI" = "y" ]; then
       bool '  EISA, VLB, PCI and on board controllers' CONFIG_NET_PCI
@@ -189,6 +232,9 @@ if [ "$CONFIG_NET_ETHERNET" = "y" ]; then
       dep_mbool '      Support for uncommon RTL-8139 rev. K (automatic channel equalization)' CONFIG_8139TOO_TUNE_TWISTER $CONFIG_8139TOO
       dep_mbool '      Support for older RTL-8129/8130 boards' CONFIG_8139TOO_8129 $CONFIG_8139TOO
       dep_mbool '      Use older RX-reset method' CONFIG_8139_OLD_RX_RESET $CONFIG_8139TOO
+      if [ "$CONFIG_SH_DREAMCAST" = "y" ]; then
+	 dep_mbool '      Support for Dreamcast Broad Band Adaptor' CONFIG_8139TOO_DREAMCAST $CONFIG_8139TOO
+      fi
       dep_tristate '    SiS 900/7016 PCI Fast Ethernet Adapter support' CONFIG_SIS900 $CONFIG_PCI
       dep_tristate '    SMC EtherPower II' CONFIG_EPIC100 $CONFIG_PCI
       dep_tristate '    Sundance Alta support' CONFIG_SUNDANCE $CONFIG_PCI
@@ -219,13 +265,28 @@ if [ "$CONFIG_NET_ETHERNET" = "y" ]; then
       bool '  SGI Seeq ethernet controller support' CONFIG_SGISEEQ
    fi
    if [ "$CONFIG_DECSTATION" = "y" ]; then
-      tristate '  DEC LANCE ethernet controller support' CONFIG_DECLANCE
+      bool '  DEC LANCE ethernet controller support' CONFIG_DECLANCE
    fi
    if [ "$CONFIG_BAGET_MIPS" = "y" ]; then
       tristate '  Baget AMD LANCE support' CONFIG_BAGETLANCE
    fi
-   if [ "$CONFIG_NEC_OSPREY" = "y" ]; then
-      tristate '  Memory-mapped onboard NE2000-compatible ethernet' CONFIG_NE2000
+   if [ "$CONFIG_NEC_KORVA" = "y" ]; then
+      bool '  NEC Memory-mapped onboard (Candy) Ethernet' CONFIG_NEC_CANDY
+   fi
+
+   dep_tristate 'MontaVista(tm) Net CompactPCI Backplane Networking' CONFIG_HHNET $CONFIG_PCI
+   if [ "$CONFIG_HHNET" = "y" ]; then
+     if [ "$CONFIG_MENF1" = "y" -o "$CONFIG_PCORE" = "y" ]; then
+        bool '   MontaVista(tm) Net DMA Support' CONFIG_HHNET_DMA
+     fi 
+   fi
+   if [ "$CONFIG_HHNET" = "m" ]; then
+     if [ "$CONFIG_MENF1" = "y" -o "$CONFIG_PCORE" = "y" ]; then
+        tristate '   MontaVista(tm) Net DMA Support' CONFIG_HHNET_DMA
+     fi 
+   fi
+   if [ "$CONFIG_RAINIER" = "y" -o "$CONFIG_POWERK2" = "y" ]; then
+      dep_tristate 'IBM NPNet NP4GS3 Backplane Networking' CONFIG_NPNET $CONFIG_PCI
    fi
 fi
 
@@ -305,26 +366,26 @@ fi
 mainmenu_option next_comment
 comment 'Wireless LAN (non-hamradio)'
 
-bool 'Wireless LAN (non-hamradio)' CONFIG_NET_RADIO
-if [ "$CONFIG_NET_RADIO" = "y" ]; then
-   dep_tristate '  STRIP (Metricom starmode radio IP)' CONFIG_STRIP $CONFIG_INET
-   tristate '  AT&T WaveLAN & DEC RoamAbout DS support' CONFIG_WAVELAN
-   if [ "$CONFIG_X86_64" != "y" ]; then
-      tristate '  Aironet Arlan 655 & IC2200 DS support' CONFIG_ARLAN
-   fi
-   tristate '  Aironet 4500/4800 series adapters' CONFIG_AIRONET4500
-   dep_tristate '   Aironet 4500/4800 ISA/PCI/PNP/365 support ' CONFIG_AIRONET4500_NONCS $CONFIG_AIRONET4500
-   if [ "$CONFIG_AIRONET4500" != "n" -a "$CONFIG_AIRONET4500_NONCS" != "n" ]; then
-      bool '     Aironet 4500/4800 PNP support ' CONFIG_AIRONET4500_PNP
-      dep_bool '     Aironet 4500/4800 PCI support ' CONFIG_AIRONET4500_PCI $CONFIG_PCI
-      dep_bool '     Aironet 4500/4800 ISA broken support (EXPERIMENTAL)' CONFIG_AIRONET4500_ISA $CONFIG_EXPERIMENTAL
-      dep_bool '     Aironet 4500/4800 I365 broken support (EXPERIMENTAL)' CONFIG_AIRONET4500_I365 $CONFIG_EXPERIMENTAL
-   fi
-   dep_tristate '   Aironet 4500/4800 PROC interface ' CONFIG_AIRONET4500_PROC $CONFIG_AIRONET4500 m
+source drivers/net/wireless/Config.in
+#bool 'Wireless LAN (non-hamradio)' CONFIG_NET_RADIO
+#if [ "$CONFIG_NET_RADIO" = "y" ]; then
+#   dep_tristate '  STRIP (Metricom starmode radio IP)' CONFIG_STRIP $CONFIG_INET
+#   tristate '  AT&T WaveLAN & DEC RoamAbout DS support' CONFIG_WAVELAN
+#   if [ "$CONFIG_X86_64" != "y" ]; then
+#      tristate '  Aironet Arlan 655 & IC2200 DS support' CONFIG_ARLAN
+#   fi
+#   tristate '  Aironet 4500/4800 series adapters' CONFIG_AIRONET4500
+#   dep_tristate '   Aironet 4500/4800 ISA/PCI/PNP/365 support ' CONFIG_AIRONET4500_NONCS $CONFIG_AIRONET4500
+#   if [ "$CONFIG_AIRONET4500" != "n" -a "$CONFIG_AIRONET4500_NONCS" != "n" ]; then
+#      bool '     Aironet 4500/4800 PNP support ' CONFIG_AIRONET4500_PNP
+#      dep_bool '     Aironet 4500/4800 PCI support ' CONFIG_AIRONET4500_PCI $CONFIG_PCI
+#      dep_bool '     Aironet 4500/4800 ISA broken support (EXPERIMENTAL)' CONFIG_AIRONET4500_ISA $CONFIG_EXPERIMENTAL
+#      dep_bool '     Aironet 4500/4800 I365 broken support (EXPERIMENTAL)' CONFIG_AIRONET4500_I365 $CONFIG_EXPERIMENTAL
+#   fi
+#   dep_tristate '   Aironet 4500/4800 PROC interface ' CONFIG_AIRONET4500_PROC $CONFIG_AIRONET4500 m
 
 # New directory for Wireless LAN devices - cards above will move there
-   source drivers/net/wireless/Config.in
-fi
+#fi
 
 endmenu
 
@@ -338,6 +399,9 @@ fi
 if [ "$CONFIG_EXPERIMENTAL" = "y" ]; then
    dep_tristate 'Red Creek Hardware VPN (EXPERIMENTAL)' CONFIG_RCPCI $CONFIG_PCI
    tristate 'Traffic Shaper (EXPERIMENTAL)' CONFIG_SHAPER
+fi
+if [ "$CONFIG_IBM_OCP" = "y" ]; then
+	 source drivers/net/ibm_ocp/Config.in
 fi
 
 source drivers/net/wan/Config.in

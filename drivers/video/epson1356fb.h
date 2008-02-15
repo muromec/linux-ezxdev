@@ -321,8 +321,8 @@ enum tv_format_t {
 
 struct e1356fb_fix {
 	int system;       // the number of a pre-packaged system
-	u64 regbase_phys; // phys start address of registers
-	u64 membase_phys; // phys start address of fb memory
+	phys_addr_t regbase_phys; // phys start address of registers
+	phys_addr_t membase_phys; // phys start address of fb memory
 
 	// Memory parameters
 	int mem_speed;    // speed: 50, 60, 70, or 80 (nsec)
@@ -482,17 +482,6 @@ static struct {
 	{
 		{   // fix
 			SYS_PB1000,
-			/*
-			 * Note!: these are "pseudo" physical addresses;
-			 * the SED1356 is not actually mapped here, but rather
-			 * at the 36-bit address of 0xE 0000 0000. There is an
-			 * ugly hack in the Au1000 TLB refill handler that will
-			 * translate pte_t's in the range 0xE000 0000 -->
-			 * 0xEFFF FFFF to the 36-bit range 0xE 0000 0000 -->
-			 * 0xE 0FFF FFFF. The long-term solution is to support
-			 * 36-bit physical addresses in linux-mips32 mm, since
-			 * the mips32 specification specifically supports this.
-			 */
 			0xE00000000, 0xE00200000,
 			60, MEM_TYPE_EDO_2CAS, 64, MEM_SMR_CBR,
 			0, 0,   // BUSCLK and MCLK are calculated at run-time
@@ -539,17 +528,6 @@ static struct {
 	{
 		{   // fix
 			SYS_PB1500,
-			/*
-			 * Note!: these are "pseudo" physical addresses;
-			 * the SED1356 is not actually mapped here, but rather
-			 * at the 36-bit address of 0xE 0000 0000. There is an
-			 * ugly hack in the Au1000 TLB refill handler that will
-			 * translate pte_t's in the range 0xE000 0000 -->
-			 * 0xEFFF FFFF to the 36-bit range 0xE 0000 0000 -->
-			 * 0xE 0FFF FFFF. The long-term solution is to support
-			 * 36-bit physical addresses in linux-mips32 mm, since
-			 * the mips32 specification specifically supports this.
-			 */
 			0xE1B000000, 0xE1B200000,
 			50, MEM_TYPE_EMBEDDED_SDRAM, 64, MEM_SMR_CBR,
 			0, 0,   // BUSCLK and MCLK are calculated at run-time
