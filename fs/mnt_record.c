@@ -35,8 +35,6 @@
 static struct mnt_record_sb *mnts; 
 static struct mtd_info *mnt_record_mtd;
 
-#define MNT_RECORD_DEBUG
-
 #ifdef MNT_RECORD_DEBUG
 #define RC_WARNING(fmt, ...) \
 	printk(KERN_WARNING "MNT_RECORD %s: "  fmt, __FUNCTION__, ##__VA_ARGS__)

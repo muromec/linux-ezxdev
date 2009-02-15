@@ -568,7 +568,6 @@ static int jffs2_do_read_inode_internal(struct jffs2_sb_info *c,
 	size_t retlen;
 	int ret;
 
-	D1(printk(KERN_DEBUG "jffs2_do_read_inode_internal(): ino #%u nlink is %d\n", f->inocache->ino, f->inocache->nlink));
 
 #ifdef CONFIG_ARCH_EZXBASE
 	frag_count = 0;
@@ -768,12 +767,7 @@ static int jffs2_do_read_inode_internal(struct jffs2_sb_info *c,
 	if (f->inocache->state == INO_STATE_READING)
 		jffs2_set_inocache_state(c, f->inocache, INO_STATE_PRESENT);
 
-#ifdef CONFIG_ARCH_EZXBASE
-	if (frag_count) {
-		all_frags += frag_count;
-		printk("jffs2_do_read_inode_internal(): ino #%u frag_count=%u all_frags=%u\n", f->inocache->ino, frag_count, all_frags);
-	}
-#endif
+
 	return 0;
 }
 
