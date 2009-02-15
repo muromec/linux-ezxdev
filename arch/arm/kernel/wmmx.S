@@ -14,6 +14,7 @@
  * published by the Free Software Foundation.
  */
 
+#include <asm/proc/ptrace.h>
 #include <linux/linkage.h>
 #include <asm/constants.h>
 
