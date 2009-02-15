@@ -13,7 +13,7 @@
  *  2005-Apr-05 Add security system call,  Ni Jili
  */
 #ifndef NR_syscalls
-#define NR_syscalls 256
+#define NR_syscalls 255
 #else
 
 __syscall_start:
@@ -243,7 +243,6 @@ __syscall_start:
 		.long	SYMBOL_NAME(sys_security) /* Security */
 		.long	SYMBOL_NAME(sys_gettid)
 /* 225 */	.long	SYMBOL_NAME(sys_readahead)
-/* 226 */	.long	SYMBOL_NAME(sys_fota_req)
 __syscall_end:
 
 		.rept	NR_syscalls - (__syscall_end - __syscall_start) / 4
