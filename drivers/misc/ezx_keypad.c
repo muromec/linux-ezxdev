@@ -96,8 +96,6 @@
 #include <asm/arch/ezx.h>
 #include "keypad.h"
 
-#define KEYPAD_DEBUG    /* debug option */
-//#define KEYPAD_TRIGGER  /* trigger panic log */
 
 /*
  * This is the number of microseconds we wait before checking to see if any
