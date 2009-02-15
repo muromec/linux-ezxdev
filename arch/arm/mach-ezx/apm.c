@@ -480,8 +480,6 @@ static int do_ioctl(struct inode * inode, struct file *filp,
 	as = filp->private_data;
 	if (check_apm_user(as, "ioctl"))
 		return -EIO;
-	if (!as->suser)
-		return - EPERM;
 
 	memset(&conf, 0, sizeof(conf));
 
