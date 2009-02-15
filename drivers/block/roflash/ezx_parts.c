@@ -54,177 +54,26 @@ int linear_roflash_read(void *priv_map, unsigned long from, size_t len, size_t *
 static DECLARE_MUTEX(roflash_table_mutex);
 
 /* I know what I am doing, so setup l_x_b flag */
-#ifdef CONFIG_ARCH_EZXBASE
 
-#ifdef CONFIG_ARCH_EZX_HAINAN
 static roflash_area  fix_roflash_table[]= 
 {
 	{
-		name:		"rootfs",
-		size:		0x019FF000,  /* rootfs size is 24MB for P2 barbados board */
-		offset:		0x00601000,
-		roflash_read:   linear_roflash_read,  /* force read-only in cacheable mapping*/
-		l_x_b:		ROFLASH_LINEAR,
-		phys_addr:	0x02000000,
-	},{
-		name:		"language",  /* language package is 6.5MB or so*/
-		size:		0x00C00000,
-		offset:		0x019E0000,  /* Susan -- correspond to the 
-					beginning of the second flash chip */
-		roflash_read:   cfi_intelext_read_roflash,
-		l_x_b:		ROFLASH_BLOCK,
-		phys_addr:      0xffffffff, // not use for block cramfs mount 
-	},{
-		name:		"data_resource",  /* resource.img */
-		size:		0x00900000,
-		offset:		0x001A0000,  
-		roflash_read:   cfi_intelext_read_roflash,
-		l_x_b:		ROFLASH_BLOCK,
-		phys_addr:      0xffffffff, // not use for block cramfs mount
-	},{
-		name:		"setup",
-		size:		0x00020000,
-		offset:         0x005E0000,
-		roflash_read:   linear_roflash_read,
-		l_x_b:		ROFLASH_LINEAR,
-		phys_addr:      0x02000000, // not use for block cramfs mount
-	},{
-		name:		"secure_setup",  /* securesetup.img */
-		size:		0x0001F000,
-		offset:		0x018A1000,  
-		roflash_read:   cfi_intelext_read_roflash,
-		l_x_b:		ROFLASH_BLOCK,
-		phys_addr:      0xffffffff, // not use for block cramfs mount
-	}
-};
-#else
-static roflash_area  fix_roflash_table[]= 
-{
-	{
-		name:		"rootfs",
-		size:		0x019FF000,  /* rootfs size is 24MB for P2 barbados board */
-		offset:		0x00601000,
-		roflash_read:   linear_roflash_read,  /* force read-only in cacheable mapping*/
-		l_x_b:		ROFLASH_LINEAR,
-		phys_addr:	0x02000000,
-	},{
-		name:		"language",  /* language package is 6.5MB or so*/
-		size:		0x00800000,
-		offset:		0x01DE0000,  /* Susan -- correspond to the 
-					beginning of the second flash chip */
-		roflash_read:   cfi_intelext_read_roflash,
-		l_x_b:		ROFLASH_BLOCK,
-		phys_addr:      0xffffffff, // not use for block cramfs mount
-	},{
-		name:		"data_resource",  /* resource.img */
-		size:		0x00900000,
-		offset:		0x001A0000,  
-		roflash_read:   cfi_intelext_read_roflash,
-		l_x_b:		ROFLASH_BLOCK,
-		phys_addr:      0xffffffff, // not use for block cramfs mount
-	},{
-		name:		"setup",
-		size:		0x00020000,
-		offset:         0x005E0000,
-		roflash_read:   linear_roflash_read,
-		l_x_b:		ROFLASH_LINEAR,
-		phys_addr:      0x02000000, // not use for block cramfs mount
-	},{
-		name:		"secure_setup",  /* securesetup.img */
-		size:		0x0001F000,
-		offset:		0x01CA1000,  
-		roflash_read:   cfi_intelext_read_roflash,
-		l_x_b:		ROFLASH_BLOCK,
-		phys_addr:      0xffffffff, // not use for block cramfs mount
-	}
-};
-#endif  //HAINAN or not-HAINAN//
-
-#endif
-
-#ifdef CONFIG_ARCH_EZX_A780
-static roflash_area  fix_roflash_table[]= 
-{
-	{
-		name:		"rootfs",
-		size:		0x018E0000,  /* rootfs size is 24.875MB */
-		offset:		0x00120000,
-		roflash_read:   NULL,  /* force read-only in cacheable mapping*/
-		l_x_b:		ROFLASH_LINEAR,
-		phys_addr:	0x00000000,
-	},{
-		name:		"NO-USE",  /* language package is moved to MDOC */
-		size:		0x00000000,
-		offset:		0x01A00000,  //Susan -- correspond to the beginning of the second flash chip //
-		roflash_read:  cfi_intelext_read_roflash,
-		l_x_b:		ROFLASH_BLOCK,
-		phys_addr:  0xffffffff, // not use for block cramfs mount
-	},{
-		name:		"setup",
-		size:		0x00020000,
-		offset:         0x01FA0000,
-		roflash_read:  cfi_intelext_read_roflash,
-		l_x_b:		ROFLASH_BLOCK,
-		phys_addr:  0xffffffff, // not use for block cramfs mount
-	}
-};
-#if (0)
-static roflash_area  fix_roflash_table[]= 
-{
-	{
-		name:		"rootfs",
-		size:		0x00f00000,  /* rootfs size is 15MB */
-		offset:		0x00100000,
-		roflash_read:  NULL,  /* force read-only in cacheable mapping*/
+		name:		"ROOT",
+		size:		0x01720000,
+		offset:		0x001A0000,
 		l_x_b:		ROFLASH_LINEAR_XIP,
 		phys_addr:	0x00000000,
+                roflash_read:   NULL,
 	},{
-		name:		"nxipapp",  /* old language area is 0xAA0000 */
-		size:		0x00AA0000,
-		offset:		0x00500000,
-		roflash_read:  cfi_intelext_read_roflash,
-		l_x_b:		ROFLASH_BLOCK,
-		phys_addr:  0xffffffff, // not use for block cramfs mount
-	},{
-		name:		"setup",     /* setup stuff is 1MB */
-		size:		0x00020000,
-		offset:         0x00FA0000,
-		roflash_read:  cfi_intelext_read_roflash,
-		l_x_b:		ROFLASH_BLOCK,
-		phys_addr:  0xffffffff, //phys_addr is not useful for block cramfs mount
-	}
+		name:		"OPT",  
+		size:		0x02620000,
+		offset:		0x019E0000,
+		l_x_b:		ROFLASH_LINEAR_XIP,
+		phys_addr:      0x02000000, 
+                roflash_read:   NULL,
+	},
 };
-#endif
 
-#endif
-
-#ifdef CONFIG_ARCH_EZX_E680
-static roflash_area  fix_roflash_table[]= 
-{
-	{
-		name:		"rootfs",
-		size:		0x018E0000,  /* rootfs size is 15MB */
-		offset:		0x00120000,
-		roflash_read:   NULL,  /* force read-only in cacheable mapping*/
-		l_x_b:		ROFLASH_LINEAR,
-		phys_addr:	0x00000000,
-	},{
-		name:		"NO-USE",  /* language package is 2MB */
-		size:		0x00000000,
-		offset:		0x01A00000,  //Susan -- correspond to the beginning of the second flash chip //
-		roflash_read:  cfi_intelext_read_roflash,
-		l_x_b:		ROFLASH_BLOCK,
-		phys_addr:  0xffffffff, // not use for block cramfs mount
-	},{
-		name:		"setup",     /* setup stuff is 1MB */
-		size:		0x00020000,
-		offset:         0x01FA0000,  //Susan -- correspond to the beginning of the second flash chip //
-		roflash_read:  cfi_intelext_read_roflash,
-		l_x_b:		ROFLASH_BLOCK,
-		phys_addr:  0xffffffff, // not use for block cramfs mount
-	}
-};
-#endif
 
 roflash_area *act_roflash_table[MAX_ROFLASH] = {0};
 unsigned short roflash_partitions = 0;
