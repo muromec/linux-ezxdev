@@ -54,8 +54,6 @@ static int mmc_major = 0xf3; /* must be declared before including blk.h */
 static int mmcsysif_major = 0xf4;
 static int mmcsysif_usage = 0;
 extern int mmc_slot_enable;
-extern struct completion fatpanic_completion;
-extern unsigned short panicdev;
 
 #ifdef CONFIG_DEVFS_FS
 devfs_handle_t mmcsysif_de;
@@ -713,8 +711,6 @@ static int mmcsysif_ioctl(struct inode *inode, struct file *filp,
 		mmc_slot_enable = 1;
 		return 0;
 	case IOCSETERROR:
-		panicdev = (unsigned short)MKDEV(mmc_major,1);
-		complete(&fatpanic_completion);
 		return 0;
 	case IOCMMCEXIST:
 		if (!access_ok(VERIFY_WRITE, arg, sizeof(long)))
@@ -743,13 +739,7 @@ static int mmcsysif_ioctl(struct inode *inode, struct file *filp,
 
 static ssize_t mmcsysif_read(struct file * filp, char * buf, size_t count, loff_t *ppos)
 {
-    panicdev = 0;
-    init_completion(&fatpanic_completion);
-    wait_for_completion(&fatpanic_completion);
-    if (!copy_to_user(buf,kdevname((kdev_t) panicdev),5))
 	return 0;
-
-    return -1; /* error */	
 }
 
 static struct file_operations mmcsysif_bdops = {
