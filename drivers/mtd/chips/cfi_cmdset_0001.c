@@ -42,7 +42,6 @@
 
 #include <linux/pm.h>
 
-#ifdef CONFIG_ARCH_EZX_HAINAN
 static struct fl_rw_region fl_rw_array[] = {
 	{		
 		/* This area contains "CADDO2"+"ITUNES"+"CADDO1"+"FOTA_REV" */
@@ -50,31 +49,14 @@ static struct fl_rw_region fl_rw_array[] = {
 		rw_end:  0x00020000,
 	},{		
 		/* This partition contains "userfs_db"+"userfs_general" */
-		rw_start: 0x00AA0000,
-		rw_end:  0x018A0000,
+		rw_start: 0x00060000,
+		rw_end:  0x018C0000,
 	},{		
 		/* This partition contains "tcmd"+"logo"+"fota"+"128KB reserve" */	
 		rw_start: 0x018C0000,
-		rw_end:  0x019E0000,
+		rw_end:  0x04000000,
 	}
 };
-#else
-static struct fl_rw_region fl_rw_array[] = {
-	{		
-		/* This area contains "CADDO2"+"ITUNES"+"CADDO1"+"FOTA_REV" */
-		rw_start: 0x00000000,
-		rw_end:  0x00020000,
-	},{		
-		/* This partition contains "userfs_db"+"userfs_general" */
-		rw_start: 0x00AA0000,
-		rw_end:  0x01CA0000,
-	},{	
-		/* This partition contains "tcmd"+"logo"+"fota"+"128KB reserve" */	
-		rw_start: 0x01CC0000,
-		rw_end:  0x01DE0000,
-	}
-};
-#endif  //HAINAN or not-HAINAN
 
 #define TIME_OUT   1000000L
 
@@ -313,28 +295,6 @@ read_pri_intelext(struct map_info *map, __u16 adr)
 		extra_size += (extp->NumProtectionFields - 1) *
 			      sizeof(struct cfi_intelext_otpinfo);
 			      
-	#ifndef CONFIG_ARCH_EZXBASE  //not dataflash chip//
-
-		/* Burst Read info */
-		extra_size += 6;
-
-		/* Number of hardware-partitions */
-		extra_size += 1;
-		if (extp_size < sizeof(*extp) + extra_size)
-			goto need_more;
-		nb_parts = extp->extra[extra_size - 1];
-
-		for (i = 0; i < nb_parts; i++) {
-			struct cfi_intelext_regioninfo *rinfo;
-			rinfo = (struct cfi_intelext_regioninfo *)&extp->extra[extra_size];
-			extra_size += sizeof(*rinfo);
-			if (extp_size < sizeof(*extp) + extra_size)
-				goto need_more;
-			rinfo->NumIdentPartitions=le16_to_cpu(rinfo->NumIdentPartitions);
-			extra_size += (rinfo->NumBlockTypes - 1)
-				      * sizeof(struct cfi_intelext_blockinfo);
-		}
-	#endif
 
 		if (extp_size < sizeof(*extp) + extra_size) {
 			need_more:
@@ -455,24 +415,6 @@ static struct mtd_info *cfi_intelext_setup(struct mtd_info *mtd)
 		goto setup_err;
 	}
 	
-#if (0)
-	for (i=0; i<cfi->cfiq->NumEraseRegions; i++) {
-		unsigned long ernum, ersize;
-		ersize = ((cfi->cfiq->EraseRegionInfo[i] >> 8) & ~0xff) * cfi->interleave;
-		ernum = (cfi->cfiq->EraseRegionInfo[i] & 0xffff) + 1;
-
-		if (mtd->erasesize < ersize) {
-			mtd->erasesize = ersize;
-		}
-		for (j=0; j<cfi->numchips; j++) {
-			mtd->eraseregions[(j*cfi->cfiq->NumEraseRegions)+i].offset = (j*devsize)+offset;
-			mtd->eraseregions[(j*cfi->cfiq->NumEraseRegions)+i].erasesize = ersize;
-			mtd->eraseregions[(j*cfi->cfiq->NumEraseRegions)+i].numblocks = ernum;
-		}
-		offset += (ersize * ernum);
-	}
-#endif
-
 	//printk(KERN_NOTICE "cfi_intelext_setup:cfi->numchips(%d),mtd->numeraseregions(%d)\n",cfi->numchips,mtd->numeraseregions);
 	
 	/* Changed by susan for TOP+BOTTOM geometry layout -- Barbados */	
@@ -2444,8 +2386,6 @@ static int cfi_intelext_get_user_prot_info(struct mtd_info *mtd,
 
 #endif
 
-#ifdef CONFIG_ARCH_EZX
-
 static int msc0_val, sxcnfg_val;
 static int mode = 0;
 
@@ -2481,44 +2421,16 @@ static int cfi_intelext_suspend(struct mtd_info *mtd)
 		}		
 
 		local_irq_save(flags);
-#if (0)
-		/* For barbados dataflash, no reset signal be sent to dataflash upon resume from sleep, */
-		/* So before/after sleep, no cmds are sent to dataflash, therefore disable/enable MMU cacheable feature is not necessary */
-		/* zxf -- Disable MMU cache and buffer */
-		__asm__ __volatile__("mrc	p15, 0, r0, c1, c0, 0\n\
-			bic	r0, r0, #0x000c\n\
-			b	1f			\n\
-			.align	5			\n\
-	1:		mcr	p15, 0, r0, c1, c0, 0":::"r0","memory");
-#endif
+
 				
 		msc0_val = MSC0;
 		sxcnfg_val = SXCNFG;
 
-//This is for A760			MSC0 = 0x12bb12bb;
-//This is for A760				map_write(map, CMD(0x60), 0x0001fffe);
-//This is for A760				map_write(map, CMD(0x03), 0x0001fffe);
-//This is for A760				map_write(map, CMD(0x60), 0x0101fffe);
-//This is for A760				map_write(map, CMD(0x03), 0x0101fffe);
-
 		MSC0 = 0x7ff03AFA;
-		// map_write(map, CMD(0x60), 0x00017f9e);
-		// map_write(map, CMD(0x03), 0x00017f9e);
 
 		SXCNFG = 0;
 		MDREFR &= ~(MDREFR_K0DB2 | MDREFR_K0RUN | MDREFR_E0PIN);
 
-//no necessary			map_write(map, CMD(0xff), 0x0);
-//no necessary			map_write(map, CMD(0xff), 0x01000000);
-
-#if (0)
-		/* zxf -- Enable MMU cache and buffer */
-		__asm__ __volatile__("mrc	p15, 0, r0, c1, c0, 0\n\
-			orr	r0, r0, #0x000c\n\
-			b	2f			\n\
-			.align 5			\n\
-	2:		mcr	p15, 0, r0, c1, c0, 0":::"r0","memory");			
-#endif
 
 		local_irq_restore(flags);
 
@@ -2540,23 +2452,10 @@ static void cfi_intelext_resume(struct mtd_info *mtd)
 
 		local_irq_save(flags);
 
-#if (0)
-		/* Disable MMU cache and buffer */
-		__asm__ __volatile__("mrc	p15, 0, r0, c1, c0, 0\n\
-			bic	r0, r0, #0x000c\n\
-			b	1f			\n\
-			.align	5			\n\
-	1:		mcr	p15, 0, r0, c1, c0, 0":::"r0","memory");
-#endif
 
 		MSC0 = msc0_val;
 		MDREFR |= (MDREFR_K0DB2 | MDREFR_K0RUN | MDREFR_E0PIN);
 			
-		//map_write(map, CMD(0x60), 0x00004984);
-		//map_write(map, CMD(0x03), 0x00004984);
-
-		//SXCNFG = sxcnfg_val;  -- Intel dataflash no burst mode read feature
-
 		printk(KERN_NOTICE "Unlock after reset -- begin(%ld)\n", jiffies);
 		status = cfi_intelext_upon_resume(ezx_mymtd);
 		printk(KERN_NOTICE "Unlock after reset -- end(%ld)\n", jiffies);
@@ -2564,14 +2463,6 @@ static void cfi_intelext_resume(struct mtd_info *mtd)
 		if (status)
 			printk(KERN_NOTICE "Unlock flash fail after reset flash.\n");
 
-#if (0)
-		/* zxf -- Enable MMU cache and buffer */
-		__asm__ __volatile__("mrc	p15, 0, r0, c1, c0, 0\n\
-			orr	r0, r0, #0x000c\n\
-			b	2f			\n\
-			.align	5			\n\
-	2:		mcr	p15, 0, r0, c1, c0, 0":::"r0","memory");
-#endif
 	
 		local_irq_restore(flags);
 		mode = 0;
@@ -2579,107 +2470,6 @@ static void cfi_intelext_resume(struct mtd_info *mtd)
 	
 	return;
 }
-
-#else  //CONFIG_ARCH_EZX
-
-static int cfi_intelext_suspend(struct mtd_info *mtd)
-{
-	struct map_info *map = mtd->priv;
-	struct cfi_private *cfi = map->fldrv_priv;
-	int i;
-	struct flchip *chip;
-	int ret = 0;
-
-	for (i=0; !ret && i<cfi->numchips; i++) {
-		chip = &cfi->chips[i];
-
-		spin_lock(chip->mutex);
-
-		switch (chip->state) {
-		case FL_READY:
-		case FL_STATUS:
-		case FL_CFI_QUERY:
-		case FL_JEDEC_QUERY:
-			if (chip->oldstate == FL_READY) {
-				chip->oldstate = chip->state;
-				chip->state = FL_PM_SUSPENDED;
-				/* No need to wake_up() on this state change - 
-				 * as the whole point is that nobody can do anything
-				 * with the chip now anyway.
-				 */
-			}
-			break;
-		default:
-			ret = -EAGAIN;
-		case FL_PM_SUSPENDED:
-			break;
-		}
-		spin_unlock(chip->mutex);
-	}
-
-	/* Unlock the chips again */
-
-	if (ret) {
-		for (i--; i >=0; i--) {
-			chip = &cfi->chips[i];
-			
-			spin_lock(chip->mutex);
-			
-			if (chip->state == FL_PM_SUSPENDED) {
-				/* No need to force it into a known state here,
-				   because we're returning failure, and it didn't
-				   get power cycled */
-				chip->state = chip->oldstate;
-				wake_up(&chip->wq);
-			}
-			spin_unlock(chip->mutex);
-		}
-	} 
-	
-	return ret;
-}
-
-static void cfi_intelext_resume(struct mtd_info *mtd)
-{
-	struct map_info *map = mtd->priv;
-	struct cfi_private *cfi = map->fldrv_priv;
-	int i;
-	struct flchip *chip;
-
-#ifdef CONFIG_ARCH_MAINSTONE
-	extern void bulverde_mtd_unlock_all(void);
-#endif
-	#ifdef CONFIG_PM
-		atomic_inc(&(pm_flash.pm_flash_count));
-	#endif
-
-	for (i=0; i<cfi->numchips; i++) {
-	
-		chip = &cfi->chips[i];
-
-		spin_lock(chip->mutex);
-		
-		/* Go to known state. Chip may have been power cycled */
-		if (chip->state == FL_PM_SUSPENDED) {
-			map_write(map, CMD(0xFF), cfi->chips[i].start);
-			chip->state = FL_READY;
-			chip->oldstate = FL_READY;
-			wake_up(&chip->wq);
-		}
-
-		spin_unlock(chip->mutex);
-	}
-
-#ifdef CONFIG_ARCH_MAINSTONE
-	bulverde_mtd_unlock_all();
-#endif
-
-	#ifdef CONFIG_PM
-		atomic_dec(&(pm_flash.pm_flash_count));
-	#endif
-}
-
-#endif  //CONFIG_ARCH_EZX
 
 static void cfi_intelext_destroy(struct mtd_info *mtd)
 {
@@ -2691,8 +2481,6 @@ static void cfi_intelext_destroy(struct mtd_info *mtd)
 	kfree(cfi);
 	kfree(mtd->eraseregions);
 }
-
-#ifdef CONFIG_ARCH_EZX
 
 /* Added by Susan for Intel Flash UNLOCK/LOCKDOWN mechanism */
 int cfi_intelext_unlockdown(struct mtd_info *mymtd)
@@ -2836,22 +2624,6 @@ int cfi_intelext_unlockdown(struct mtd_info *mymtd)
 		this_chip->oldstate = FL_READY;
 	}
 
-#if (0)
-	/* Resume each partition's state to be the same as before entering sleep mode */
-	this_chip = cfi->chips;
-	this_flprivate = (struct flprivate *)(this_chip->priv);
-	npartitions = this_flprivate->num_partitions;
-
-	for ( i = 0 ; i < npartitions ; i ++ )
-	{
-		this_partition = (struct flpartition *)(&(this_flprivate->partitions[i]));
-//the old method		if (this_partition->state == FL_STATUS)
-//the old method			map_write(map, CMD(0x70), (this_partition->offset));
-		this_partition->state = FL_READY;
-		// For other case except for FL_READY, there must be something error somehow, ignore it at this point //
-	}
-#endif
-	
 #ifdef CONFIG_PM
 	atomic_dec(&(pm_flash.pm_flash_count));
 #endif
@@ -2953,8 +2725,6 @@ int cfi_intelext_read_roflash(void *priv_map, unsigned long from, size_t len, si
 	}
 	return ret;
 }
-
-#endif  //CONFIG_ARCH_EZX
 
 
 static char im_name_1[]="cfi_cmdset_0001";
