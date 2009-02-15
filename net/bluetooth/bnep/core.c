@@ -458,8 +458,6 @@ static int bnep_session(void *arg)
         sigfillset(&current->blocked);
 	flush_signals(current);
 
-	current->nice = -15;
-
         set_fs(KERNEL_DS);
 
 	init_waitqueue_entry(&wait, current);
