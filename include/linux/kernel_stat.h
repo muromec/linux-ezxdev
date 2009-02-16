@@ -31,6 +31,7 @@ struct kernel_stat {
 #elif !defined(CONFIG_ARCH_S390)
 	unsigned int irqs[NR_CPUS][NR_IRQS];
 #endif
+	unsigned int context_swtch;
 };
 
 extern struct kernel_stat kstat;
