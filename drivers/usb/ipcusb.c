@@ -468,13 +468,15 @@ static void suspend_timeout(unsigned long data)
 #ifdef CONFIG_NO_USB_SUSPEND_RESUME
 	return;
 #else
+
+#ifdef CONFIG_DSPLOG_USB
 	/*
 		 This will prevent the case that suspend port when doing dsplog. 
 		 this is a temporary solution for the case of dsplog and ipc function simultaneously.
 	 */
 	if(dsplog_active)   
 		return;
-	
+#endif
 	if(!usb_host_resumed)
 	{
 		printk("\n!!!suspend timer has been started. however host not resumed\n");
