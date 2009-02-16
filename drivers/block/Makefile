@@ -7,8 +7,6 @@
 # Note : at this point, these files are compiled on all systems.
 # In the future, some of these should be built conditionally.
 #
-# Copyright (C) 2005 Motorola, Inc.
-# - Port to EzX platform.
 
 O_TARGET := block.o
 
@@ -35,18 +33,5 @@ obj-$(CONFIG_BLK_DEV_UMEM)	+= umem.o
 obj-$(CONFIG_BLK_DEV_NBD)	+= nbd.o
 
 subdir-$(CONFIG_PARIDE) += paride
-mod-subdirs			+= xilinx_sysace
-subdir-$(CONFIG_XILINX_SYSACE)	+= xilinx_sysace
-obj-$(CONFIG_XILINX_SYSACE)	+= xilinx_sysace/xilinx_sysace.o
-
-# Added by Susan
-subdir-$(CONFIG_ARCH_EZX_ROFLASH) += roflash
-# End of modification
-
-ifeq ($(CONFIG_ARCH_ACORN),y)
-mod-subdirs	+= ../acorn/block
-subdir-y	+= ../acorn/block
-obj-y		+= ../acorn/block/acorn-block.o
-endif
 
 include $(TOPDIR)/Rules.make
