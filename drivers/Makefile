@@ -61,13 +61,9 @@ subdir-$(CONFIG_SPI)		+= spi
 subdir-$(CONFIG_ACPI)		+= acpi
 subdir-$(CONFIG_MOT_POWER_IC)	+= power_ic
 
-subdir-$(CONFIG_MODEM_CONNECTIONS)	+= modem
-
 subdir-$(CONFIG_BLUEZ)		+= bluetooth
 subdir-$(CONFIG_MMC)		+= mmc
 subdir-$(CONFIG_SSI)		+= ssi
-subdir-$(CONFIG_MAPLE)		+= maple
-subdir-$(CONFIG_VMEBUS)		+= vme
 
 MARVELL_SUBDIR_FLAG=n
 
