@@ -32,19 +32,6 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 
-/* Maybe something to cleanup in 2.3?
- * We shouldn't touch 0x3f2 on machines which don't have a PC floppy controller
- * - it may contain something else which could cause a system hang.  This is
- * now selected by a configuration option, but maybe it ought to be in the
- * floppy code itself? - rmk
- */
-#if defined(__i386__) || (defined(__arm__) && defined(CONFIG_ARCH_ACORN))
-#define FLOPPY_BOOT_DISABLE
-#endif
-#ifdef CONFIG_BLK_DEV_FD
-#undef FLOPPY_BOOT_DISABLE
-#endif
-
 /*
  * MAC Floppy IWM hooks
  */
@@ -1201,9 +1188,6 @@ void submit_bh(int rw, struct buffer_head * bh)
 	if (!test_bit(BH_Lock, &bh->b_state))
 		BUG();
 
-	if (buffer_delay(bh) || !buffer_mapped(bh))
-		BUG();
-
 	set_bit(BH_Req, &bh->b_state);
 	set_bit(BH_Launder, &bh->b_state);
 
@@ -1459,14 +1443,12 @@ int __init blk_dev_init(void)
 #ifdef CONFIG_ATARI_FLOPPY
 	atari_floppy_init();
 #endif
-#ifdef CONFIG_BLK_DEV_FD1772
-	fd1772_init();
-#endif
 #ifdef CONFIG_BLK_DEV_FD
 	floppy_init();
-#endif
-#ifdef FLOPPY_BOOT_DISABLE
+#else
+#if defined(__i386__)	/* Do we even need this? */
 	outb_p(0xc, 0x3f2);
+#endif
 #endif
 #ifdef CONFIG_CDU31A
 	cdu31a_init();
