@@ -670,7 +670,7 @@ if [ "$CONFIG_ARCH_FTVPCI" = "y" -o \
      "$CONFIG_FOOTBRIDGE_HOST" = "y" ]; then
    define_bool CONFIG_PCI y
 else
-   if [ "$CONFIG_ARCH_INTEGRATOR" = "y" ]; then
+   if [ "$CONFIG_ARCH_INTEGRATOR" = "y" ] ; then
       bool 'PCI support' CONFIG_PCI_INTEGRATOR
       define_bool CONFIG_PCI $CONFIG_PCI_INTEGRATOR
    else
@@ -686,7 +686,7 @@ if [ "$CONFIG_FOOTBRIDGE_HOST" = "y" -o \
      "$CONFIG_ARCH_CDB89712" = "y" -o \
      "$CONFIG_ARCH_EDB7211" = "y" -o \
      "$CONFIG_ARCH_SA1100" = "y" -o \
-     "$CONFIG_ARCH_S3C24A0" = "y" -o \ 
+     "$CONFIG_ARCH_S3C24A0" = "y" -o \
      "$CONFIG_ARCH_S3C2440" = "y" ]; then
    define_bool CONFIG_ISA y
 else

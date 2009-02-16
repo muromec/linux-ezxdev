@@ -60,7 +60,7 @@ fi
 tristate 'Appletalk protocol support' CONFIG_ATALK
 source drivers/net/appletalk/Config.in
 
-trustate 'Bluez' CONFIG_BLUEZ
+tristate 'Bluez' CONFIG_BLUEZ
 source net/bluetooth/Config.in
 
 tristate 'DECnet Support' CONFIG_DECNET
