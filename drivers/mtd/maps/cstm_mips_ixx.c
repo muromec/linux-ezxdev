@@ -1,5 +1,5 @@
 /*
- * $Id: cstm_mips_ixx.c,v 1.10 2004/07/12 21:59:43 dwmw2 Exp $
+ * $Id: cstm_mips_ixx.c,v 1.5 2001/10/02 15:05:14 dwmw2 Exp $
  *
  * Mapping of a custom board with both AMD CFI and JEDEC flash in partitions.
  * Config with both CFI and JEDEC device support.
@@ -33,13 +33,55 @@
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
-#include <linux/init.h>
 #include <asm/io.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/map.h>
 #include <linux/mtd/partitions.h>
 #include <linux/config.h>
+
+#if defined(CONFIG_MIPS_ITE8172) || defined(CONFIG_MIPS_IVR)
 #include <linux/delay.h>
+#endif
+
+__u8 cstm_mips_ixx_read8(struct map_info *map, unsigned long ofs)
+{
+	return *(__u8 *)(map->map_priv_1 + ofs);
+}
+
+__u16 cstm_mips_ixx_read16(struct map_info *map, unsigned long ofs)
+{
+	return *(__u16 *)(map->map_priv_1 + ofs);
+}
+
+__u32 cstm_mips_ixx_read32(struct map_info *map, unsigned long ofs)
+{
+	return *(__u32 *)(map->map_priv_1 + ofs);
+}
+
+void cstm_mips_ixx_copy_from(struct map_info *map, void *to, unsigned long from, ssize_t len)
+{
+	memcpy_fromio(to, map->map_priv_1 + from, len);
+}
+
+void cstm_mips_ixx_write8(struct map_info *map, __u8 d, unsigned long adr)
+{
+	*(__u8 *)(map->map_priv_1 + adr) = d;
+}
+
+void cstm_mips_ixx_write16(struct map_info *map, __u16 d, unsigned long adr)
+{
+	*(__u16 *)(map->map_priv_1 + adr) = d;
+}
+
+void cstm_mips_ixx_write32(struct map_info *map, __u32 d, unsigned long adr)
+{
+	*(__u32 *)(map->map_priv_1 + adr) = d;
+}
+
+void cstm_mips_ixx_copy_to(struct map_info *map, unsigned long to, const void *from, ssize_t len)
+{
+	memcpy_toio(map->map_priv_1 + to, from, len);
+}
 
 #if defined(CONFIG_MIPS_ITE8172) || defined(CONFIG_MIPS_IVR)
 #define CC_GCR             0xB4013818
@@ -55,47 +97,56 @@
 #define CC_GPAICR          0xB4013804
 #endif /* defined(CONFIG_MIPS_ITE8172) || defined(CONFIG_MIPS_IVR) */
 
-#if defined(CONFIG_MIPS_ITE8172) || defined(CONFIG_MIPS_IVR)
 void cstm_mips_ixx_set_vpp(struct map_info *map,int vpp)
 {
-	static spinlock_t vpp_lock = SPIN_LOCK_UNLOCKED;
-	static int vpp_count = 0;
-	unsigned long flags;
+  if (vpp) {
+#if defined(CONFIG_MIPS_ITE8172) || defined(CONFIG_MIPS_IVR)
+        __u16	data;
+        __u8	data1;
+	static u8 first = 1;
 
-	spin_lock_irqsave(&vpp_lock, flags);
-
-	if (vpp) {
-		if (!vpp_count++) {
-			__u16	data;
-			__u8	data1;
-			static u8 first = 1;
-		
-			// Set GPIO port B pin3 to high
-			data = *(__u16 *)(CC_GPBCR);
-			data = (data & 0xff0f) | 0x0040;
-			*(__u16 *)CC_GPBCR = data;
-			*(__u8 *)CC_GPBDR = (*(__u8*)CC_GPBDR) | 0x08;
-			if (first) {
-				first = 0;
-				/* need to have this delay for first
-				   enabling vpp after powerup */
-				udelay(40);
-			}
-		}
-	} else {
-		if (!--vpp_count) {
-			__u16	data;
-		
-			// Set GPIO port B pin3 to high
-			data = *(__u16 *)(CC_GPBCR);
-			data = (data & 0xff3f) | 0x0040;
-			*(__u16 *)CC_GPBCR = data;
-			*(__u8 *)CC_GPBDR = (*(__u8*)CC_GPBDR) & 0xf7;
-		}
+	// Set GPIO port B pin3 to high
+	data = *(__u16 *)(CC_GPBCR);
+	data = (data & 0xff0f) | 0x0040;
+	*(__u16 *)CC_GPBCR = data;
+	*(__u8 *)CC_GPBDR = (*(__u8*)CC_GPBDR) | 0x08;
+	if (first) {
+		first = 0;
+		/* need to have this delay for first
+		   enabling vpp after powerup */
+		udelay(40);
 	}
-	spin_unlock_irqrestore(&vpp_lock, flags);
+#endif /* CONFIG_MIPS_ITE8172 */
+  }
+  else {
+#if defined(CONFIG_MIPS_ITE8172) || defined(CONFIG_MIPS_IVR)
+        __u16	data;
+
+	// Set GPIO port B pin3 to high
+	data = *(__u16 *)(CC_GPBCR);
+	data = (data & 0xff3f) | 0x0040;
+	*(__u16 *)CC_GPBCR = data;
+	*(__u8 *)CC_GPBDR = (*(__u8*)CC_GPBDR) & 0xf7;
+#endif /* CONFIG_MIPS_ITE8172 */
+  }
 }
-#endif
+
+const struct map_info basic_cstm_mips_ixx_map = {
+	NULL,
+	0,
+	0,
+	cstm_mips_ixx_read8,
+	cstm_mips_ixx_read16,
+	cstm_mips_ixx_read32,
+	cstm_mips_ixx_copy_from,
+	cstm_mips_ixx_write8,
+	cstm_mips_ixx_write16,
+	cstm_mips_ixx_write32,
+	cstm_mips_ixx_copy_to,
+        cstm_mips_ixx_set_vpp,
+	0,
+	0
+};
 
 /* board and partition description */
 
@@ -104,7 +155,7 @@ struct cstm_mips_ixx_info {
 	char *name;
 	unsigned long window_addr;
 	unsigned long window_size;
-	int bankwidth;
+	int buswidth;
 	int num_partitions;
 };
 
@@ -116,7 +167,7 @@ const struct cstm_mips_ixx_info cstm_mips_ixx_board_desc[PHYSMAP_NUMBER] =
         "big flash",     // name
 	0x08000000,      // window_addr
 	0x02000000,      // window_size
-        4,               // bankwidth
+        4,               // buswidth
 	1,               // num_partitions
     }
 
@@ -124,9 +175,9 @@ const struct cstm_mips_ixx_info cstm_mips_ixx_board_desc[PHYSMAP_NUMBER] =
 static struct mtd_partition cstm_mips_ixx_partitions[PHYSMAP_NUMBER][MAX_PHYSMAP_PARTITIONS] = {
 {   // 28F128J3A in 2x16 configuration
 	{
-		.name = "main partition ",
-		.size = 0x02000000, // 128 x 2 x 128k byte sectors
-		.offset = 0,
+		name: "main partition ",
+		size: 0x02000000, // 128 x 2 x 128k byte sectors
+		offset: 0,
 	},
 },
 };
@@ -138,7 +189,7 @@ const struct cstm_mips_ixx_info cstm_mips_ixx_board_desc[PHYSMAP_NUMBER] =
         "MTD flash",                   // name
 	CONFIG_MTD_CSTM_MIPS_IXX_START,      // window_addr
 	CONFIG_MTD_CSTM_MIPS_IXX_LEN,        // window_size
-        CONFIG_MTD_CSTM_MIPS_IXX_BUSWIDTH,   // bankwidth
+        CONFIG_MTD_CSTM_MIPS_IXX_BUSWIDTH,   // buswidth
 	1,                             // num_partitions
     },
 
@@ -146,9 +197,9 @@ const struct cstm_mips_ixx_info cstm_mips_ixx_board_desc[PHYSMAP_NUMBER] =
 static struct mtd_partition cstm_mips_ixx_partitions[PHYSMAP_NUMBER][MAX_PHYSMAP_PARTITIONS] = {
 { 
 	{
-		.name = "main partition",
-		.size =  CONFIG_MTD_CSTM_MIPS_IXX_LEN,
-		.offset = 0,
+		name: "main partition",
+		size:  CONFIG_MTD_CSTM_MIPS_IXX_LEN,
+		offset: 0,
 	},
 },
 };
@@ -165,24 +216,17 @@ int __init init_cstm_mips_ixx(void)
 
 	/* Initialize mapping */
 	for (i=0;i<PHYSMAP_NUMBER;i++) {
-		printk(KERN_NOTICE "cstm_mips_ixx flash device: 0x%lx at 0x%lx\n", 
-		       cstm_mips_ixx_board_desc[i].window_size, cstm_mips_ixx_board_desc[i].window_addr);
-
-
-		cstm_mips_ixx_map[i].phys = cstm_mips_ixx_board_desc[i].window_addr;
-		cstm_mips_ixx_map[i].virt = (unsigned long)ioremap(cstm_mips_ixx_board_desc[i].window_addr, cstm_mips_ixx_board_desc[i].window_size);
-		if (!cstm_mips_ixx_map[i].virt) {
+		printk(KERN_NOTICE "cstm_mips_ixx flash device: %lx at %lx\n", cstm_mips_ixx_board_desc[i].window_size, cstm_mips_ixx_board_desc[i].window_addr);
+                memcpy((char *)&cstm_mips_ixx_map[i],(char *)&basic_cstm_mips_ixx_map,sizeof(struct map_info));
+		cstm_mips_ixx_map[i].map_priv_1 = (unsigned long)ioremap(cstm_mips_ixx_board_desc[i].window_addr, cstm_mips_ixx_board_desc[i].window_size);
+		if (!cstm_mips_ixx_map[i].map_priv_1) {
 			printk(KERN_WARNING "Failed to ioremap\n");
 			return -EIO;
 	        }
 		cstm_mips_ixx_map[i].name = cstm_mips_ixx_board_desc[i].name;
 		cstm_mips_ixx_map[i].size = cstm_mips_ixx_board_desc[i].window_size;
-		cstm_mips_ixx_map[i].bankwidth = cstm_mips_ixx_board_desc[i].bankwidth;
-#if defined(CONFIG_MIPS_ITE8172) || defined(CONFIG_MIPS_IVR)
-                cstm_mips_ixx_map[i].set_vpp = cstm_mips_ixx_set_vpp;
-#endif
-		simple_map_init(&cstm_mips_ixx_map[i]);
-		//printk(KERN_NOTICE "cstm_mips_ixx: ioremap is %x\n",(unsigned int)(cstm_mips_ixx_map[i].virt));
+		cstm_mips_ixx_map[i].buswidth = cstm_mips_ixx_board_desc[i].buswidth;
+		//printk(KERN_NOTICE "cstm_mips_ixx: ioremap is %x\n",(unsigned int)(cstm_mips_ixx_map[i].map_priv_1));
 	}
 
 #if defined(CONFIG_MIPS_ITE8172) || defined(CONFIG_MIPS_IVR)
@@ -200,7 +244,7 @@ int __init init_cstm_mips_ixx(void)
 		        printk(KERN_NOTICE "cstm_mips_ixx %d jedec: mymtd is %x\n",i,(unsigned int)mymtd);
 		}
 		if (mymtd) {
-			mymtd->owner = THIS_MODULE;
+			mymtd->module = THIS_MODULE;
 
 	                cstm_mips_ixx_map[i].map_priv_2 = (unsigned long)mymtd;
 		        add_mtd_partitions(mymtd, parts, cstm_mips_ixx_board_desc[i].num_partitions);
@@ -222,9 +266,9 @@ static void __exit cleanup_cstm_mips_ixx(void)
 			del_mtd_partitions(mymtd);
 			map_destroy(mymtd);
 		}
-		if (cstm_mips_ixx_map[i].virt) {
-			iounmap((void *)cstm_mips_ixx_map[i].virt);
-			cstm_mips_ixx_map[i].virt = 0;
+		if (cstm_mips_ixx_map[i].map_priv_1) {
+			iounmap((void *)cstm_mips_ixx_map[i].map_priv_1);
+			cstm_mips_ixx_map[i].map_priv_1 = 0;
 		}
 	}
 }

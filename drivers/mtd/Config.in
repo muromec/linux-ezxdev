@@ -23,6 +23,7 @@ if [ "$CONFIG_MTD" = "y" -o "$CONFIG_MTD" = "m" ]; then
    fi
    if [ "$CONFIG_ARM" = "y" ]; then
       dep_tristate '  ARM Firmware Suite partition parsing' CONFIG_MTD_AFS_PARTS $CONFIG_MTD_PARTITIONS
+      dep_tristate '  CFI Flash device mapped on Mainstone board' CONFIG_MTD_BULVERDE $CONFIG_MTD_CFI $CONFIG_ARCH_MAINSTONE $CONFIG_MTD_PARTITIONS
    fi
 
 comment 'User Modules And Translation Layers'

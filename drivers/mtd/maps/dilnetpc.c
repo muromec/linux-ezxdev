@@ -14,7 +14,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
- * $Id: dilnetpc.c,v 1.13 2004/07/12 21:59:44 dwmw2 Exp $
+ * $Id: dilnetpc.c,v 1.8 2002/03/12 13:07:26 rkaiser Exp $
  *
  * The DIL/Net PC is a tiny embedded PC board made by SSV Embedded Systems
  * featuring the AMD Elan SC410 processor. There are two variants of this
@@ -29,7 +29,6 @@
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
-#include <linux/init.h>
 #include <asm/io.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/map.h>
@@ -37,7 +36,7 @@
 #include <linux/mtd/concat.h>
 
 /*
-** The DIL/NetPC keeps its BIOS in two distinct flash blocks.
+** The DIL/NetPC keeps it's BIOS in two distinct flash blocks.
 ** Destroying any of these blocks transforms the DNPC into
 ** a paperweight (albeit not a very useful one, considering
 ** it only weighs a few grams).
@@ -190,6 +189,45 @@ static void dnpc_unmap_flash(void)
 }
 
 
+static __u8 dnpc_read8(struct map_info *map, unsigned long ofs)
+{
+	return readb(map->map_priv_1 + ofs);
+}
+
+static __u16 dnpc_read16(struct map_info *map, unsigned long ofs)
+{
+	return readw(map->map_priv_1 + ofs);
+}
+
+static __u32 dnpc_read32(struct map_info *map, unsigned long ofs)
+{
+	return readl(map->map_priv_1 + ofs);
+}
+
+static void dnpc_copy_from(struct map_info *map, void *to, unsigned long from, ssize_t len)
+{
+	memcpy_fromio(to, (void *)(map->map_priv_1 + from), len);
+}
+
+static void dnpc_write8(struct map_info *map, __u8 d, unsigned long adr)
+{
+	writeb(d, map->map_priv_1 + adr);
+}
+
+static void dnpc_write16(struct map_info *map, __u16 d, unsigned long adr)
+{
+	writew(d, map->map_priv_1 + adr);
+}
+
+static void dnpc_write32(struct map_info *map, __u32 d, unsigned long adr)
+{
+	writel(d, map->map_priv_1 + adr);
+}
+
+static void dnpc_copy_to(struct map_info *map, unsigned long to, const void *from, ssize_t len)
+{
+	memcpy_toio((void *)(map->map_priv_1 + to), from, len);
+}
 
 /*
 ************************************************************
@@ -247,14 +285,22 @@ static void adnp_set_vpp(struct map_info *not_used, int on)
 
 #define DNP_WINDOW_SIZE		0x00200000	/*  DNP flash size is 2MiB  */
 #define ADNP_WINDOW_SIZE	0x00400000	/* ADNP flash size is 4MiB */
-#define WINDOW_ADDR		FLASH_BASE
+#define WINDOW_ADDR			FLASH_BASE
 
 static struct map_info dnpc_map = {
-	.name = "ADNP Flash Bank",
-	.size = ADNP_WINDOW_SIZE,
-	.bankwidth = 1,
-	.set_vpp = adnp_set_vpp,
-	.phys = WINDOW_ADDR
+	name: "ADNP Flash Bank",
+	size: ADNP_WINDOW_SIZE,
+	buswidth: 1,
+	read8: dnpc_read8,
+	read16: dnpc_read16,
+	read32: dnpc_read32,
+	copy_from: dnpc_copy_from,
+	write8: dnpc_write8,
+	write16: dnpc_write16,
+	write32: dnpc_write32,
+	copy_to: dnpc_copy_to,
+	set_vpp: adnp_set_vpp,
+	map_priv_2: WINDOW_ADDR
 };
 
 /*
@@ -270,29 +316,29 @@ static struct map_info dnpc_map = {
 static struct mtd_partition partition_info[]=
 {
 	{ 
-		.name =		"ADNP boot", 
-		.offset =	0, 
-		.size =		0xf0000,
+		name:		"ADNP boot", 
+		offset:		0, 
+		size:		0xf0000,
 	},
 	{ 
-		.name =		"ADNP system BIOS", 
-		.offset =	MTDPART_OFS_NXTBLK,
-		.size =		0x10000,
+		name:		"ADNP system BIOS", 
+		offset:		MTDPART_OFS_NXTBLK,
+		size:		0x10000,
 #ifdef DNPC_BIOS_BLOCKS_WRITEPROTECTED
-		.mask_flags =	MTD_WRITEABLE,
+		mask_flags:	MTD_WRITEABLE,
 #endif
 	},
 	{
-		.name =		"ADNP file system",
-		.offset =	MTDPART_OFS_NXTBLK,
-		.size =		0x2f0000,
+		name:		"ADNP file system",
+		offset:		MTDPART_OFS_NXTBLK,
+		size:		0x2f0000,
 	},
 	{
-		.name =		"ADNP system BIOS entry", 
-		.offset =	MTDPART_OFS_NXTBLK,
-		.size =		MTDPART_SIZ_FULL,
+		name:		"ADNP system BIOS entry", 
+		offset:		MTDPART_OFS_NXTBLK,
+		size:		MTDPART_SIZ_FULL,
 #ifdef DNPC_BIOS_BLOCKS_WRITEPROTECTED
-		.mask_flags =	MTD_WRITEABLE,
+		mask_flags:	MTD_WRITEABLE,
 #endif
 	},
 };
@@ -323,21 +369,21 @@ static struct mtd_info *merged_mtd;
 static struct mtd_partition higlvl_partition_info[]=
 {
 	{ 
-		.name =		"ADNP boot block", 
-		.offset =	0, 
-		.size =		CONFIG_MTD_DILNETPC_BOOTSIZE,
+		name:		"ADNP boot block", 
+		offset:		0, 
+		size:		CONFIG_MTD_DILNETPC_BOOTSIZE,
 	},
 	{
-		.name =		"ADNP file system space",
-		.offset =	MTDPART_OFS_NXTBLK,
-		.size =		ADNP_WINDOW_SIZE-CONFIG_MTD_DILNETPC_BOOTSIZE-0x20000,
+		name:		"ADNP file system space",
+		offset:		MTDPART_OFS_NXTBLK,
+		size:		ADNP_WINDOW_SIZE-CONFIG_MTD_DILNETPC_BOOTSIZE-0x20000,
 	},
 	{ 
-		.name =		"ADNP system BIOS + BIOS Entry", 
-		.offset =	MTDPART_OFS_NXTBLK,
-		.size =		MTDPART_SIZ_FULL,
+		name:		"ADNP system BIOS + BIOS Entry", 
+		offset:		MTDPART_OFS_NXTBLK,
+		size:		MTDPART_SIZ_FULL,
 #ifdef DNPC_BIOS_BLOCKS_WRITEPROTECTED
-		.mask_flags =	MTD_WRITEABLE,
+		mask_flags:	MTD_WRITEABLE,
 #endif
 	},
 };
@@ -401,19 +447,18 @@ static int __init init_dnpc(void)
 	}
 
 	printk(KERN_NOTICE "DIL/Net %s flash: 0x%lx at 0x%lx\n", 
-		is_dnp ? "DNPC" : "ADNP", dnpc_map.size, dnpc_map.phys);
+		is_dnp ? "DNPC" : "ADNP", dnpc_map.size, dnpc_map.map_priv_2);
 
-	dnpc_map.virt = (unsigned long)ioremap_nocache(dnpc_map.phys, dnpc_map.size);
+	dnpc_map.map_priv_1 = (unsigned long)ioremap_nocache(dnpc_map.map_priv_2, dnpc_map.size);
 
-	dnpc_map_flash(dnpc_map.phys, dnpc_map.size);
+	dnpc_map_flash(dnpc_map.map_priv_2, dnpc_map.size);
 
-	if (!dnpc_map.virt) {
+	if (!dnpc_map.map_priv_1) {
 		printk("Failed to ioremap_nocache\n");
 		return -EIO;
 	}
-	simple_map_init(&dnpc_map);
 
-	printk("FLASH virtual address: 0x%lx\n", dnpc_map.virt);
+	printk("FLASH virtual address: 0x%lx\n", dnpc_map.map_priv_1);
 
 	mymtd = do_map_probe("jedec_probe", &dnpc_map);
 
@@ -430,11 +475,11 @@ static int __init init_dnpc(void)
 			mymtd->erasesize = 0x10000;
 
 	if (!mymtd) {
-		iounmap((void *)dnpc_map.virt);
+		iounmap((void *)dnpc_map.map_priv_1);
 		return -ENXIO;
 	}
 		
-	mymtd->owner = THIS_MODULE;
+	mymtd->module = THIS_MODULE;
 
 	/*
 	** Supply pointers to lowlvl_parts[] array to add_mtd_partitions()
@@ -480,10 +525,10 @@ static void __exit cleanup_dnpc(void)
 		del_mtd_partitions(mymtd);
 		map_destroy(mymtd);
 	}
-	if (dnpc_map.virt) {
-		iounmap((void *)dnpc_map.virt);
+	if (dnpc_map.map_priv_1) {
+		iounmap((void *)dnpc_map.map_priv_1);
 		dnpc_unmap_flash();
-		dnpc_map.virt = 0;
+		dnpc_map.map_priv_1 = 0;
 	}
 }
 

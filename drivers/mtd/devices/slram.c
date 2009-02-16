@@ -1,32 +1,6 @@
 /*======================================================================
 
-  $Id: slram.c,v 1.31 2004/08/09 13:19:44 dwmw2 Exp $
-
-  This driver provides a method to access memory not used by the kernel
-  itself (i.e. if the kernel commandline mem=xxx is used). To actually
-  use slram at least mtdblock or mtdchar is required (for block or
-  character device access).
-
-  Usage:
-
-  if compiled as loadable module:
-    modprobe slram map=<name>,<start>,<end/offset>
-  if statically linked into the kernel use the following kernel cmd.line
-    slram=<name>,<start>,<end/offset>
-
-  <name>: name of the device that will be listed in /proc/mtd
-  <start>: start of the memory region, decimal or hex (0xabcdef)
-  <end/offset>: end of the memory region. It's possible to use +0x1234
-                to specify the offset instead of the absolute address
-    
-  NOTE:
-  With slram it's only possible to map a contigous memory region. Therfore
-  if there's a device mapped somewhere in the region specified slram will
-  fail to load (see kernel log if modprobe fails).
-
-  -
-  
-  Jochen Schaeuble <psionic@psionic.de>
+  $Id: slram.c,v 1.25 2001/10/02 15:05:13 dwmw2 Exp $
 
 ======================================================================*/
 
@@ -46,6 +20,8 @@
 #include <linux/init.h>
 #include <asm/io.h>
 #include <asm/system.h>
+#include <asm/segment.h>
+#include <stdarg.h>
 
 #include <linux/mtd/mtd.h>
 
@@ -77,7 +53,7 @@ static slram_mtd_list_t *slram_mtdlist = NULL;
 
 int slram_erase(struct mtd_info *, struct erase_info *);
 int slram_point(struct mtd_info *, loff_t, size_t, size_t *, u_char **);
-void slram_unpoint(struct mtd_info *, u_char *, loff_t,	size_t);
+void slram_unpoint(struct mtd_info *, u_char *);
 int slram_read(struct mtd_info *, loff_t, size_t, size_t *, u_char *);
 int slram_write(struct mtd_info *, loff_t, size_t, size_t *, const u_char *);
 
@@ -98,7 +74,12 @@ int slram_erase(struct mtd_info *mtd, struct erase_info *instr)
 
 	instr->state = MTD_ERASE_DONE;
 
-	mtd_erase_callback(instr);
+	if (instr->callback) {
+		(*(instr->callback))(instr);
+	}
+	else {
+		kfree(instr);
+	}
 
 	return(0);
 }
@@ -113,7 +94,7 @@ int slram_point(struct mtd_info *mtd, loff_t from, size_t len,
 	return(0);
 }
 
-void slram_unpoint(struct mtd_info *mtd, u_char *addr, loff_t from, size_t len)
+void slram_unpoint(struct mtd_info *mtd, u_char *addr)
 {
 }
 
@@ -194,9 +175,9 @@ int register_device(char *name, unsigned long start, unsigned long length)
 	(*curmtd)->mtdinfo->unpoint = slram_unpoint;
 	(*curmtd)->mtdinfo->read = slram_read;
 	(*curmtd)->mtdinfo->write = slram_write;
-	(*curmtd)->mtdinfo->owner = THIS_MODULE;
+	(*curmtd)->mtdinfo->module = THIS_MODULE;
 	(*curmtd)->mtdinfo->type = MTD_RAM;
-	(*curmtd)->mtdinfo->erasesize = 0x0;
+	(*curmtd)->mtdinfo->erasesize = 0x10000;
 
 	if (add_mtd_device((*curmtd)->mtdinfo))	{
 		E("slram: Failed to register new device\n");
