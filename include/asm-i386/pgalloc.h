@@ -75,26 +75,20 @@ static inline pgd_t *get_pgd_fast(void)
 {
 	unsigned long *ret;
 
-	preempt_disable();
 	if ((ret = pgd_quicklist) != NULL) {
 		pgd_quicklist = (unsigned long *)(*ret);
 		ret[0] = 0;
 		pgtable_cache_size--;
-		preempt_enable();
-	} else {
-		preempt_enable();
+	} else
 		ret = (unsigned long *)get_pgd_slow();
-	}
 	return (pgd_t *)ret;
 }
 
 static inline void free_pgd_fast(pgd_t *pgd)
 {
-	preempt_disable();
 	*(unsigned long *)pgd = (unsigned long) pgd_quicklist;
 	pgd_quicklist = (unsigned long *) pgd;
 	pgtable_cache_size++;
-	preempt_enable();
 }
 
 static inline void free_pgd_slow(pgd_t *pgd)
@@ -125,23 +119,19 @@ static inline pte_t *pte_alloc_one_fast(struct mm_struct *mm,
 {
 	unsigned long *ret;
 
-	preempt_disable();
 	if ((ret = (unsigned long *)pte_quicklist) != NULL) {
 		pte_quicklist = (unsigned long *)(*ret);
 		ret[0] = ret[1];
 		pgtable_cache_size--;
 	}
-	preempt_enable();
 	return (pte_t *)ret;
 }
 
 static inline void pte_free_fast(pte_t *pte)
 {
-	preempt_disable();
 	*(unsigned long *)pte = (unsigned long) pte_quicklist;
 	pte_quicklist = (unsigned long *) pte;
 	pgtable_cache_size++;
-	preempt_enable();
 }
 
 static __inline__ void pte_free_slow(pte_t *pte)
@@ -234,7 +224,6 @@ struct tlb_state
 {
 	struct mm_struct *active_mm;
 	int state;
-	char __cacheline_padding[24];
 };
 extern struct tlb_state cpu_tlbstate[NR_CPUS];
 

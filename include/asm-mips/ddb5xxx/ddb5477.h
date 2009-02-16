@@ -216,7 +216,7 @@
 /*
  * DDB5477 specific functions
  */
-#ifndef _LANGUAGE_ASSEMBLY
+#ifndef __ASSEMBLY__
 extern void ddb5477_irq_setup(void);
 
 /* route irq to cpu int pin */
@@ -225,7 +225,7 @@ extern void ll_vrc5477_irq_route(int vrc5477_irq, int ip);
 /* low-level routine for enabling vrc5477 irq, bypassing high-level */
 extern void ll_vrc5477_irq_enable(int vrc5477_irq);
 extern void ll_vrc5477_irq_disable(int vrc5477_irq);
-#endif
+#endif /* !__ASSEMBLY__ */
 
 /* PCI intr ack share PCIW0 with PCI IO */
 #define	DDB_PCI_IACK_BASE	DDB_PCI_IO_BASE
@@ -247,7 +247,7 @@ extern void ll_vrc5477_irq_disable(int vrc5477_irq);
  *  All PCI irq but INTC are active low.
  */
 
-/* 
+/*
  * irq number block assignment
  */
 
@@ -285,7 +285,7 @@ extern void ll_vrc5477_irq_disable(int vrc5477_irq);
 #define VRC5477_IRQ_IOPCI_INTB	(17 + VRC5477_IRQ_BASE)      /* USB-P */
 #define VRC5477_IRQ_IOPCI_INTC	(18 + VRC5477_IRQ_BASE)      /* AC97 */
 #define VRC5477_IRQ_IOPCI_INTD	(19 + VRC5477_IRQ_BASE)      /* Reserved */
-#define VRC5477_IRQ_UART1	(20 + VRC5477_IRQ_BASE)     
+#define VRC5477_IRQ_UART1	(20 + VRC5477_IRQ_BASE)
 #define VRC5477_IRQ_SPT0	(21 + VRC5477_IRQ_BASE)      /* special purpose timer 0 */
 #define VRC5477_IRQ_GPT0	(22 + VRC5477_IRQ_BASE)      /* general purpose timer 0 */
 #define VRC5477_IRQ_GPT1	(23 + VRC5477_IRQ_BASE)      /* general purpose timer 1 */
@@ -301,7 +301,7 @@ extern void ll_vrc5477_irq_disable(int vrc5477_irq);
 /*
  * i2859 irq assignment
  */
-#define I8259_IRQ_RESERVED_0	(0 + I8259_IRQ_BASE)	
+#define I8259_IRQ_RESERVED_0	(0 + I8259_IRQ_BASE)
 #define I8259_IRQ_KEYBOARD	(1 + I8259_IRQ_BASE)	/* M1543 default */
 #define I8259_IRQ_CASCADE	(2 + I8259_IRQ_BASE)
 #define I8259_IRQ_UART_B	(3 + I8259_IRQ_BASE)	/* M1543 default, may conflict with RTC according to schematic diagram  */
@@ -325,10 +325,10 @@ extern void ll_vrc5477_irq_disable(int vrc5477_irq);
 #define	VRC5477_I8259_CASCADE	(VRC5477_IRQ_INTC - VRC5477_IRQ_BASE)
 #define	CPU_VRC5477_CASCADE	2
 
-/* 
+/*
  * debug routines
  */
-#ifndef _LANGUAGE_ASSEMBLY
+#ifndef __ASSEMBLY__
 #if defined(CONFIG_DEBUG)
 extern void vrc5477_show_pdar_regs(void);
 extern void vrc5477_show_pci_regs(void);
@@ -341,6 +341,6 @@ extern void vrc5477_show_all_regs(void);
  * RAM size
  */
 extern int board_ram_size;
-#endif
+#endif /* !__ASSEMBLY__ */
 
 #endif /* __ASM_DDB5XXX_DDB5477_H */

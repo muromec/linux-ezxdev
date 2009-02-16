@@ -6,7 +6,6 @@
  */
 
 #include <linux/config.h>
-#include <linux/compiler.h>
 
 /*
  * These have to be done with inline assembly: that way the bit-setting
@@ -72,14 +71,6 @@ static __inline__ void __set_bit(int nr, volatile void * addr)
 static __inline__ void clear_bit(int nr, volatile void * addr)
 {
 	__asm__ __volatile__( LOCK_PREFIX
-		"btrl %1,%0"
-		:"=m" (ADDR)
-		:"Ir" (nr));
-}
-
-static __inline__ void __clear_bit(int nr, volatile void * addr)
-{
-	__asm__ __volatile__(
 		"btrl %1,%0"
 		:"=m" (ADDR)
 		:"Ir" (nr));
@@ -293,34 +284,6 @@ static __inline__ int find_first_zero_bit(void * addr, unsigned size)
 }
 
 /**
- * find_first_bit - find the first set bit in a memory region
- * @addr: The address to start the search at
- * @size: The maximum size to search
- *
- * Returns the bit-number of the first set bit, not the number of the byte
- * containing a bit.
- */
-static __inline__ int find_first_bit(void * addr, unsigned size)
-{
-	int d0, d1;
-	int res;
-
-	/* This looks at memory. Mark it volatile to tell gcc not to move it around */
-	__asm__ __volatile__(
-		"xorl %%eax,%%eax\n\t"
-		"repe; scasl\n\t"
-		"jz 1f\n\t"
-		"leal -4(%%edi),%%edi\n\t"
-		"bsfl (%%edi),%%eax\n"
-		"1:\tsubl %%ebx,%%edi\n\t"
-		"shll $3,%%edi\n\t"
-		"addl %%edi,%%eax"
-		:"=a" (res), "=&c" (d0), "=&D" (d1)
-		:"1" ((size + 31) >> 5), "2" (addr), "b" (addr));
-	return res;
-}
-
-/**
  * find_next_zero_bit - find the first zero bit in a memory region
  * @addr: The address to base the search on
  * @offset: The bitnumber to start searching at
@@ -333,7 +296,7 @@ static __inline__ int find_next_zero_bit (void * addr, int size, int offset)
 	
 	if (bit) {
 		/*
-		 * Look for zero in the first 32 bits.
+		 * Look for zero in first byte
 		 */
 		__asm__("bsfl %1,%0\n\t"
 			"jne 1f\n\t"
@@ -354,39 +317,6 @@ static __inline__ int find_next_zero_bit (void * addr, int size, int offset)
 }
 
 /**
- * find_next_bit - find the first set bit in a memory region
- * @addr: The address to base the search on
- * @offset: The bitnumber to start searching at
- * @size: The maximum size to search
- */
-static __inline__ int find_next_bit (void * addr, int size, int offset)
-{
-	unsigned long * p = ((unsigned long *) addr) + (offset >> 5);
-	int set = 0, bit = offset & 31, res;
-	
-	if (bit) {
-		/*
-		 * Look for nonzero in the first 32 bits:
-		 */
-		__asm__("bsfl %1,%0\n\t"
-			"jne 1f\n\t"
-			"movl $32, %0\n"
-			"1:"
-			: "=r" (set)
-			: "r" (*p >> bit));
-		if (set < (32 - bit))
-			return set + offset;
-		set = 32 - bit;
-		p++;
-	}
-	/*
-	 * No set bit yet, search remaining full words for a bit
-	 */
-	res = find_first_bit (p, size - 32 * (p - (unsigned long *) addr));
-	return (offset + set + res);
-}
-
-/**
  * ffz - find first zero in word.
  * @word: The word to search
  *
@@ -400,40 +330,7 @@ static __inline__ unsigned long ffz(unsigned long word)
 	return word;
 }
 
-/**
- * __ffs - find first bit in word.
- * @word: The word to search
- *
- * Undefined if no bit exists, so code should check against 0 first.
- */
-static __inline__ unsigned long __ffs(unsigned long word)
-{
-	__asm__("bsfl %1,%0"
-		:"=r" (word)
-		:"rm" (word));
-	return word;
-}
-
 #ifdef __KERNEL__
-
-/*
- * Every architecture must define this function. It's the fastest
- * way of searching a 140-bit bitmap where the first 100 bits are
- * unlikely to be set. It's guaranteed that at least one of the 140
- * bits is cleared.
- */
-static inline int _sched_find_first_bit(unsigned long *b)
-{
-	if (unlikely(b[0]))
-		return __ffs(b[0]);
-	if (unlikely(b[1]))
-		return __ffs(b[1]) + 32;
-	if (unlikely(b[2]))
-		return __ffs(b[2]) + 64;
-	if (b[3])
-		return __ffs(b[3]) + 96;
-	return __ffs(b[4]) + 128;
-}
 
 /**
  * ffs - find first bit set

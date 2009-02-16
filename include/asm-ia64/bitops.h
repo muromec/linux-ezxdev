@@ -2,14 +2,9 @@
 #define _ASM_IA64_BITOPS_H
 
 /*
- * Copyright (C) 1998-2002 Hewlett-Packard Co
- *	David Mosberger-Tang <davidm@hpl.hp.com>
- *
- * 02/06/02 find_next_bit() and find_first_bit() added from Erich Focht's ia64 O(1)
- *	    scheduler patch
+ * Copyright (C) 1998-2001 Hewlett-Packard Co
+ * Copyright (C) 1998-2001 David Mosberger-Tang <davidm@hpl.hp.com>
  */
-
-#include <linux/types.h>
 
 #include <asm/system.h>
 
@@ -91,17 +86,6 @@ clear_bit (int nr, volatile void *addr)
 		old = *m;
 		new = old & mask;
 	} while (cmpxchg_acq(m, old, new) != old);
-}
-
-/**
- * __clear_bit - Clears a bit in memory (non-atomic version)
- */
-static __inline__ void
-__clear_bit (int nr, volatile void *addr)
-{
-	volatile __u32 *p = (__u32 *) addr + (nr >> 5);
-	__u32 m = 1 << (nr & 31);
-	*p &= ~m;
 }
 
 /**
@@ -280,11 +264,12 @@ test_bit (int nr, volatile void *addr)
 }
 
 /**
- * ffz - find the first zero bit in a long word
- * @x: The long word to find the bit in
+ * ffz - find the first zero bit in a memory region
+ * @x: The address to start the search at
  *
- * Returns the bit-number (0..63) of the first (least significant) zero bit.  Undefined if
- * no zero exists, so code should check against ~0UL first...
+ * Returns the bit-number (0..63) of the first (least significant) zero bit, not
+ * the number of the byte containing a bit.  Undefined if no zero exists, so
+ * code should check against ~0UL first...
  */
 static inline unsigned long
 ffz (unsigned long x)
@@ -292,21 +277,6 @@ ffz (unsigned long x)
 	unsigned long result;
 
 	__asm__ ("popcnt %0=%1" : "=r" (result) : "r" (x & (~x - 1)));
-	return result;
-}
-
-/**
- * __ffs - find first bit in word.
- * @x: The word to search
- *
- * Undefined if no bit exists, so code should check against 0 first.
- */
-static __inline__ unsigned long
-__ffs (unsigned long x)
-{
-	unsigned long result;
-
-	__asm__ ("popcnt %0=%1" : "=r" (result) : "r" ((x - 1) & ~x));
 	return result;
 }
 
@@ -324,12 +294,6 @@ ia64_fls (unsigned long x)
 
 	__asm__ ("getf.exp %0=%1" : "=r"(exp) : "f"(d));
 	return exp - 0xffff;
-}
-
-static int
-fls (int x)
-{
-	return ia64_fls((unsigned int) x);
 }
 
 /*
@@ -404,52 +368,7 @@ found_middle:
  */
 #define find_first_zero_bit(addr, size) find_next_zero_bit((addr), (size), 0)
 
-/*
- * Find next bit in a bitmap reasonably efficiently..
- */
-static inline int
-find_next_bit (void *addr, unsigned long size, unsigned long offset)
-{
-	unsigned long *p = ((unsigned long *) addr) + (offset >> 6);
-	unsigned long result = offset & ~63UL;
-	unsigned long tmp;
-
-	if (offset >= size)
-		return size;
-	size -= result;
-	offset &= 63UL;
-	if (offset) {
-		tmp = *(p++);
-		tmp &= ~0UL << offset;
-		if (size < 64)
-			goto found_first;
-		if (tmp)
-			goto found_middle;
-		size -= 64;
-		result += 64;
-	}
-	while (size & ~63UL) {
-		if ((tmp = *(p++)))
-			goto found_middle;
-		result += 64;
-		size -= 64;
-	}
-	if (!size)
-		return result;
-	tmp = *p;
-  found_first:
-	tmp &= ~0UL >> (64-size);
-	if (tmp == 0UL)		/* Are any bits set? */
-		return result + size; /* Nope. */
-  found_middle:
-	return result + __ffs(tmp);
-}
-
-#define find_first_bit(addr, size) find_next_bit((addr), (size), 0)
-
 #ifdef __KERNEL__
-
-#define __clear_bit(nr, addr)        clear_bit(nr, addr)
 
 #define ext2_set_bit                 test_and_set_bit
 #define ext2_clear_bit               test_and_clear_bit
@@ -463,16 +382,6 @@ find_next_bit (void *addr, unsigned long size, unsigned long offset)
 #define minix_test_and_clear_bit(nr,addr)	test_and_clear_bit(nr,addr)
 #define minix_test_bit(nr,addr)			test_bit(nr,addr)
 #define minix_find_first_zero_bit(addr,size)	find_first_zero_bit(addr,size)
-
-static inline int
-sched_find_first_bit (unsigned long *b)
-{
-	if (unlikely(b[0]))
-		return __ffs(b[0]);
-	if (unlikely(b[1]))
-		return 64 + __ffs(b[1]);
-	return __ffs(b[2]) + 128;
-}
 
 #endif /* __KERNEL__ */
 

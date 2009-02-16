@@ -71,12 +71,9 @@ extern void set_tss_desc(unsigned int n, void *addr);
 
 static inline void clear_LDT(void)
 {
-	int cpu;
-	preempt_disable();
-	cpu = smp_processor_id();
+	int cpu = smp_processor_id();
 	set_ldt_desc(cpu, &default_ldt[0], 5);
 	__load_LDT(cpu);
-	preempt_enable();
 }
 
 /*

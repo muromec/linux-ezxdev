@@ -41,7 +41,7 @@
 #define ACCENT_FLAGS 0
 #define BOCA_FLAGS 0
 #define HUB6_FLAGS 0
-#define RS_TABLE_SIZE	32
+#define RS_TABLE_SIZE	64
 #else
 #define RS_TABLE_SIZE
 #endif
@@ -84,20 +84,22 @@
 #define ATLAS_SERIAL_PORT_DEFNS
 #endif
 
-#ifdef CONFIG_COBALT_MICRO_SERVER
-#define COBALT_BASE_BAUD  (18432000 / 16)
-#define COBALT_SERIAL_PORT_DEFNS		\
-	/* UART CLK   PORT  IRQ  FLAGS    */ 		\
-	{ 0, COBALT_BASE_BAUD, 0x1c800000, 7, STD_COM_FLAGS },   /* ttyS0 */
+#ifdef CONFIG_MIPS_SEAD
+#include <asm/mips-boards/sead.h>
+#include <asm/mips-boards/seadint.h>
+#define SEAD_SERIAL_PORT_DEFNS			\
+	/* UART CLK   PORT IRQ     FLAGS        */			\
+	{ 0, SEAD_BASE_BAUD, SEAD_UART0_REGS_BASE, SEADINT_UART0, STD_COM_FLAGS },     /* ttyS0 */
 #else
-#define COBALT_SERIAL_PORT_DEFNS
+#define SEAD_SERIAL_PORT_DEFNS
 #endif
 
 #ifdef CONFIG_MIPS_COBALT
+#include <asm/cobalt/cobalt.h>
 #define COBALT_BASE_BAUD  (18432000 / 16)
 #define COBALT_SERIAL_PORT_DEFNS		\
 	/* UART CLK   PORT  IRQ  FLAGS    */ 		\
-	{ 0, COBALT_BASE_BAUD, 0xc800000, 7, STD_COM_FLAGS },   /* ttyS0 */
+	{ 0, COBALT_BASE_BAUD, 0xc800000, COBALT_SERIAL_IRQ, STD_COM_FLAGS },   /* ttyS0 */
 #else
 #define COBALT_SERIAL_PORT_DEFNS
 #endif
@@ -168,77 +170,13 @@
 #define AU1000_SERIAL_PORT_DEFNS
 #endif
 
-#ifdef CONFIG_CPU_RC32300
-#include <asm/rc32300/rc32300.h>
-#define RC32300_SERIAL_PORT_DEFNS                 \
-    { baud_base: RC32300_BASE_BAUD,               \
-      iomem_base: KSEG1ADDR(RC32300_UART0_BASE),  \
-      irq: RC32300_UART0_IRQ,                     \
-      iomem_reg_shift: 2, io_type: SERIAL_IO_MEM, \
-      flags: STD_COM_FLAGS, type: 3 },            \
-    { baud_base: RC32300_BASE_BAUD,               \
-      iomem_base: KSEG1ADDR(RC32300_UART1_BASE),  \
-      irq: RC32300_UART1_IRQ,                     \
-      iomem_reg_shift: 2, io_type: SERIAL_IO_MEM, \
-      flags: STD_COM_FLAGS, type: 3 },
-#else
-#define RC32300_SERIAL_PORT_DEFNS
-#endif
-
 #ifdef CONFIG_TOSHIBA_JMR3927
 #include <asm/jmr3927/jmr3927.h>
 #define TXX927_SERIAL_PORT_DEFNS                              \
     { baud_base: JMR3927_BASE_BAUD, port: UART0_ADDR, irq: UART0_INT,  \
       flags: UART0_FLAGS, type: 1 },                        \
     { baud_base: JMR3927_BASE_BAUD, port: UART1_ADDR, irq: UART1_INT,  \
-      flags: UART1_FLAGS, type: 1 },     
-#else
-#define TXX927_SERIAL_PORT_DEFNS
-#endif
-
-#ifdef CONFIG_VR4122
-#include <asm/vr4122/vr4122.h>
-#define VR4122_BASE_BAUD 1152000
-#define _VR4122_SERIAL_INIT(int, base)                                 \
-	{ baud_base: VR4122_BASE_BAUD, irq: int, flags: STD_COM_FLAGS, \
-	  iomem_base: (u8 *) base, iomem_reg_shift: 0,                 \
-	  io_type: SERIAL_IO_MEM }
-#if defined(CONFIG_NEC_EAGLE)
-#define VR4122_SERIAL_PORT_DEFNS                                       \
-	_VR4122_SERIAL_INIT(VR4122_IRQ_DSIU, VR4122_DSIURB),           \
-	_VR4122_SERIAL_INIT(VR4122_IRQ_SIU, VR4122_SIURB),
-#else
-#define VR4122_SERIAL_PORT_DEFNS                                       \
-	_VR4122_SERIAL_INIT(VR4122_IRQ_SIU, VR4122_SIURB),             \
-	_VR4122_SERIAL_INIT(VR4122_IRQ_DSIU, VR4122_DSIURB),
-#endif
-#else
-#define VR4122_SERIAL_PORT_DEFNS
-#endif
-
-#ifdef CONFIG_ATI_XILLEON
-
-#include <asm/ati/xilleon.h>
-#include <asm/ati/xilleonint.h>
-#define XILLEON_SERIAL_PORT_DEFNS                  \
-	{ baud_base: XILLEON_BASE_BAUD, port: XILLEON_UART0_REGS_BASE, \
-          iomem_base: XILLEON_UART0_REGS_BASE,  irq: XILLEON_UART1_INT, \
-	  flags: STD_COM_FLAGS, type: 3, io_type: SERIAL_IO_MEM },      \
-	{ baud_base: XILLEON_BASE_BAUD, port: XILLEON_UART1_REGS_BASE, \
-          iomem_base: XILLEON_UART1_REGS_BASE, irq: XILLEON_UART2_INT, \
-	  flags: STD_COM_FLAGS, type: 3, io_type: SERIAL_IO_MEM},      \
-
-#else
-#define XILLEON_SERIAL_PORT_DEFNS
-#endif
-
-#ifdef CONFIG_TOSHIBA_JMR3927
-#include <asm/jmr3927/jmr3927.h>
-#define TXX927_SERIAL_PORT_DEFNS                              \
-    { baud_base: JMR3927_BASE_BAUD, port: UART0_ADDR, irq: UART0_INT,  \
-      flags: UART0_FLAGS, type: 1 },                        \
-    { baud_base: JMR3927_BASE_BAUD, port: UART1_ADDR, irq: UART1_INT,  \
-      flags: UART1_FLAGS, type: 1 },     
+      flags: UART1_FLAGS, type: 1 },
 #else
 #define TXX927_SERIAL_PORT_DEFNS
 #endif
@@ -340,6 +278,27 @@
 #define MOMENCO_OCELOT_SERIAL_PORT_DEFNS
 #endif
 
+#ifdef CONFIG_MOMENCO_OCELOT_G
+/* Ordinary NS16552 duart with a 20MHz crystal.  */
+#define OCELOT_G_BASE_BAUD ( 20000000 / 16 )
+
+#define OCELOT_G_SERIAL1_IRQ	4
+#if 0
+#define OCELOT_G_SERIAL1_BASE	0xe0001020
+#else
+#define OCELOT_G_SERIAL1_BASE	0xfd000020
+#endif
+
+#define _OCELOT_G_SERIAL_INIT(int, base)				\
+	{ baud_base: OCELOT_G_BASE_BAUD, irq: int, flags: STD_COM_FLAGS,\
+	  iomem_base: (u8 *) base, iomem_reg_shift: 2,			\
+	  io_type: SERIAL_IO_MEM }
+#define MOMENCO_OCELOT_G_SERIAL_PORT_DEFNS				\
+	_OCELOT_G_SERIAL_INIT(OCELOT_G_SERIAL1_IRQ, OCELOT_G_SERIAL1_BASE)
+#else
+#define MOMENCO_OCELOT_G_SERIAL_PORT_DEFNS
+#endif
+
 #ifdef CONFIG_DDB5477
 #include <asm/ddb5xxx/ddb5477.h>
 #define DDB5477_SERIAL_PORT_DEFNS                                             \
@@ -353,20 +312,19 @@
 #define DDB5477_SERIAL_PORT_DEFNS
 #endif
 
-#define SERIAL_PORT_DFNS		\
-	IVR_SERIAL_PORT_DEFNS           \
-	ITE_SERIAL_PORT_DEFNS           \
-	RC32300_SERIAL_PORT_DEFNS       \
-	ATLAS_SERIAL_PORT_DEFNS		\
-	COBALT_SERIAL_PORT_DEFNS	\
-	EV96100_SERIAL_PORT_DEFNS	\
-	JAZZ_SERIAL_PORT_DEFNS		\
-	STD_SERIAL_PORT_DEFNS		\
-	EXTRA_SERIAL_PORT_DEFNS		\
-	HUB6_SERIAL_PORT_DFNS		\
-	MOMENCO_OCELOT_SERIAL_PORT_DEFNS\
-	AU1000_SERIAL_PORT_DEFNS	\
-        TXX927_SERIAL_PORT_DEFNS        \
-	DDB5477_SERIAL_PORT_DEFNS	\
-	VR4122_SERIAL_PORT_DEFNS        \
-        XILLEON_SERIAL_PORT_DEFNS
+#define SERIAL_PORT_DFNS			\
+	IVR_SERIAL_PORT_DEFNS           	\
+	ITE_SERIAL_PORT_DEFNS           	\
+	ATLAS_SERIAL_PORT_DEFNS			\
+	SEAD_SERIAL_PORT_DEFNS			\
+	COBALT_SERIAL_PORT_DEFNS		\
+	EV96100_SERIAL_PORT_DEFNS		\
+	JAZZ_SERIAL_PORT_DEFNS			\
+	STD_SERIAL_PORT_DEFNS			\
+	EXTRA_SERIAL_PORT_DEFNS			\
+	HUB6_SERIAL_PORT_DFNS			\
+	MOMENCO_OCELOT_SERIAL_PORT_DEFNS	\
+	MOMENCO_OCELOT_G_SERIAL_PORT_DEFNS	\
+	AU1000_SERIAL_PORT_DEFNS		\
+        TXX927_SERIAL_PORT_DEFNS        	\
+	DDB5477_SERIAL_PORT_DEFNS

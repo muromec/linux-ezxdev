@@ -63,51 +63,6 @@
 #define CP0_ERROREPC $30
 #define CP0_DESAVE $31
 
-#define CCP0_INDEX 0
-#define CCP0_RANDOM 1
-#define CCP0_ENTRYLO0 2
-#define CCP0_ENTRYLO1 3
-#define CCP0_CONF 3
-#define CCP0_CONTEXT 4
-#define CCP0_PAGEMASK 5
-#define CCP0_WIRED 6
-#define CCP0_INFO 7
-#define CCP0_BADVADDR 8
-#define CCP0_COUNT 9
-#define CCP0_ENTRYHI 10
-#define CCP0_COMPARE 11
-#define CCP0_STATUS 12
-#define CCP0_CAUSE 13
-#define CCP0_EPC 14
-#define CCP0_PRID 15
-#define CCP0_CONFIG 16
-#define CCP0_LLADDR 17
-#define CCP0_WATCHLO 18
-#define CCP0_WATCHHI 19
-#define CCP0_XCONTEXT 20
-#define CCP0_FRAMEMASK 21
-#define CCP0_DIAGNOSTIC 22
-#define CCP0_PERFORMANCE 25
-#define CCP0_ECC 26
-#define CCP0_CACHEERR 27
-#define CCP0_TAGLO 28
-#define CCP0_TAGHI 29
-#define CCP0_ERROREPC 30
-
-#ifdef CONFIG_CPU_LX45XXX
-#define CP0_CCTL $20		/* Lexra Cache Control Register */
-
-/*
- * Lexra Cache Control Register fields
- */
-#define CCTL_DINVAL	        0x00000001
-#define CCTL_IINVAL		0x00000002
-#define CCTL_ILOCK		0x0000000c
-#define CCTL_IRAMFILL4          0x00000010
-#define CCTL_IRAMOFF		0x00000020
-
-#endif /* CPU_LX45XXX */
-
 /*
  * R4640/R4650 cp0 register names.  These registers are listed
  * here only for completeness; without MMU these CPUs are not useable
@@ -122,7 +77,7 @@
 #define CP0_IWATCH $18
 #define CP0_DWATCH $19
 
-/* 
+/*
  * Coprocessor 0 Set 1 register names
  */
 #define CP0_S1_DERRADDR0  $26
@@ -195,37 +150,42 @@
 /*
  * Values for PageMask register
  */
-#include <linux/config.h>
 #ifdef CONFIG_CPU_VR41XX
 
-#define PM_1K   0x00000000
-#define PM_4K   0x00001800
-#define PM_16K  0x00007800
-#define PM_64K  0x0001f800
-#define PM_256K 0x0007f800
+/* Why doesn't stupidity hurt ... */
+
+#define PM_1K		0x00000000
+#define PM_4K		0x00001800
+#define PM_16K		0x00007800
+#define PM_64K		0x0001f800
+#define PM_256K		0x0007f800
 
 #else
 
-#define PM_4K   0x00000000
-#define PM_16K  0x00006000
-#define PM_64K  0x0001e000
-#define PM_256K 0x0007e000
-#define PM_1M   0x001fe000
-#define PM_4M   0x007fe000
-#define PM_16M  0x01ffe000
+#define PM_4K		0x00000000
+#define PM_16K		0x00006000
+#define PM_64K		0x0001e000
+#define PM_256K		0x0007e000
+#define PM_1M		0x001fe000
+#define PM_4M		0x007fe000
+#define PM_16M		0x01ffe000
+#define PM_64M		0x07ffe000
+#define PM_256M		0x1fffe000
 
 #endif
 
 /*
  * Values used for computation of new tlb entries
  */
-#define PL_4K   12
-#define PL_16K  14
-#define PL_64K  16
-#define PL_256K 18
-#define PL_1M   20
-#define PL_4M   22
-#define PL_16M  24
+#define PL_4K		12
+#define PL_16K		14
+#define PL_64K		16
+#define PL_256K		18
+#define PL_1M		20
+#define PL_4M		22
+#define PL_16M		24
+#define PL_64M		26
+#define PL_256M		28
 
 /*
  * R4x00 interrupt enable / cause bits
@@ -324,16 +284,6 @@
 /*
  * Status register bits available in all MIPS CPUs.
  */
-#define ST0_IE                        0x00000001
-#define ST0_EXL                       0x00000002
-#define ST0_ERL                       0x00000004
-#define ST0_KSU                       0x00000018
-#define ST0_KSU_KERNEL                0x00000000
-#define ST0_KSU_SUPERVISOR            0x00000008
-#define ST0_KSU_USER                  0x00000010
-#define ST0_UX                        0x00000020
-#define ST0_SX                        0x00000040
-#define ST0_KX                        0x00000080
 #define ST0_IM			0x0000ff00
 #define  STATUSB_IP0		8
 #define  STATUSF_IP0		(1   <<  8)
@@ -424,19 +374,13 @@
 #define CONF_CM_CACHABLE_CUW		6
 #define CONF_CM_CACHABLE_ACCELERATED	7
 #define CONF_CM_CMASK			7
+#define CONF_CU				(1 <<  3)
 #define CONF_DB				(1 <<  4)
 #define CONF_IB				(1 <<  5)
+#define CONF_SE 			(1 << 12)
 #define CONF_SC				(1 << 17)
 #define CONF_AC                         (1 << 23)
 #define CONF_HALT                       (1 << 25)
-
-/*
- * Bits in the TX49 coprozessor 0 config register.
- */
-#define TX49_CONF_DC			(1 << 16)
-#define TX49_CONF_IC			(1 << 17)  /* conflict with CONF_SC */
-#define TX49_CONF_HALT			(1 << 18)
-#define TX49_CONF_CWFON			(1 << 27)
 
 /*
  * Bits in the TX49 coprozessor 0 config register.
@@ -501,460 +445,6 @@
 #define CEB_SUPERVISOR	4	/* Count events in supvervisor mode EXL = ERL = 0 */
 #define CEB_KERNEL	2	/* Count events in kernel mode EXL = ERL = 0 */
 #define CEB_EXL		1	/* Count events with EXL = 1, ERL = 0 */
-
-#ifndef _LANGUAGE_ASSEMBLY
-
-#define CAUSE_EXCCODE(x) ((CAUSEF_EXCCODE & (x->cp0_cause)) >> CAUSEB_EXCCODE)
-#define CAUSE_EPC(x) (x->cp0_epc + (((x->cp0_cause & CAUSEF_BD) >> CAUSEB_BD) << 2))
-
-/*
- * Macros to access the system control coprocessor
- */
-#define read_32bit_cp0_register(source)                         \
-({ int __res;                                                   \
-        __asm__ __volatile__(                                   \
-	".set\tpush\n\t"					\
-	".set\treorder\n\t"					\
-        "mfc0\t%0,"STR(source)"\n\t"                            \
-	".set\tpop"						\
-        : "=r" (__res));                                        \
-        __res;})
-
-#define read_32bit_cp0_set1_register(source)                    \
-({ int __res;                                                   \
-        __asm__ __volatile__(                                   \
-	".set\tpush\n\t"					\
-	".set\treorder\n\t"					\
-        "cfc0\t%0,"STR(source)"\n\t"                            \
-	".set\tpop"						\
-        : "=r" (__res));                                        \
-        __res;})
-
-/*
- * For now use this only with interrupts disabled!
- */
-#define read_64bit_cp0_register(source)                         \
-({ int __res;                                                   \
-        __asm__ __volatile__(                                   \
-        ".set\tmips3\n\t"                                       \
-        "dmfc0\t%0,"STR(source)"\n\t"                           \
-        ".set\tmips0"                                           \
-        : "=r" (__res));                                        \
-        __res;})
-
-#define write_32bit_cp0_register(register,value)                \
-        __asm__ __volatile__(                                   \
-        "mtc0\t%0,"STR(register)"\n\t"				\
-	"nop"							\
-        : : "r" (value));
-
-#define write_32bit_cp0_set1_register(register,value)           \
-        __asm__ __volatile__(                                   \
-        "ctc0\t%0,"STR(register)"\n\t"				\
-	"nop"							\
-        : : "r" (value));
-
-#define write_64bit_cp0_register(register,value)                \
-        __asm__ __volatile__(                                   \
-        ".set\tmips3\n\t"                                       \
-        "dmtc0\t%0,"STR(register)"\n\t"                         \
-        ".set\tmips0"                                           \
-        : : "r" (value))
-
-/* 
- * This should be changed when we get a compiler that support the MIPS32 ISA. 
- */
-#define read_mips32_cp0_config1()                               \
-({ int __res;                                                   \
-        __asm__ __volatile__(                                   \
-	".set\tnoreorder\n\t"                                   \
-	".set\tnoat\n\t"                                        \
-	"#.set\tmips64\n\t"					\
-	"#mfc0\t$1, $16, 1\n\t"					\
-	"#.set\tmips0\n\t"					\
-     	".word\t0x40018001\n\t"                                 \
-	"move\t%0,$1\n\t"                                       \
-	".set\tat\n\t"                                          \
-	".set\treorder"                                         \
-	:"=r" (__res));                                         \
-        __res;})
-
-/*
- * Macros to access the floating point coprocessor control registers
- */
-#define read_32bit_cp1_register(source)                         \
-({ int __res;                                                   \
-        __asm__ __volatile__(                                   \
-	".set\tpush\n\t"					\
-	".set\treorder\n\t"					\
-        "cfc1\t%0,"STR(source)"\n\t"                            \
-	".set\tpop"						\
-        : "=r" (__res));                                        \
-        __res;})
-
-/* TLB operations. */
-static inline void tlb_probe(void)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"tlbp\n\t"
-		".set pop");
-}
-
-static inline void tlb_read(void)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"tlbr\n\t"
-		".set pop");
-}
-
-static inline void tlb_write_indexed(void)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"tlbwi\n\t"
-		".set pop");
-}
-
-static inline void tlb_write_random(void)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"tlbwr\n\t"
-		".set pop");
-}
-
-/* Dealing with various CP0 mmu/cache related registers. */
-
-
-static inline unsigned long get_pagemask(void)
-{
-	unsigned long val;
-
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mfc0 %0, $5\n\t"
-		".set pop"
-		: "=r" (val));
-	return val;
-}
-
-static inline void set_pagemask(unsigned long val)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mtc0 %z0, $5\n\t"
-		".set pop"
-		: : "Jr" (val));
-}
-
-/* CP0_ENTRYLO0 and CP0_ENTRYLO1 registers */
-static inline unsigned long get_entrylo0(void)
-{
-	unsigned long val;
-
-	__asm__ __volatile__(	
-		".set push\n\t"
-		".set reorder\n\t"
-		"mfc0 %0, $2\n\t"
-		".set pop"
-		: "=r" (val));
-	return val;
-}
-
-static inline void set_entrylo0(unsigned long val)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mtc0 %z0, $2\n\t"
-		".set pop"
-		: : "Jr" (val));
-}
-
-static inline unsigned long get_entrylo1(void)
-{
-	unsigned long val;
-
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mfc0 %0, $3\n\t"
-		".set pop" : "=r" (val));
-
-	return val;
-}
-
-static inline void set_entrylo1(unsigned long val)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mtc0 %z0, $3\n\t"
-		".set pop"
-		: : "Jr" (val));
-}
-
-/* CP0_ENTRYHI register */
-static inline unsigned long get_entryhi(void)
-{
-	unsigned long val;
-
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mfc0 %0, $10\n\t"
-		".set pop"
-		: "=r" (val));
-
-	return val;
-}
-
-static inline void set_entryhi(unsigned long val)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mtc0 %z0, $10\n\t"
-		".set pop"
-		: : "Jr" (val));
-}
-
-/* CP0_INDEX register */
-static inline unsigned long get_index(void)
-{
-	unsigned long val;
-
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mfc0 %0, $0\n\t"
-		".set pop"
-		: "=r" (val));
-	return val;
-}
-
-static inline void set_index(unsigned long val)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mtc0 %z0, $0\n\t"
-		".set pop"
-		: : "Jr" (val));
-}
-
-/* CP0_WIRED register */
-static inline unsigned long get_wired(void)
-{
-	unsigned long val;
-
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mfc0 %0, $6\n\t"
-		".set pop"
-		: "=r" (val));
-	return val;
-}
-
-static inline void set_wired(unsigned long val)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mtc0 %z0, $6\n\t"
-		".set pop"
-		: : "Jr" (val));
-}
-
-/* CP0_STATUS register */
-static inline unsigned int get_status(void)
-{
-	unsigned long val;
-
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mfc0 %0, $12\n\t"
-		".set pop"
-		: "=r" (val));
-	return val;
-}
-
-static inline void set_status(unsigned long val)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mtc0 %z0, $12\n\t"
-		".set pop"
-		: : "Jr" (val));
-}
-
-static inline unsigned long get_info(void)
-{
-	unsigned long val;
-
-	__asm__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mfc0 %0, $7\n\t"
-		".set pop"
-		: "=r" (val));
-	return val;
-}
-
-/* CP0_TAGLO and CP0_TAGHI registers */
-static inline unsigned long get_taglo(void)
-{
-	unsigned long val;
-
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mfc0 %0, $28\n\t"
-		".set pop"
-		: "=r" (val));
-	return val;
-}
-
-static inline void set_taglo(unsigned long val)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mtc0 %z0, $28\n\t"
-		".set pop"
-		: : "Jr" (val));
-}
-
-static inline unsigned long get_taghi(void)
-{
-	unsigned long val;
-
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mfc0 %0, $29\n\t"
-		".set pop"
-		: "=r" (val));
-	return val;
-}
-
-static inline void set_taghi(unsigned long val)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mtc0 %z0, $29\n\t"
-		".set pop"
-		: : "Jr" (val));
-}
-
-/* CP0_CONTEXT register */
-static inline unsigned long get_context(void)
-{
-	unsigned long val;
-
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mfc0 %0, $4\n\t"
-		".set pop"
-		: "=r" (val));
-
-	return val;
-}
-
-static inline void set_context(unsigned long val)
-{
-	__asm__ __volatile__(
-		".set push\n\t"
-		".set reorder\n\t"
-		"mtc0 %z0, $4\n\t"
-		".set pop"
-		: : "Jr" (val));
-}
-
-/*
- * Manipulate the status register.
- * Mostly used to access the interrupt bits.
- */
-#define __BUILD_SET_CP0(name,register)				\
-static inline unsigned int					\
-set_cp0_##name(unsigned int set)				\
-{								\
-	unsigned int res;					\
-								\
-	res = read_32bit_cp0_register(register);		\
-	res |= set;						\
-	write_32bit_cp0_register(register, res);		\
-								\
-	return res;						\
-}								\
-								\
-static inline unsigned int					\
-clear_cp0_##name(unsigned int clear)				\
-{								\
-	unsigned int res;					\
-								\
-	res = read_32bit_cp0_register(register);		\
-	res &= ~clear;						\
-	write_32bit_cp0_register(register, res);		\
-								\
-	return res;						\
-}								\
-								\
-static inline unsigned int					\
-change_cp0_##name(unsigned int change, unsigned int new)	\
-{								\
-	unsigned int res;					\
-								\
-	res = read_32bit_cp0_register(register);		\
-	res &= ~change;						\
-	res |= (new & change);					\
-	write_32bit_cp0_register(register, res);		\
-								\
-	return res;						\
-}
-
-__BUILD_SET_CP0(status,CP0_STATUS)
-__BUILD_SET_CP0(cause,CP0_CAUSE)
-__BUILD_SET_CP0(config,CP0_CONFIG)
-
-#define __enable_fpu()							\
-do {									\
-	set_cp0_status(ST0_CU1);					\
-	asm("nop;nop;nop;nop");		/* max. hazard */		\
-} while (0)
-
-#define __disable_fpu()							\
-do {									\
-	clear_cp0_status(ST0_CU1);					\
-	/* We don't care about the cp0 hazard here  */			\
-} while (0)
-
-#define enable_fpu()							\
-do {									\
-	if (mips_cpu.options & MIPS_CPU_FPU)				\
-		__enable_fpu();						\
-} while (0)
-
-#define disable_fpu()							\
-do {									\
-	if (mips_cpu.options & MIPS_CPU_FPU)				\
-		__disable_fpu();					\
-} while (0)
-
-#endif /* !defined (_LANGUAGE_ASSEMBLY) */
 
 #ifndef __ASSEMBLY__
 
@@ -1039,8 +529,8 @@ do {									\
         ".set\tmips0"                                           \
         : : "r" (value))
 
-/* 
- * This should be changed when we get a compiler that support the MIPS32 ISA. 
+/*
+ * This should be changed when we get a compiler that support the MIPS32 ISA.
  */
 #define read_mips32_cp0_config1()                               \
 ({ int __res;                                                   \
@@ -1134,6 +624,8 @@ static inline void set_pagemask(unsigned long val)
 }
 
 #if defined(CONFIG_64BIT_PHYS_ADDR) && !defined(CONFIG_CPU_MIPS32)
+
+#include <asm/system.h>
 
 /*
  * These versions are only needed for systems with more than 38 bits of

@@ -55,7 +55,7 @@ static inline void spin_unlock(spinlock_t *lock)
 	".set\tnoreorder\t\t\t# spin_unlock\n\t"
 	"sync\n\t"
 	"sw\t$0, %0\n\t"
-	".set\treorder"	
+	".set\treorder"
 	: "=m" (lock->lock)
 	: "m" (lock->lock)
 	: "memory");
@@ -80,8 +80,6 @@ typedef struct {
 
 #define rwlock_init(x)  do { *(x) = RW_LOCK_UNLOCKED; } while(0)
 
-#define rwlock_init(x)  do { *(x) = RW_LOCK_UNLOCKED; } while(0)
-
 static inline void read_lock(rwlock_t *rw)
 {
 	unsigned int tmp;
@@ -94,7 +92,7 @@ static inline void read_lock(rwlock_t *rw)
 	"sc\t%1, %0\n\t"
 	"beqz\t%1, 1b\n\t"
 	" sync\n\t"
-	".set\treorder"	
+	".set\treorder"
 	: "=m" (rw->lock), "=&r" (tmp)
 	: "m" (rw->lock)
 	: "memory");
@@ -114,7 +112,7 @@ static inline void read_unlock(rwlock_t *rw)
 	"sc\t%1, %0\n\t"
 	"beqz\t%1, 1b\n\t"
 	" sync\n\t"
-	".set\treorder"	
+	".set\treorder"
 	: "=m" (rw->lock), "=&r" (tmp)
 	: "m" (rw->lock)
 	: "memory");
@@ -132,7 +130,7 @@ static inline void write_lock(rwlock_t *rw)
 	"sc\t%1, %0\n\t"
 	"beqz\t%1, 1b\n\t"
 	" sync\n\t"
-	".set\treorder"	
+	".set\treorder"
 	: "=m" (rw->lock), "=&r" (tmp)
 	: "m" (rw->lock)
 	: "memory");
@@ -144,7 +142,7 @@ static inline void write_unlock(rwlock_t *rw)
 	".set\tnoreorder\t\t\t# write_unlock\n\t"
 	"sync\n\t"
 	"sw\t$0, %0\n\t"
-	".set\treorder"	
+	".set\treorder"
 	: "=m" (rw->lock)
 	: "m" (rw->lock)
 	: "memory");

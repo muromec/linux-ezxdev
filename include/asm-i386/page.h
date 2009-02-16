@@ -78,9 +78,7 @@ typedef struct { unsigned long pgprot; } pgprot_t;
  * and CONFIG_HIGHMEM64G options in the kernel configuration.
  */
 
-#include <asm/page_offset.h>
-
-#define __PAGE_OFFSET		(PAGE_OFFSET_RAW)
+#define __PAGE_OFFSET		(0xC0000000)
 
 /*
  * This much address space is reserved for vmalloc() and iomap()

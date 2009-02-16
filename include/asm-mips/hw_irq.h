@@ -8,8 +8,6 @@
 #ifndef _ASM_HW_IRQ_H
 #define _ASM_HW_IRQ_H
 
-extern volatile unsigned long irq_err_count;
-
 #include <asm/atomic.h>
 
 extern atomic_t irq_err_count;

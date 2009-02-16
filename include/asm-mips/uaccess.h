@@ -42,14 +42,14 @@
  * Address valid if:
  *  - "addr" doesn't have any high-bits set
  *  - AND "size" doesn't have any high-bits set
- *  - AND "addr+size-1" doesn't have any high-bits set
+ *  - AND "addr+size" doesn't have any high-bits set
  *  - OR we are in kernel mode.
  */
 #define __ua_size(size)							\
 	(__builtin_constant_p(size) && (signed long) (size) > 0 ? 0 : (size))
 
 #define __access_ok(addr,size,mask)                                     \
-	(((signed long)((mask)&(addr | (addr + size - 1) | __ua_size(size)))) >= 0)
+	(((signed long)((mask)&(addr | (addr + size) | __ua_size(size)))) >= 0)
 
 #define __access_mask ((long)(get_fs().seg))
 

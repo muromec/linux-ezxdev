@@ -10,6 +10,8 @@
 #ifndef __ASM_PAGE_H
 #define __ASM_PAGE_H
 
+#include <linux/config.h>
+
 /* PAGE_SHIFT determines the page size */
 #define PAGE_SHIFT	12
 #define PAGE_SIZE	(1L << PAGE_SHIFT)
@@ -17,7 +19,7 @@
 
 #ifdef __KERNEL__
 
-#ifndef _LANGUAGE_ASSEMBLY
+#ifndef __ASSEMBLY__
 
 #define BUG() do { printk("kernel BUG at %s:%d!\n", __FILE__, __LINE__); *(int *)0=0; } while (0)
 #define PAGE_BUG(page) do {  BUG(); } while (0)
@@ -69,25 +71,20 @@ extern void (*_copy_page)(void * to, void * from);
  * These are used to make use of C type-checking..
  */
 #ifdef CONFIG_64BIT_PHYS_ADDR
-  #ifdef CONFIG_CPU_MIPS32
-    typedef struct { unsigned long pte_low, pte_high; } pte_t;
-    #define pte_val(x)    ((x).pte_low | ((unsigned long long)(x).pte_high << 32))
-  #else
-    typedef struct { unsigned long long pte_low; } pte_t;
-    #define pte_val(x)    ((x).pte_low)
-  #endif
+typedef struct { unsigned long long pte; } pte_t;
 #else
-typedef struct { unsigned long pte_low; } pte_t;
-#define pte_val(x)    ((x).pte_low)
+typedef struct { unsigned long pte; } pte_t;
 #endif
-
 typedef struct { unsigned long pmd; } pmd_t;
 typedef struct { unsigned long pgd; } pgd_t;
 typedef struct { unsigned long pgprot; } pgprot_t;
 
+#define pte_val(x)	((x).pte)
 #define pmd_val(x)	((x).pmd)
 #define pgd_val(x)	((x).pgd)
 #define pgprot_val(x)	((x).pgprot)
+
+#define ptep_buddy(x)	((pte_t *)((unsigned long)(x) ^ sizeof(pte_t)))
 
 #define __pte(x)	((pte_t) { (x) } )
 #define __pmd(x)	((pmd_t) { (x) } )
@@ -108,7 +105,7 @@ extern __inline__ int get_order(unsigned long size)
 	return order;
 }
 
-#endif /* _LANGUAGE_ASSEMBLY */
+#endif /* !__ASSEMBLY__ */
 
 /* to align the pointer to the (next) page boundary */
 #define PAGE_ALIGN(addr)	(((addr) + PAGE_SIZE - 1) & PAGE_MASK)
@@ -118,10 +115,18 @@ extern __inline__ int get_order(unsigned long size)
  * We handle pages at KSEG0 for kernels with 32 bit address space.
  */
 #define PAGE_OFFSET	0x80000000UL
+#define UNCAC_BASE	0xa0000000UL
+
 #define __pa(x)		((unsigned long) (x) - PAGE_OFFSET)
 #define __va(x)		((void *)((unsigned long) (x) + PAGE_OFFSET))
 #define virt_to_page(kaddr)	(mem_map + (__pa(kaddr) >> PAGE_SHIFT))
 #define VALID_PAGE(page)	((page - mem_map) < max_mapnr)
+
+#define VM_DATA_DEFAULT_FLAGS  (VM_READ | VM_WRITE | VM_EXEC | \
+				VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC)
+
+#define UNCAC_ADDR(addr)	((addr) - PAGE_OFFSET + UNCAC_BASE)
+#define CAC_ADDR(addr)		((addr) - UNCAC_BASE + PAGE_OFFSET)
 
 /*
  * Memory above this physical address will be considered highmem.

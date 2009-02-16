@@ -76,7 +76,7 @@ extern __inline__ int strcmp(__const__ char *__cs, __const__ char *__ct)
 	"addiu\t%1,1\n\t"
 	"bnez\t%2,1b\n\t"
 	"lbu\t%2,(%0)\n\t"
-#if defined(CONFIG_CPU_R3000) || defined(CONFIG_CPU_TX39XX) || defined(CONFIG_CPU_LX45XXX)
+#if defined(CONFIG_CPU_R3000)
 	"nop\n\t"
 #endif
 	"move\t%2,$1\n"
@@ -107,9 +107,9 @@ strncmp(__const__ char *__cs, __const__ char *__ct, size_t __count)
 	"bnez\t%3,1b\n\t"
 	"addiu\t%1,1\n"
 	"2:\n\t"
-#if defined(CONFIG_CPU_R3000) || defined(CONFIG_CPU_TX39XX) || defined(CONFIG_CPU_LX45XXX)
+#if defined(CONFIG_CPU_R3000)
 	"nop\n\t"
-#endif	
+#endif
 	"move\t%3,$1\n"
 	"3:\tsubu\t%3,$1\n\t"
 	".set\tat\n\t"
@@ -140,14 +140,12 @@ extern __inline__ void *memscan(void *__addr, int __c, size_t __size)
 
 	__asm__(".set\tpush\n\t"
 		".set\tnoat\n\t"
-		".set\tnoreorder\n\t"
+		".set\treorder\n\t"
 		"1:\tbeq\t%0,%1,2f\n\t"
 		"addiu\t%0,1\n\t"
 		"lbu\t$1,-1(%0)\n\t"
-		"bne\t$1,%z4,1b\n\t"
-		"nop\n"
-		"2:\tsubu\t%0,1\n"
-		".set\tpop"
+		"bne\t$1,%z4,1b\n"
+		"2:\t.set\tpop"
 		: "=r" (__addr), "=r" (__end)
 		: "0" (__addr), "1" (__end), "Jr" (__uc));
 

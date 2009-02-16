@@ -24,18 +24,7 @@
 #include <asm/processor.h>
 #include <asm/i387.h>
 #include <asm/msr.h>
-#ifdef CONFIG_KGDB
-#include <asm/kgdb.h>
-/*
- * Provied the command line "kgdb" initial break
- */
-int __init kgdb_initial_break(char * str)
-{
-        breakpoint();
-        return 1;
-}
-__setup("kgdb",kgdb_initial_break);
-#endif
+
 static int __init no_halt(char *s)
 {
 	boot_cpu_data.hlt_works_ok = 0;

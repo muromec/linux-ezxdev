@@ -55,57 +55,13 @@
                 srl     k0, k0, 23;                      \
 		sll     k0, k0, 2;                       \
                 addu    k1, k0;                          \
-                lw      k1, %lo(kernelsp)(k1);        
+                lw      k1, %lo(kernelsp)(k1);
 
 #else
 #  define GET_SAVED_SP                                   \
 		lui	k1, %hi(kernelsp);               \
-		lw	k1, %lo(kernelsp)(k1);           
+		lw	k1, %lo(kernelsp)(k1);
 #endif
- 
-#if defined(CONFIG_CPU_LX45XXX)                         
-#define SAVE_SOME                                        \
-		.set	push;                            \
-		.set	reorder;                         \
-		mfc0	k0, CP0_STATUS;                  \
-		sll	k0, 3;     /* extract cu0 bit */ \
-		.set	noreorder;                       \
-		bltz	k0, 8f;                          \
-		 move	k1, sp;                          \
-		.set	reorder;                         \
-		/* Called from user mode, new stack. */  \
-		GET_SAVED_SP                             \
-8:                                                       \
-		move	k0, sp;                          \
-		subu	sp, k1, PT_SIZE;                 \
-		sw	k0, PT_R29(sp);                  \
-		sw	$3, PT_R3(sp);                   \
-		sw	$0, PT_R0(sp);			 \
-		mfc0	v1, CP0_STATUS;                  \
-		sw	$2, PT_R2(sp);                   \
-		sw	v1, PT_STATUS(sp);               \
-		sw	$4, PT_R4(sp);                   \
-		mfc0	v1, CP0_CAUSE;                   \
-		sw	$5, PT_R5(sp);                   \
-		sw	v1, PT_CAUSE(sp);                \
-		sw	$6, PT_R6(sp);                   \
-		mfc0	v1, CP0_EPC;                     \
-		sw	$7, PT_R7(sp);                   \
-		sw	v1, PT_EPC(sp);                  \
-		sw	$25, PT_R25(sp);                 \
-		.word	0x40630800;                      \
-		sw	$28, PT_R28(sp);                 \
-		sw	v1, PT_ECAUSE(sp);               \
-		sw	$31, PT_R31(sp);                 \
-		.word	0x40630000;                      \
-		 nop;                                    \
-		sw	v1, PT_ESTATUS(sp);              \
-		 nop;                                    \
-		ori	$28, sp, 0x1fff;                 \
-		xori	$28, 0x1fff;                     \
-		.set	pop
-
-#else
 
 #define SAVE_SOME                                        \
 		.set	push;                            \
@@ -141,7 +97,6 @@
 		ori	$28, sp, 0x1fff;                 \
 		xori	$28, 0x1fff;                     \
 		.set	pop
-#endif /*CONFIG_CPU_LX45XXX*/ 
 
 #define SAVE_ALL                                         \
 		SAVE_SOME;                               \
@@ -181,51 +136,7 @@
 		lw	$23, PT_R23(sp);                 \
 		lw	$30, PT_R30(sp)
 
-#if defined(CONFIG_CPU_LX45XXX)
-
-#define RESTORE_SOME                                  \
-		.set	push;                         \
-		.set	reorder;                      \
-		mfc0	t0, CP0_STATUS;               \
-		.set	pop;                          \
-		ori	t0, 0x1f;                     \
-		xori	t0, 0x1f;                     \
-		mtc0	t0, CP0_STATUS;               \
-		li	v1, 0xff00;                   \
-		and	t0, v1;	                      \
-		lw	v0, PT_STATUS(sp);            \
-		nor	v1, $0, v1;                   \
-		and	v0, v1;                       \
-		or	v0, t0;                       \
-		mtc0	v0, CP0_STATUS;               \
-		.word	0x40680000;                   \
-		lui     v1, 0xff;                     \
-		and     t0, v1;                       \
-		lw      v0, PT_ESTATUS(sp);           \
-		nor     v1, $0, v1;                   \
-		and     v0, v1;                       \
-		or      v0, t0;                       \
-		.word   0x40e20000;                   \
-		lw	$31, PT_R31(sp);              \
-		lw	$28, PT_R28(sp);              \
-		lw	$25, PT_R25(sp);              \
-		lw	$7,  PT_R7(sp);               \
-		lw	$6,  PT_R6(sp);               \
-		lw	$5,  PT_R5(sp);               \
-		lw	$4,  PT_R4(sp);               \
-		lw	$3,  PT_R3(sp);               \
-		lw	$2,  PT_R2(sp)
-
-     #define RESTORE_SP_AND_RET                          \
-     		.set	push;				 \
-     		.set	noreorder;			 \
-     		lw	k0, PT_EPC(sp);                  \
-     		lw	sp,  PT_R29(sp);                 \
-     		jr	k0;                              \
-     		 rfe;					 \
-     		.set	pop
-     
-#elif defined(CONFIG_CPU_R3000) || defined(CONFIG_CPU_TX39XX)
+#if defined(CONFIG_CPU_R3000) || defined(CONFIG_CPU_TX39XX)
 
 #define RESTORE_SOME                                     \
 		.set	push;                            \

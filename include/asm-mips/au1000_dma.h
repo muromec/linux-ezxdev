@@ -31,7 +31,6 @@
 #ifndef __ASM_AU1000_DMA_H
 #define __ASM_AU1000_DMA_H
 
-#include <linux/config.h>
 #include <asm/io.h>		/* need byte IO */
 #include <linux/spinlock.h>	/* And spinlocks */
 #include <linux/delay.h>
@@ -101,7 +100,7 @@ enum {
 };
 
 struct dma_chan {
-	int dev_id;	// this channel is allocated if >=0, free otherwise
+	int dev_id;		// this channel is allocated if >=0, free otherwise
 	unsigned int io;
 	const char *dev_str;
 	int irq;
@@ -206,8 +205,8 @@ static __inline__ void disable_dma(unsigned int dmanr)
 
 	halt_dma(dmanr);
 
-	// now we can disable the buffers
-	au_writel(~DMA_GO, chan->io + DMA_MODE_CLEAR);
+		// now we can disable the buffers
+		au_writel(~DMA_GO, chan->io + DMA_MODE_CLEAR);
 }
 
 static __inline__ int dma_halted(unsigned int dmanr)
@@ -235,7 +234,7 @@ static __inline__ void init_dma(unsigned int dmanr)
 	mode = chan->mode | (chan->dev_id << DMA_DID_BIT);
 	if (chan->irq)
 		mode |= DMA_IE;
-	
+
 	au_writel(~mode, chan->io + DMA_MODE_CLEAR);
 	au_writel(mode, chan->io + DMA_MODE_SET);
 }
@@ -419,7 +418,7 @@ static __inline__ int get_dma_residue(unsigned int dmanr)
 		return 0;
 
 	curBufCntReg = (au_readl(chan->io + DMA_MODE_READ) & DMA_AB) ?
-		DMA_BUFFER1_COUNT : DMA_BUFFER0_COUNT;
+	    DMA_BUFFER1_COUNT : DMA_BUFFER0_COUNT;
 
 	count = au_readl(chan->io + curBufCntReg) & DMA_COUNT_MASK;
 

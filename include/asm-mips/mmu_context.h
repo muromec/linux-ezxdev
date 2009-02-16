@@ -19,7 +19,7 @@
 /*
  * For the fast tlb miss handlers, we currently keep a per cpu array
  * of pointers to the current pgd for each processor. Also, the proc.
- * id is stuffed into the context register. This should be changed to 
+ * id is stuffed into the context register. This should be changed to
  * use the processor id via current->processor, where current is stored
  * in watchhi/lo. The context register should be used to contiguously
  * map the page tables.
@@ -38,7 +38,7 @@ extern unsigned long pgd_current[];
 #endif
 #define ASID_CACHE(cpu)		cpu_data[cpu].asid_cache
 
-#if defined(CONFIG_CPU_R3000) || defined(CONFIG_CPU_TX39XX) || defined(CONFIG_CPU_LX45XXX)
+#if defined(CONFIG_CPU_R3000) || defined(CONFIG_CPU_TX39XX)
 
 #define ASID_INC	0x40
 #define ASID_MASK	0xfc0
@@ -85,10 +85,10 @@ init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 #ifndef CONFIG_SMP
 	mm->context = 0;
 #else
-	mm->context = (unsigned long)kmalloc(smp_num_cpus * 
+	mm->context = (unsigned long)kmalloc(smp_num_cpus *
 				sizeof(unsigned long), GFP_KERNEL);
 	/*
- 	 * Init the "context" values so that a tlbpid allocation 
+ 	 * Init the "context" values so that a tlbpid allocation
 	 * happens on the first switch.
  	 */
 	if (mm->context == 0)

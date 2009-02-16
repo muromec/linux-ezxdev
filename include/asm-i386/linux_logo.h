@@ -21,7 +21,7 @@
 #include <linux/init.h>
 #include <linux/version.h>
 
-#define linux_logo_banner "MontaVista Linux/ia32 version " UTS_RELEASE
+#define linux_logo_banner "Linux/ia32 version " UTS_RELEASE
 
 #include <linux/linux_logo.h>
 
