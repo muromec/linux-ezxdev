@@ -1135,11 +1135,6 @@ fi
 
 mainmenu_option next_comment
 
-comment 'Security Platform'
-source security/Config.in
-endmenu
-
-mainmenu_option next_comment
 
 comment 'Kernel tracing'
 tristate 'Kernel events tracing support' CONFIG_TRACE
