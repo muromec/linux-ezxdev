@@ -22,6 +22,7 @@ obj-$(CONFIG_I2C_PROC)		+= i2c-proc.o
 obj-$(CONFIG_I2C_KEYWEST)	+= i2c-keywest.o
 obj-$(CONFIG_I2C_PXA_ADAP)	+= i2c-adap-pxa.o
 obj-$(CONFIG_I2C_PXA_ALGO)	+= i2c-algo-pxa.o
+obj-$(CONFIG_I2C_A780_CAMERA)	+= a780_camera.o
 
 # This is needed for automatic patch generation: sensors code starts here
 # This is needed for automatic patch generation: sensors code ends here
