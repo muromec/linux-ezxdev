@@ -43,6 +43,19 @@ if [ "$CONFIG_I2C" != "n" ]; then
       dep_tristate 'Keywest I2C interface in Apple Core99 machines' CONFIG_I2C_KEYWEST $CONFIG_I2C
    fi
 
+   if [ "$CONFIG_ARCH_PXA" = "y" ]; then
+      dep_tristate 'PXA I2C Algorithm' CONFIG_I2C_PXA_ALGO $CONFIG_I2C
+      dep_tristate 'PXA I2C Adapter'   CONFIG_I2C_PXA_ADAP $CONFIG_I2C_PXA_ALGO
+      dep_tristate 'A780 Camera support'  CONFIG_I2C_A780_CAMERA $CONFIG_I2C_PXA_ADAP
+      if [ "$CONFIG_I2C_A780_CAMERA" != "n" ] ; then
+         dep_bool '  OV9640 support'  CONFIG_I2C_OV9640 $CONFIG_I2C_OV9650
+         bool '  OV9650 support'  CONFIG_I2C_OV9650
+         bool '  MT9M111 support'  CONFIG_I2C_MT9M111
+         bool '  ADCM3800 support'  CONFIG_I2C_ADCM3800
+         dep_bool '  MI2010SOC support' CONFIG_I2C_MI2010SOC $CONFIG_I2C_MT9M111
+       fi
+    fi
+
 # This is needed for automatic patch generation: sensors code starts here
 # This is needed for automatic patch generation: sensors code ends here
 
