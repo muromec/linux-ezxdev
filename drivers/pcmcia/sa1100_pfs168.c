@@ -1,3 +1,4 @@
+#warning	"REVISIT_PFS168: Need to verify and test GPIO power encodings."
 /*
  * drivers/pcmcia/sa1100_pfs168.c
  *
@@ -7,9 +8,9 @@
 #include <linux/kernel.h>
 #include <linux/sched.h>
 
+#include <asm/delay.h>
 #include <asm/hardware.h>
-#include <asm/arch/pfs168.h>
-#include <asm/hardware/sa1111.h>
+#include <asm/irq.h>
 
 #include "sa1100_generic.h"
 #include "sa1111_generic.h"

@@ -69,12 +69,6 @@ struct pcmcia_low_level {
    * Disable card status IRQs and PCMCIA bus on suspend.
    */
   int (*socket_suspend)(int sock);
-
-  /*
-   * Calculate MECR timing clock wait states
-   */
-  int (*socket_get_timing)(unsigned int sock, unsigned int cpu_speed,
-                           unsigned int cmd_time );
 };
 
 extern struct pcmcia_low_level *pcmcia_low_level;

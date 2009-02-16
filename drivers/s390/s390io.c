@@ -59,7 +59,6 @@
 #include <linux/smp_lock.h>
 #include <linux/init.h>
 #include <linux/bootmem.h>
-#include <linux/trace.h>
 #ifdef CONFIG_PROC_FS
 #include <linux/proc_fs.h>
 #endif
@@ -2513,11 +2512,9 @@ do_IRQ (struct pt_regs regs)
 			}
 
 			irq_enter (cpu, irq);
-                        TRACE_IRQ_ENTRY(irq, !(((regs).psw.mask&PSW_PROBLEM_STATE) != 0));
 			s390irq_spin_lock (irq);
 			s390_process_IRQ (irq);
 			s390irq_spin_unlock (irq);
-                        TRACE_IRQ_EXIT();
 			irq_exit (cpu, irq);
 		}
 

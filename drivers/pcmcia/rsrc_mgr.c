@@ -62,7 +62,7 @@
 #define INT_MODULE_PARM(n, v) static int n = v; MODULE_PARM(n, "i")
 
 INT_MODULE_PARM(probe_mem,	1);		/* memory probe? */
-#ifdef CONFIG_PCMCIA_PROBE
+#ifdef CONFIG_ISA
 INT_MODULE_PARM(probe_io,	1);		/* IO port probe? */
 INT_MODULE_PARM(mem_limit,	0x10000);
 #endif
@@ -85,7 +85,7 @@ static resource_map_t mem_db = { 0, 0, &mem_db };
 /* IO port resource database */
 static resource_map_t io_db = { 0, 0, &io_db };
 
-#ifdef CONFIG_PCMCIA_PROBE
+#ifdef CONFIG_ISA
 
 typedef struct irq_info_t {
     u_int			Attributes;
@@ -251,7 +251,7 @@ static int sub_interval(resource_map_t *map, u_long base, u_long num)
     
 ======================================================================*/
 
-#ifdef CONFIG_PCMCIA_PROBE
+#ifdef CONFIG_ISA
 static void do_io_probe(ioaddr_t base, ioaddr_t num)
 {
     
@@ -356,7 +356,7 @@ static int do_mem_probe(u_long base, u_long num,
     return (num - bad);
 }
 
-#ifdef CONFIG_PCMCIA_PROBE
+#ifdef CONFIG_ISA
 
 static u_long inv_probe(int (*is_valid)(u_long),
 			int (*do_cksum)(u_long),
@@ -414,7 +414,7 @@ void validate_mem(int (*is_valid)(u_long), int (*do_cksum)(u_long),
     }
 }
 
-#else /* CONFIG_PCMCIA_PROBE */
+#else /* CONFIG_ISA */
 
 void validate_mem(int (*is_valid)(u_long), int (*do_cksum)(u_long),
 		  int force_low, socket_info_t *s)
@@ -429,7 +429,7 @@ void validate_mem(int (*is_valid)(u_long), int (*do_cksum)(u_long),
 	    return;
 }
 
-#endif /* CONFIG_PCMCIA_PROBE */
+#endif /* CONFIG_ISA */
 
 /*======================================================================
 
@@ -500,7 +500,7 @@ int find_mem_region(u_long *base, u_long num, u_long align,
     
 ======================================================================*/
 
-#ifdef CONFIG_PCMCIA_PROBE
+#ifdef CONFIG_ISA
 
 static void fake_irq(int i, void *d, struct pt_regs *r) { }
 static inline int check_irq(int irq)
@@ -567,7 +567,7 @@ int try_irq(u_int Attributes, int irq, int specific)
 
 /*====================================================================*/
 
-#ifdef CONFIG_PCMCIA_PROBE
+#ifdef CONFIG_ISA
 
 void undo_irq(u_int Attributes, int irq)
 {
@@ -650,7 +650,7 @@ static int adjust_io(adjust_t *adj)
     case ADD_MANAGED_RESOURCE:
 	if (add_interval(&io_db, base, num) != 0)
 	    return CS_IN_USE;
-#ifdef CONFIG_PCMCIA_PROBE
+#ifdef CONFIG_ISA
 	if (probe_io)
 	    do_io_probe(base, num);
 #endif
@@ -670,7 +670,7 @@ static int adjust_io(adjust_t *adj)
 
 static int adjust_irq(adjust_t *adj)
 {
-#ifdef CONFIG_PCMCIA_PROBE
+#ifdef CONFIG_ISA
     int irq;
     irq_info_t *info;
     

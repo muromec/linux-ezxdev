@@ -241,14 +241,23 @@ static inline void set_recovery_timer (ide_hwif_t *hwif)
 static void init_hwif_data (unsigned int index)
 {
 	unsigned int unit;
+	hw_regs_t hw;
 	ide_hwif_t *hwif = &ide_hwifs[index];
 
 	/* bulk initialize hwif & drive info with zeros */
 	memset(hwif, 0, sizeof(ide_hwif_t));
+	memset(&hw, 0, sizeof(hw_regs_t));
 
 	/* fill in any non-zero initial values */
 	hwif->index     = index;
-	hwif->noprobe	= 1;
+	ide_init_hwif_ports(&hw, ide_default_io_base(index), 0, &hwif->irq);
+	memcpy(&hwif->hw, &hw, sizeof(hw));
+	memcpy(hwif->io_ports, hw.io_ports, sizeof(hw.io_ports));
+	hwif->noprobe	= !hwif->io_ports[IDE_DATA_OFFSET];
+#ifdef CONFIG_BLK_DEV_HD
+	if (hwif->io_ports[IDE_DATA_OFFSET] == HD_DATA)
+		hwif->noprobe = 1; /* may be overridden by ide_setup() */
+#endif /* CONFIG_BLK_DEV_HD */
 	hwif->major	= ide_hwif_to_major[index];
 	hwif->name[0]	= 'i';
 	hwif->name[1]	= 'd';
@@ -271,31 +280,6 @@ static void init_hwif_data (unsigned int index)
 		drive->name[2]			= 'a' + (index * MAX_DRIVES) + unit;
 		drive->max_failures		= IDE_DEFAULT_MAX_FAILURES;
 		init_waitqueue_head(&drive->wqueue);
-	}
-}
-
-/*
- * Old compatability function - initialise ports using ide_default_io_base
- */
-static void ide_old_init_default_hwifs(void)
-{
-	unsigned int index;
-	ide_ioreg_t base;
-	ide_hwif_t *hwif;
-
-	for (index = 0; index < MAX_HWIFS; index++) {
-		hwif = &ide_hwifs[index];
-		
-		base = ide_default_io_base(index);
-
-#if !defined(CONFIG_REDWOOD_4) & !defined(CONFIG_REDWOOD_5)  & !defined(CONFIG_REDWOOD_6) /* Redwood 4 has a base of 0x00000000 */
-		if (base)
-#endif
-		{
-			ide_init_hwif_ports(&hwif->hw, base, 0, &hwif->hw.irq);
-			memcpy(hwif->io_ports, hwif->hw.io_ports, sizeof(hwif->hw.io_ports));
-			hwif->noprobe = 0;
-		}
 	}
 }
 
@@ -328,15 +312,7 @@ static void __init init_ide_data (void)
 		init_hwif_data(index);
 
 	/* Add default hw interfaces */
-	ide_old_init_default_hwifs();
 	ide_init_default_hwifs();
-
-#ifdef CONFIG_BLK_DEV_HD
-	/* Check for any clashes with hd.c driver */
-	for (index = 0; index < MAX_HWIFS; ++index)
-		if (ide_hwifs[index].hw.io_ports[IDE_DATA_OFFSET] == HD_DATA)
-			hwif->noprobe = 1; /* may be overridden by ide_setup() */
-#endif /* CONFIG_BLK_DEV_HD */
 
 	idebus_parameter = 0;
 	system_bus_speed = 0;
@@ -365,11 +341,8 @@ int drive_is_flashcard (ide_drive_t *drive)
 		 || !strncmp(id->model, "SunDisk SDCFB", 13)	/* SunDisk */
 		 || !strncmp(id->model, "HAGIWARA HPC", 12)	/* Hagiwara */
 		 || !strncmp(id->model, "LEXAR ATA_FLASH", 15)	/* Lexar */
-		 || !strncmp(id->model, "ATA_FLASH", 9)		/* Simple Tech */
-#ifdef CONFIG_POWERK2
-		 || strncmp(id->model, "IBM-DMDM-10", 11)	/* IBM microdrive */
-#endif /* CONFIG_POWERK2 */
-		) {
+		 || !strncmp(id->model, "ATA_FLASH", 9))	/* Simple Tech */
+		{
 			return 1;	/* yes, it is a flash memory card */
 		}
 	}
@@ -557,9 +530,6 @@ void atapi_output_bytes (ide_drive_t *drive, void *buffer, unsigned int bytecoun
 int drive_is_ready (ide_drive_t *drive)
 {
 	byte stat = 0;
-#ifdef CONFIG_POWERK2
-	int count=0;
-#endif /* CONFIG_POWERK2 */
 	if (drive->waiting_for_dma)
 		return HWIF(drive)->dmaproc(ide_dma_test_irq, drive);
 #if 0
@@ -577,14 +547,7 @@ int drive_is_ready (ide_drive_t *drive)
 		stat = GET_ALTSTAT();
 	else
 #endif /* CONFIG_IDEPCI_SHARE_IRQ */
-
-#ifdef CONFIG_POWERK2
-	do {
-#endif /* CONFIG_POWERK2 */
-	stat = GET_STAT();	 /* Note: this may clear a pending IRQ!! */
-#ifdef CONFIG_POWERK2
-	} while(stat&BUSY_STAT && count++ <10000000); /*usually needs 1-15000*/
-#endif /* CONFIG_POWERK2 */
+	stat = GET_STAT();	/* Note: this may clear a pending IRQ!! */
 
 	if (stat & BUSY_STAT)
 		return 0;	/* drive busy:  definitely not interrupting */
@@ -2776,17 +2739,12 @@ int ide_wait_cmd_task (ide_drive_t *drive, byte *buf)
  */
 void ide_delay_50ms (void)
 {
-#ifdef CONFIG_IDE_PREEMPT
-	__set_current_state(TASK_UNINTERRUPTIBLE);
-	schedule_timeout(1+HZ/20); /* from 2.5 */
-#else /* CONFIG_IDE_PREEMPT */
 #ifndef CONFIG_BLK_DEV_IDECS
 	mdelay(50);
 #else
 	__set_current_state(TASK_UNINTERRUPTIBLE);
 	schedule_timeout(HZ/20);
 #endif /* CONFIG_BLK_DEV_IDECS */
-#endif /* CONFIG_IDE_PREEMPT */
 }
 
 int system_bus_clock (void)
@@ -3586,9 +3544,6 @@ int __init ide_setup (char *s)
 
 			case -1: /* "noprobe" */
 				hwif->noprobe = 1;
-#if 1 /* MVL */
-				hwif->forcenoprobe = 1; 
-#endif
 				goto done;
 
 			case 1:	/* base */
@@ -3701,12 +3656,6 @@ static void __init probe_for_hwifs (void)
 		macide_init();
 	}
 #endif /* CONFIG_BLK_DEV_MAC_IDE */
-#ifdef CONFIG_BLK_DEV_CPCI405_IDE
-	{
-		extern void cpci405ide_init(void);
-		cpci405ide_init();
-	}
-#endif /* CONFIG_BLK_DEV_CPCI405_IDE */
 #ifdef CONFIG_BLK_DEV_Q40IDE
 	{
 		extern void q40ide_init(void);

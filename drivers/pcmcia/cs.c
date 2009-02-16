@@ -675,17 +675,10 @@ static void do_shutdown(socket_info_t *s)
 static void parse_events(void *info, u_int events)
 {
     socket_info_t *s = info;
-
     if (events & SS_DETECT) {
 	int status;
 
 	get_socket_status(s, &status);
-
-	/*
-	 * If our socket state indicates that a card is present and
-	 * either the socket has not been suspended (for some reason)
-	 * or the card has been removed, shut down the socket first.
-	 */
 	if ((s->state & SOCKET_PRESENT) &&
 	    (!(s->state & SOCKET_SUSPEND) ||
 	     !(status & SS_DETECT)))
@@ -2096,34 +2089,6 @@ int pcmcia_resume_card(client_handle_t handle, client_req_t *req)
     return CS_SUCCESS;
 } /* resume_card */
 
-/* MVL CEE DPM extension */
-
-int pcmcia_dpm_suspend_card(int i)
-{
-    socket_info_t *s;
-    
-    s = socket_table[i];
-
-    DEBUG(1, "cs: suspending socket %d\n", i);
-    send_event(s, CS_EVENT_PM_SUSPEND, CS_EVENT_PRI_LOW);
-    suspend_socket(s);
-    s->state |= SOCKET_SUSPEND;
-
-    return CS_SUCCESS;
-} /* suspend_card */
-
-int pcmcia_dpm_resume_card(int i)
-{
-    socket_info_t *s;
-    
-    s = socket_table[i];
-
-    DEBUG(1, "cs: waking up socket %d\n", i);
-    setup_socket(s);
-
-    return CS_SUCCESS;
-} /* resume_card */
-
 /*======================================================================
 
     These handle user requests to eject or insert a card.
@@ -2451,11 +2416,6 @@ EXPORT_SYMBOL(pcmcia_register_socket);
 EXPORT_SYMBOL(pcmcia_unregister_socket);
 EXPORT_SYMBOL(pcmcia_suspend_socket);
 EXPORT_SYMBOL(pcmcia_resume_socket);
-
-/* MVL CEE DPM extension*/
-
-EXPORT_SYMBOL(pcmcia_dpm_resume_card);
-EXPORT_SYMBOL(pcmcia_dpm_suspend_card);
 
 static int __init init_pcmcia_cs(void)
 {

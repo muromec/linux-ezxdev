@@ -55,7 +55,6 @@
 #include <pcmcia/bulkmem.h>
 #include <pcmcia/cistpl.h>
 #include <pcmcia/ds.h>
-#include <linux/devfs_fs_kernel.h>
 
 /*====================================================================*/
 
@@ -881,8 +880,6 @@ static struct file_operations ds_fops = {
 EXPORT_SYMBOL(register_pccard_driver);
 EXPORT_SYMBOL(unregister_pccard_driver);
 
-static devfs_handle_t devfs_handle;
-
 /*====================================================================*/
 
 int __init init_pcmcia_ds(void)
@@ -960,13 +957,8 @@ int __init init_pcmcia_ds(void)
     if (i == -EBUSY)
 	printk(KERN_NOTICE "unable to find a free device # for "
 	       "Driver Services\n");
-    else {
+    else
 	major_dev = i;
-	devfs_handle = devfs_register(NULL, "pcmcia", DEVFS_FL_DEFAULT,
-				      major_dev, 0,
-				      S_IFCHR | S_IRUSR | S_IWUSR,
-				      &ds_fops, NULL);
-    }
 
 #ifdef CONFIG_PROC_FS
     if (proc_pccard)
@@ -991,9 +983,7 @@ void __exit cleanup_module(void)
 	remove_proc_entry("drivers", proc_pccard);
 #endif
     if (major_dev != -1)
-	devfs_unregister_chrdev(major_dev, "pcmcia");
-	devfs_unregister(devfs_handle);
-
+	unregister_chrdev(major_dev, "pcmcia");
     for (i = 0; i < sockets; i++)
 	pcmcia_deregister_client(socket_table[i].handle);
     sockets = 0;

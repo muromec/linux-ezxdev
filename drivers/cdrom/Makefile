@@ -42,7 +42,6 @@ obj-$(CONFIG_SBPCD3)		+= sbpcd3.o     cdrom.o
 obj-$(CONFIG_SBPCD4)		+= sbpcd4.o     cdrom.o
 obj-$(CONFIG_SJCD)		+= sjcd.o
 obj-$(CONFIG_CDU535)		+= sonycd535.o
-obj-$(CONFIG_SEGA_GDROM)	+= gdrom.o	cdrom.o
 
 # Hand off to Rules.make.
 

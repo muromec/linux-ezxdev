@@ -27,7 +27,6 @@
 #include <asm/io.h>
 
 extern char *ide_xfer_verbose (byte xfer_rate);
-extern char *ide_dmafunc_verbose(ide_dma_action_t dmafunc);
 
 /*
  * Maximum number of interfaces per card
@@ -74,12 +73,6 @@ static struct cardinfo icside_cardinfo_v6_2 = {
 	ICS_ARCIN_V6_IDEOFFSET_2,
 	ICS_ARCIN_V6_IDEALTOFFSET_2,
 	ICS_ARCIN_V6_IDESTEPPING
-};
-
-struct icside_state {
-	unsigned int channel;
-	unsigned int enabled;
-	unsigned int irq_port;
 };
 
 static const card_ids icside_cids[] = {
@@ -129,21 +122,10 @@ static const expansioncard_ops_t icside_ops_arcin_v5 = {
  */
 static void icside_irqenable_arcin_v6 (struct expansion_card *ec, int irqnr)
 {
-	struct icside_state *state = ec->irq_data;
-	unsigned int base = state->irq_port;
+	unsigned int ide_base_port = (unsigned int)ec->irq_data;
 
-	state->enabled = 1;
-
-	switch (state->channel) {
-	case 0:
-		outb(0, base + ICS_ARCIN_V6_INTROFFSET_1);
-		inb(base + ICS_ARCIN_V6_INTROFFSET_2);
-		break;
-	case 1:
-		outb(0, base + ICS_ARCIN_V6_INTROFFSET_2);
-		inb(base + ICS_ARCIN_V6_INTROFFSET_1);
-		break;
-	}
+	outb (0, ide_base_port + ICS_ARCIN_V6_INTROFFSET_1);
+	outb (0, ide_base_port + ICS_ARCIN_V6_INTROFFSET_2);
 }
 
 /* Prototype: icside_irqdisable_arcin_v6 (struct expansion_card *ec, int irqnr)
@@ -151,12 +133,10 @@ static void icside_irqenable_arcin_v6 (struct expansion_card *ec, int irqnr)
  */
 static void icside_irqdisable_arcin_v6 (struct expansion_card *ec, int irqnr)
 {
-	struct icside_state *state = ec->irq_data;
+	unsigned int ide_base_port = (unsigned int)ec->irq_data;
 
-	state->enabled = 0;
-
-	inb (state->irq_port + ICS_ARCIN_V6_INTROFFSET_1);
-	inb (state->irq_port + ICS_ARCIN_V6_INTROFFSET_2);
+	inb (ide_base_port + ICS_ARCIN_V6_INTROFFSET_1);
+	inb (ide_base_port + ICS_ARCIN_V6_INTROFFSET_2);
 }
 
 /* Prototype: icside_irqprobe(struct expansion_card *ec)
@@ -164,10 +144,10 @@ static void icside_irqdisable_arcin_v6 (struct expansion_card *ec, int irqnr)
  */
 static int icside_irqpending_arcin_v6(struct expansion_card *ec)
 {
-	struct icside_state *state = ec->irq_data;
+	unsigned int ide_base_port = (unsigned int)ec->irq_data;
 
-	return inb(state->irq_port + ICS_ARCIN_V6_INTRSTAT_1) & 1 ||
-	       inb(state->irq_port + ICS_ARCIN_V6_INTRSTAT_2) & 1;
+	return inb(ide_base_port + ICS_ARCIN_V6_INTRSTAT_1) & 1 ||
+	       inb(ide_base_port + ICS_ARCIN_V6_INTRSTAT_2) & 1;
 }
 
 static const expansioncard_ops_t icside_ops_arcin_v6 = {
@@ -230,43 +210,7 @@ static iftype_t __init icside_identifyif (struct expansion_card *ec)
 	return iftype;
 }
 
-/*
- * Handle routing of interrupts.  This is called before
- * we write a command to the drive.
- */
-static void icside_maskproc(ide_drive_t *drive, int mask)
-{
-	ide_hwif_t *hwif = HWIF(drive);
-	struct icside_state *state = hwif->hw.priv;
-	unsigned long flags;
-
-	local_irq_save(flags);
-
-	state->channel = hwif->channel;
-
-	if (state->enabled && !mask) {
-		switch (hwif->channel) {
-		case 0:
-			outb(0, state->irq_port + ICS_ARCIN_V6_INTROFFSET_1);
-			inb(state->irq_port + ICS_ARCIN_V6_INTROFFSET_2);
-			break;
-		case 1:
-			outb(0, state->irq_port + ICS_ARCIN_V6_INTROFFSET_2);
-			inb(state->irq_port + ICS_ARCIN_V6_INTROFFSET_1);
-			break;
-		}
-	} else {
-		inb(state->irq_port + ICS_ARCIN_V6_INTROFFSET_2);
-		inb(state->irq_port + ICS_ARCIN_V6_INTROFFSET_1);
-	}
-
-	local_irq_restore(flags);
-}
-
 #ifdef CONFIG_BLK_DEV_IDEDMA_ICS
-
-static int icside_dmaproc(ide_dma_action_t func, ide_drive_t *drive);
-
 /*
  * SG-DMA support.
  *
@@ -279,136 +223,99 @@ static int icside_dmaproc(ide_dma_action_t func, ide_drive_t *drive);
 #define NR_ENTRIES 256
 #define TABLE_SIZE (NR_ENTRIES * 8)
 
-static int icside_build_dmatable(ide_drive_t *drive, int dma_mode)
+static int ide_build_sglist(ide_hwif_t *hwif, struct request *rq)
 {
-	ide_hwif_t *hwif = HWIF(drive);
-	struct request *rq = HWGROUP(drive)->rq;
 	struct buffer_head *bh;
 	struct scatterlist *sg = hwif->sg_table;
 	int nents = 0;
 
-	bh = rq->bh;
-	do {
-		char *virt_addr;
-
-		memset(sg, 0, sizeof(*sg));
-		sg->address = virt_addr = bh->b_data;
-
-		do {
-			virt_addr += bh->b_size;
-
-			bh = bh->b_reqnext;
-			if (bh == NULL)
-				break;
-
-		} while (virt_addr == bh->b_data);
-
-		sg->length = virt_addr - (char *)sg->address;
-		sg++;
-		nents++;
-	} while (bh != NULL);
-
-	if (dma_mode == DMA_MODE_READ)
+	if (rq->cmd == READ)
 		hwif->sg_dma_direction = PCI_DMA_FROMDEVICE;
 	else
 		hwif->sg_dma_direction = PCI_DMA_TODEVICE;
+	bh = rq->bh;
+	do {
+		unsigned char *virt_addr = bh->b_data;
+		unsigned int size = bh->b_size;
 
-	hwif->sg_nents = pci_map_sg(NULL, hwif->sg_table, nents,
-				    hwif->sg_dma_direction);
+		while ((bh = bh->b_reqnext) != NULL) {
+			if ((virt_addr + size) != (unsigned char *)bh->b_data)
+				break;
+			size += bh->b_size;
+		}
+		memset(&sg[nents], 0, sizeof(*sg));
+		sg[nents].address = virt_addr;
+		sg[nents].length = size;
+		nents++;
+	} while (bh != NULL);
 
-	return hwif->sg_nents;
+	return pci_map_sg(NULL, sg, nents, hwif->sg_dma_direction);
+}
+
+static int
+icside_build_dmatable(ide_drive_t *drive, int reading)
+{
+	return HWIF(drive)->sg_nents = ide_build_sglist(HWIF(drive), HWGROUP(drive)->rq);
 }
 
 /* Teardown mappings after DMA has completed.  */
-static inline void icside_destroy_dmatable(ide_hwif_t *hwif)
+static void icside_destroy_dmatable(ide_drive_t *drive)
 {
-	pci_unmap_sg(NULL, hwif->sg_table, hwif->sg_nents,
-		     hwif->sg_dma_direction);
+	struct scatterlist *sg = HWIF(drive)->sg_table;
+	int nents = HWIF(drive)->sg_nents;
+
+	pci_unmap_sg(NULL, sg, nents, HWIF(drive)->sg_dma_direction);
 }
 
-/*
- * Configure the IOMD to give the appropriate timings for the transfer
- * mode being requested.  We take the advice of the ATA standards, and
- * calculate the cycle time based on the transfer mode, and the EIDE
- * MW DMA specs that the drive provides in the IDENTIFY command.
- *
- * We have the following IOMD DMA modes to choose from:
- *
- *	Type	Active		Recovery	Cycle
- *	A	250 (250)	312 (550)	562 (800)
- *	B	187		250		437
- *	C	125 (125)	125 (375)	250 (500)
- *	D	62		125		187
- *
- * (figures in brackets are actual measured timings)
- *
- * However, we also need to take care of the read/write active and
- * recovery timings:
- *
- *			Read	Write
- *  	Mode	Active	-- Recovery --	Cycle	IOMD type
- *	MW0	215	50	215	480	A
- *	MW1	80	50	50	150	C
- *	MW2	70	25	25	120	C
- */
-static int icside_speedproc(ide_drive_t *drive, byte xfer_mode)
+static int
+icside_config_if(ide_drive_t *drive, int xfer_mode)
 {
 	int func = ide_dma_off;
-	int cycle_time = 0, use_dma_info = 0;
-
-	/*
-	 * Limit the transfer speed to MW_DMA_2.
-	 */
-	if (xfer_mode > XFER_MW_DMA_2)
-		xfer_mode = XFER_MW_DMA_2;
 
 	switch (xfer_mode) {
 	case XFER_MW_DMA_2:
-		cycle_time = 250;
-		use_dma_info = 1;
-		break;
-	case XFER_MW_DMA_1:
-		cycle_time = 250;
-		use_dma_info = 1;
-		break;
-	case XFER_MW_DMA_0:
-		cycle_time = 480;
+		/*
+		 * The cycle time is limited to 250ns by the r/w
+		 * pulse width (90ns), however we should still
+		 * have a maximum burst transfer rate of 8MB/s.
+		 */
+		drive->drive_data = 250;
 		break;
 
-	case XFER_SW_DMA_2:
-	case XFER_SW_DMA_1:
-	case XFER_SW_DMA_0:
-		cycle_time = 480;
+	case XFER_MW_DMA_1:
+		drive->drive_data = 250;
+		break;
+
+	case XFER_MW_DMA_0:
+		drive->drive_data = 480;
 		break;
 
 	default:
-		func = ide_dma_off;
+		drive->drive_data = 0;
 		break;
 	}
 
-	/*
-	 * If we're going to be doing MW_DMA_1 or MW_DMA_2, we should
-	 * take care to note the values in the ID...
-	 */
-	if (use_dma_info && drive->id->eide_dma_time > cycle_time)
-		cycle_time = drive->id->eide_dma_time;
+	if (!drive->init_speed)
+		drive->init_speed = (byte) xfer_mode;
 
-	drive->drive_data = cycle_time;
-
-	if (cycle_time && ide_config_drive_speed(drive, xfer_mode) == 0)
+	if (drive->drive_data &&
+	    ide_config_drive_speed(drive, (byte) xfer_mode) == 0)
 		func = ide_dma_on;
 	else
 		drive->drive_data = 480;
 
-	if (!drive->init_speed)
-		drive->init_speed = xfer_mode;
-	else if (cycle_time)
-		printk("%s: %s selected (peak %dMB/s)\n", drive->name,
-			ide_xfer_verbose(xfer_mode), 2000 / drive->drive_data);
+	printk("%s: %s selected (peak %dMB/s)\n", drive->name,
+		ide_xfer_verbose(xfer_mode), 2000 / drive->drive_data);
 
-	drive->current_speed = xfer_mode;
+	drive->current_speed = (byte) xfer_mode;
 
 	return func;
+}
+
+static int
+icside_set_speed(ide_drive_t *drive, byte speed)
+{
+	return icside_config_if(drive, speed);
 }
 
 /*
@@ -416,24 +323,19 @@ static int icside_speedproc(ide_drive_t *drive, byte xfer_mode)
  */
 static ide_startstop_t icside_dmaintr(ide_drive_t *drive)
 {
+	int i;
 	byte stat, dma_stat;
 
-	dma_stat = icside_dmaproc(ide_dma_end, drive);
-
-	/*
-	 * Verify the drive status
-	 */
-	stat = GET_STAT();
+	dma_stat = HWIF(drive)->dmaproc(ide_dma_end, drive);
+	stat = GET_STAT();			/* get drive status */
 	if (OK_STAT(stat,DRIVE_READY,drive->bad_wstat|DRQ_STAT)) {
 		if (!dma_stat) {
 			struct request *rq = HWGROUP(drive)->rq;
-			int i;
-
+			rq = HWGROUP(drive)->rq;
 			for (i = rq->nr_sectors; i > 0;) {
 				i -= rq->current_nr_sectors;
 				ide_end_request(1, HWGROUP(drive));
 			}
-
 			return ide_stopped;
 		}
 		printk("%s: dma_intr: bad DMA status (dma_stat=%x)\n", 
@@ -497,8 +399,7 @@ static struct drive_list_entry drive_blacklist [] = {
 	{ NULL,					0		}
 };
 
-static int
-in_drive_list(struct hd_driveid *id, struct drive_list_entry *drive_table)
+static int in_drive_list(struct hd_driveid *id, struct drive_list_entry * drive_table)
 {
 	for ( ; drive_table->id_model ; drive_table++)
 		if ((!strcmp(drive_table->id_model, id->model)) &&
@@ -508,23 +409,28 @@ in_drive_list(struct hd_driveid *id, struct drive_list_entry *drive_table)
 	return 0;
 }
 
-static int icside_check_drive_lists(ide_drive_t *drive, ide_dma_action_t func)
+/*
+ *  For both Blacklisted and Whitelisted drives.
+ *  This is setup to be called as an extern for future support
+ *  to other special driver code.
+ */
+static int check_drive_lists(ide_drive_t *drive, int good_bad)
 {
 	struct hd_driveid *id = drive->id;
-	int found;
 
-	if (func == ide_dma_good_drive) {
-		found = in_drive_list(id, drive_whitelist);
+	if (good_bad) {
+		return in_drive_list(id, drive_whitelist);
 	} else {
-		found = in_drive_list(id, drive_blacklist);
-		if (found)
-			printk("%s: Disabling DMA for %s (blacklisted)\n",
-				drive->name, id->model);
+		int blacklist = in_drive_list(id, drive_blacklist);
+		if (blacklist)
+			printk("%s: Disabling DMA for %s\n", drive->name, id->model);
+		return(blacklist);
 	}
-	return found;
+	return 0;
 }
 
-static int icside_dma_check(ide_drive_t *drive)
+static int
+icside_dma_check(ide_drive_t *drive)
 {
 	struct hd_driveid *id = drive->id;
 	ide_hwif_t *hwif = HWIF(drive);
@@ -538,8 +444,10 @@ static int icside_dma_check(ide_drive_t *drive)
 	/*
 	 * Consult the list of known "bad" drives
 	 */
-	if (icside_check_drive_lists(drive, ide_dma_bad_drive))
+	if (check_drive_lists(drive, 0)) {
+		func = ide_dma_off;
 		goto out;
+	}
 
 	/*
 	 * Enable DMA on any drive that has multiword DMA
@@ -561,7 +469,7 @@ static int icside_dma_check(ide_drive_t *drive)
 	/*
 	 * Consult the list of known "good" drives
 	 */
-	if (icside_check_drive_lists(drive, ide_dma_good_drive)) {
+	if (check_drive_lists(drive, 1)) {
 		if (id->eide_dma_time > 150)
 			goto out;
 		xfer_mode = XFER_MW_DMA_1;
@@ -569,24 +477,23 @@ static int icside_dma_check(ide_drive_t *drive)
 	}
 
 out:
-	func = icside_speedproc(drive, xfer_mode);
+	func = icside_config_if(drive, xfer_mode);
 
-	return icside_dmaproc(func, drive);
+	return hwif->dmaproc(func, drive);
 }
 
-static int icside_dma_verbose(ide_drive_t *drive)
+static int
+icside_dma_verbose(ide_drive_t *drive)
 {
-	printk(", %s (peak %dMB/s)",
-		ide_xfer_verbose(drive->current_speed),
-		2000 / drive->drive_data);
+	printk(", DMA");
 	return 1;
 }
 
-static int icside_dmaproc(ide_dma_action_t func, ide_drive_t *drive)
+static int
+icside_dmaproc(ide_dma_action_t func, ide_drive_t *drive)
 {
 	ide_hwif_t *hwif = HWIF(drive);
-	struct icside_state *state = hwif->hw.priv;
-	int count, dma_mode = DMA_MODE_READ;
+	int count, reading = 0;
 
 	switch (func) {
 	case ide_dma_off:
@@ -601,39 +508,35 @@ static int icside_dmaproc(ide_dma_action_t func, ide_drive_t *drive)
 	case ide_dma_check:
 		return icside_dma_check(drive);
 
-	case ide_dma_write:
-		dma_mode = DMA_MODE_WRITE;
 	case ide_dma_read:
-		count = icside_build_dmatable(drive, dma_mode);
+		reading = 1;
+	case ide_dma_write:
+		count = icside_build_dmatable(drive, reading);
 		if (!count)
 			return 1;
 		disable_dma(hwif->hw.dma);
 
-		/*
-		 * Ensure that we have the right interrupt routed.
-		 */
-		icside_maskproc(drive, 0);
-
-		/*
-		 * Route the DMA signals to to the correct interface.
+		/* Route the DMA signals to
+		 * to the correct interface.
 		 */
 		outb(hwif->select_data, hwif->config_data);
 
-		/*
-		 * Select the correct timing for this drive.
+		/* Select the correct timing
+		 * for this drive
 		 */
 		set_dma_speed(hwif->hw.dma, drive->drive_data);
+
 		set_dma_sg(hwif->hw.dma, HWIF(drive)->sg_table, count);
-		set_dma_mode(hwif->hw.dma, dma_mode);
+		set_dma_mode(hwif->hw.dma, reading ? DMA_MODE_READ
+			     : DMA_MODE_WRITE);
 
 		drive->waiting_for_dma = 1;
 		if (drive->media != ide_disk)
 			return 0;
 
 		ide_set_handler(drive, &icside_dmaintr, WAIT_CMD, NULL);
-		OUT_BYTE(dma_mode == DMA_MODE_READ ?
-			 WIN_READDMA : WIN_WRITEDMA, IDE_COMMAND_REG);
-		/*FALLTHROUGH*/
+		OUT_BYTE(reading ? WIN_READDMA : WIN_WRITEDMA,
+			 IDE_COMMAND_REG);
 
 	case ide_dma_begin:
 		enable_dma(hwif->hw.dma);
@@ -642,23 +545,19 @@ static int icside_dmaproc(ide_dma_action_t func, ide_drive_t *drive)
 	case ide_dma_end:
 		drive->waiting_for_dma = 0;
 		disable_dma(hwif->hw.dma);
-		icside_destroy_dmatable(hwif);
+		icside_destroy_dmatable(drive);
 		return get_dma_residue(hwif->hw.dma) != 0;
 
 	case ide_dma_test_irq:
-		return inb(state->irq_port +
-			(hwif->channel ?
-				ICS_ARCIN_V6_INTRSTAT_2 :
-				ICS_ARCIN_V6_INTRSTAT_1)) & 1;
+		return inb((unsigned long)hwif->hw.priv) & 1;
 
 	case ide_dma_bad_drive:
 	case ide_dma_good_drive:
-		return icside_check_drive_lists(drive, func);
+		return check_drive_lists(drive, (func == ide_dma_good_drive));
 
 	case ide_dma_verbose:
 		return icside_dma_verbose(drive);
 
-	case ide_dma_lostirq:
 	case ide_dma_timeout:
 	default:
 		printk("icside_dmaproc: unsupported %s func: %d\n",
@@ -667,8 +566,11 @@ static int icside_dmaproc(ide_dma_action_t func, ide_drive_t *drive)
 	return 1;
 }
 
-static int icside_setup_dma(ide_hwif_t *hwif, int autodma)
+static int
+icside_setup_dma(ide_hwif_t *hwif, int autodma)
 {
+	printk("    %s: SG-DMA", hwif->name);
+
 	hwif->sg_table = kmalloc(sizeof(struct scatterlist) * NR_ENTRIES,
 				 GFP_KERNEL);
 	if (!hwif->sg_table)
@@ -676,9 +578,12 @@ static int icside_setup_dma(ide_hwif_t *hwif, int autodma)
 
 	hwif->dmatable_cpu = NULL;
 	hwif->dmatable_dma = 0;
-	hwif->speedproc    = icside_speedproc;
-	hwif->dmaproc      = icside_dmaproc;
-	hwif->autodma      = autodma;
+	hwif->speedproc = icside_set_speed;
+	hwif->dmaproc = icside_dmaproc;
+	hwif->autodma = autodma;
+
+	printk(" capable%s\n", autodma ?
+		", auto-enable" : "");
 
 	return 1;
 
@@ -686,18 +591,10 @@ failed:
 	printk(" -- ERROR, unable to allocate DMA table\n");
 	return 0;
 }
-
-int ide_release_dma(ide_hwif_t *hwif)
-{
-	if (hwif->sg_table) {
-		kfree(hwif->sg_table);
-		hwif->sg_table = NULL;
-	}
-	return 1;
-}
 #endif
 
-static ide_hwif_t *icside_find_hwif(unsigned long dataport)
+static ide_hwif_t *
+icside_find_hwif(unsigned long dataport)
 {
 	ide_hwif_t *hwif;
 	int index;
@@ -714,7 +611,7 @@ static ide_hwif_t *icside_find_hwif(unsigned long dataport)
 			goto found;
 	}
 
-	hwif = NULL;
+	return NULL;
 found:
 	return hwif;
 }
@@ -738,11 +635,11 @@ icside_setup(unsigned long base, struct cardinfo *info, int irq)
 		}
 		hwif->hw.io_ports[IDE_CONTROL_OFFSET] = base + info->ctrloffset;
 		hwif->io_ports[IDE_CONTROL_OFFSET] = base + info->ctrloffset;
-		hwif->hw.irq	 = irq;
-		hwif->irq	 = irq;
-		hwif->hw.dma	 = NO_DMA;
-		hwif->noprobe	 = 0;
-		hwif->chipset	 = ide_acorn;
+		hwif->hw.irq  = irq;
+		hwif->irq     = irq;
+		hwif->hw.dma  = NO_DMA;
+		hwif->noprobe = 0;
+		hwif->chipset = ide_acorn;
 	}
 
 	return hwif;
@@ -767,15 +664,14 @@ static int __init icside_register_v5(struct expansion_card *ec, int autodma)
 
 	hwif = icside_setup(slot_port, &icside_cardinfo_v5, ec->irq);
 
-	return hwif ? 0 : -ENODEV;
+	return hwif ? 0 : -1;
 }
 
 static int __init icside_register_v6(struct expansion_card *ec, int autodma)
 {
 	unsigned long slot_port, port;
-	struct icside_state *state;
 	ide_hwif_t *hwif, *mate;
-	unsigned int sel = 0;
+	int sel = 0;
 
 	slot_port = ecard_address(ec, ECARD_IOC, ECARD_FAST);
 	port      = ecard_address(ec, ECARD_EASI, ECARD_FAST);
@@ -787,57 +683,45 @@ static int __init icside_register_v6(struct expansion_card *ec, int autodma)
 
 	outb(sel, slot_port);
 
+	ec->irq_data = (void *)port;
+	ec->ops      = (expansioncard_ops_t *)&icside_ops_arcin_v6;
+
 	/*
 	 * Be on the safe side - disable interrupts
 	 */
 	inb(port + ICS_ARCIN_V6_INTROFFSET_1);
 	inb(port + ICS_ARCIN_V6_INTROFFSET_2);
 
-	/*
-	 * Find and register the interfaces.
-	 */
 	hwif = icside_setup(port, &icside_cardinfo_v6_1, ec->irq);
 	mate = icside_setup(port, &icside_cardinfo_v6_2, ec->irq);
 
-	if (!hwif || !mate)
-		return -ENODEV;
-
-	state = kmalloc(sizeof(struct icside_state), GFP_KERNEL);
-	if (!state)
-		return -ENOMEM;
-
-	state->channel    = 0;
-	state->enabled    = 0;
-	state->irq_port   = port;
-
-	ec->irq_data      = state;
-	ec->ops           = (expansioncard_ops_t *)&icside_ops_arcin_v6;
-
-	hwif->maskproc    = icside_maskproc;
-	hwif->channel     = 0;
-	hwif->hw.priv     = state;
-	hwif->mate        = mate;
-	hwif->serialized  = 1;
-	hwif->config_data = slot_port;
-	hwif->select_data = sel;
-	hwif->hw.dma      = ec->dma;
-
-	mate->maskproc    = icside_maskproc;
-	mate->channel     = 1;
-	mate->hw.priv     = state;
-	mate->mate        = hwif;
-	mate->serialized  = 1;
-	mate->config_data = slot_port;
-	mate->select_data = sel | 1;
-	mate->hw.dma      = ec->dma;
-
 #ifdef CONFIG_BLK_DEV_IDEDMA_ICS
-	if (ec->dma != NO_DMA && !request_dma(ec->dma, hwif->name)) {
-		icside_setup_dma(hwif, autodma);
-		icside_setup_dma(mate, autodma);
+	if (ec->dma != NO_DMA) {
+		if (request_dma(ec->dma, hwif->name))
+			goto no_dma;
+
+		if (hwif) {
+			hwif->config_data = slot_port;
+			hwif->select_data = sel;
+			hwif->hw.dma  = ec->dma;
+			hwif->hw.priv = (void *)
+					(port + ICS_ARCIN_V6_INTRSTAT_1);
+			hwif->channel = 0;
+			icside_setup_dma(hwif, autodma);
+		}
+		if (mate) {
+			mate->config_data = slot_port;
+			mate->select_data = sel | 1;
+			mate->hw.dma  = ec->dma;
+			mate->hw.priv = (void *)
+					(port + ICS_ARCIN_V6_INTRSTAT_2);
+			mate->channel = 1;
+			icside_setup_dma(mate, autodma);
+		}
 	}
+no_dma:
 #endif
-	return 0;
+	return hwif || mate ? 0 : -1;
 }
 
 int __init icside_init(void)

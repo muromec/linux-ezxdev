@@ -77,7 +77,7 @@
 
 extern char *ide_dmafunc_verbose(ide_dma_action_t dmafunc);
 
-static const char *quirk_drives[] = {
+const char *quirk_drives[] = {
 	"QUANTUM FIREBALLlct08 08",
 	"QUANTUM FIREBALLP KA6.4",
 	"QUANTUM FIREBALLP LM20.4",
@@ -85,7 +85,7 @@ static const char *quirk_drives[] = {
         NULL
 };
 
-static const char *bad_ata100_5[] = {
+const char *bad_ata100_5[] = {
 	"IBM-DTLA-307075",
 	"IBM-DTLA-307060",
 	"IBM-DTLA-307045",
@@ -104,7 +104,7 @@ static const char *bad_ata100_5[] = {
 	NULL
 };
 
-static const char *bad_ata66_4[] = {
+const char *bad_ata66_4[] = {
 	"IBM-DTLA-307075",
 	"IBM-DTLA-307060",
 	"IBM-DTLA-307045",
@@ -123,12 +123,12 @@ static const char *bad_ata66_4[] = {
 	NULL
 };
 
-static const char *bad_ata66_3[] = {
+const char *bad_ata66_3[] = {
 	"WDC AC310200R",
 	NULL
 };
 
-static const char *bad_ata33[] = {
+const char *bad_ata33[] = {
 	"Maxtor 92720U8", "Maxtor 92040U6", "Maxtor 91360U4", "Maxtor 91020U3", "Maxtor 90845U3", "Maxtor 90650U2",
 	"Maxtor 91360D8", "Maxtor 91190D7", "Maxtor 91020D6", "Maxtor 90845D5", "Maxtor 90680D4", "Maxtor 90510D3", "Maxtor 90340D2",
 	"Maxtor 91152D8", "Maxtor 91008D7", "Maxtor 90845D6", "Maxtor 90840D6", "Maxtor 90720D5", "Maxtor 90648D5", "Maxtor 90576D4",
@@ -228,7 +228,7 @@ struct chipset_bus_clock_list_entry twenty_five_base [] = {
 
 #if 1
 /* these are the current (4 sep 2001) timings from highpoint */
-static struct chipset_bus_clock_list_entry thirty_three_base_hpt370[] = {
+struct chipset_bus_clock_list_entry thirty_three_base_hpt370[] = {
         {       XFER_UDMA_5,    0x12446231      },
         {       XFER_UDMA_4,    0x12446231      },
         {       XFER_UDMA_3,    0x126c6231      },
@@ -249,7 +249,7 @@ static struct chipset_bus_clock_list_entry thirty_three_base_hpt370[] = {
 };
 
 /* 2x 33MHz timings */
-static struct chipset_bus_clock_list_entry sixty_six_base_hpt370[] = {
+struct chipset_bus_clock_list_entry sixty_six_base_hpt370[] = {
 	{       XFER_UDMA_5,    0x1488e673       },
 	{       XFER_UDMA_4,    0x1488e673       },
 	{       XFER_UDMA_3,    0x1498e673       },
@@ -270,7 +270,7 @@ static struct chipset_bus_clock_list_entry sixty_six_base_hpt370[] = {
 };
 #else
 /* from highpoint documentation. these are old values */
-static struct chipset_bus_clock_list_entry thirty_three_base_hpt370[] = {
+struct chipset_bus_clock_list_entry thirty_three_base_hpt370[] = {
 	{	XFER_UDMA_5,	0x16454e31	},
 	{	XFER_UDMA_4,	0x16454e31	},
 	{	XFER_UDMA_3,	0x166d4e31	},
@@ -290,7 +290,7 @@ static struct chipset_bus_clock_list_entry thirty_three_base_hpt370[] = {
 	{	0,		0x06514e57	}
 };
 
-static struct chipset_bus_clock_list_entry sixty_six_base_hpt370[] = {
+struct chipset_bus_clock_list_entry sixty_six_base_hpt370[] = {
 	{       XFER_UDMA_5,    0x14846231      },
 	{       XFER_UDMA_4,    0x14886231      },
 	{       XFER_UDMA_3,    0x148c6231      },
@@ -311,7 +311,7 @@ static struct chipset_bus_clock_list_entry sixty_six_base_hpt370[] = {
 };
 #endif
 
-static struct chipset_bus_clock_list_entry fifty_base_hpt370[] = {
+struct chipset_bus_clock_list_entry fifty_base_hpt370[] = {
 	{       XFER_UDMA_5,    0x12848242      },
 	{       XFER_UDMA_4,    0x12ac8242      },
 	{       XFER_UDMA_3,    0x128c8242      },
@@ -710,12 +710,12 @@ static int config_chipset_for_dma (ide_drive_t *drive)
 	return rval;
 }
 
-static int hpt3xx_quirkproc (ide_drive_t *drive)
+int hpt3xx_quirkproc (ide_drive_t *drive)
 {
 	return ((int) check_in_drive_lists(drive, quirk_drives));
 }
 
-static void hpt3xx_intrproc (ide_drive_t *drive)
+void hpt3xx_intrproc (ide_drive_t *drive)
 {
 	if (drive->quirk_list) {
 		/* drives in the quirk_list may not like intr setups/cleanups */
@@ -724,7 +724,7 @@ static void hpt3xx_intrproc (ide_drive_t *drive)
 	}
 }
 
-static void hpt3xx_maskproc (ide_drive_t *drive, int mask)
+void hpt3xx_maskproc (ide_drive_t *drive, int mask)
 {
 	if (drive->quirk_list) {
 		if (pci_rev_check_hpt3xx(HWIF(drive)->pci_dev)) {
@@ -800,7 +800,7 @@ no_dma_set:
  * This is specific to the HPT366 UDMA bios chipset
  * by HighPoint|Triones Technologies, Inc.
  */
-static int hpt366_dmaproc (ide_dma_action_t func, ide_drive_t *drive)
+int hpt366_dmaproc (ide_dma_action_t func, ide_drive_t *drive)
 {
 	byte reg50h = 0, reg52h = 0, reg5ah = 0, dma_stat = 0;
 	unsigned long dma_base = HWIF(drive)->dma_base;
@@ -836,7 +836,7 @@ static int hpt366_dmaproc (ide_dma_action_t func, ide_drive_t *drive)
 	return ide_dmaproc(func, drive);	/* use standard DMA stuff */
 }
 
-static int hpt370_dmaproc (ide_dma_action_t func, ide_drive_t *drive)
+int hpt370_dmaproc (ide_dma_action_t func, ide_drive_t *drive)
 {
 	ide_hwif_t *hwif = HWIF(drive);
 	unsigned long dma_base = hwif->dma_base;
@@ -896,7 +896,7 @@ static int hpt370_dmaproc (ide_dma_action_t func, ide_drive_t *drive)
  * this has been a long time ago Thu Jul 27 16:40:57 2000 was the patch date
  * HOTSWAP ATA Infrastructure.
  */
-static void hpt3xx_reset (ide_drive_t *drive)
+void hpt3xx_reset (ide_drive_t *drive)
 {
 #if 0
 	unsigned long high_16	= pci_resource_start(HWIF(drive)->pci_dev, 4);

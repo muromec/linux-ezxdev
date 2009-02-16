@@ -501,11 +501,7 @@ static void probe_hwif (ide_hwif_t *hwif)
 	unsigned int unit;
 	unsigned long flags;
 
-#if 1 /* MVL */
-	if (hwif->noprobe || hwif->forcenoprobe)
-#else
 	if (hwif->noprobe)
-#endif
 		return;
 #ifdef CONFIG_BLK_DEV_IDE
 	if (hwif->io_ports[IDE_DATA_OFFSET] == HD_DATA) {

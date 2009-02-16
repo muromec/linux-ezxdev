@@ -718,7 +718,7 @@ dropping:{
 	/*
 	 * Don't print this message too many times...
 	 */
-	if (time_after(jiffies, last_warned + 10 * HZ)) {
+	if (jiffies - last_warned > 30 * HZ) {
 		last_warned = jiffies;
 		printk("%s: memory squeeze, dropping packet.\n", dev->name);
 	}

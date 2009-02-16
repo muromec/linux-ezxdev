@@ -786,7 +786,6 @@ static void yenta_close(pci_socket_t *sock)
 
 #include "ti113x.h"
 #include "ricoh.h"
-#include "nec.h"
 
 /*
  * Different cardbus controllers have slightly different
@@ -819,9 +818,7 @@ static struct cardbus_override_struct {
 	{ PD(RICOH,RL5C466), &ricoh_ops },
 	{ PD(RICOH,RL5C475), &ricoh_ops },
 	{ PD(RICOH,RL5C476), &ricoh_ops },
-	{ PD(RICOH,RL5C478), &ricoh_ops },
-
-	{ PD(NEC,VRC4173_CARDU), &nec_ops }
+	{ PD(RICOH,RL5C478), &ricoh_ops }
 };
 
 #define NR_OVERRIDES (sizeof(cardbus_override)/sizeof(struct cardbus_override_struct))

@@ -36,8 +36,6 @@ if [ "$CONFIG_BLK_DEV_IDE" != "n" ]; then
    bool '  IDE Taskfile Access' CONFIG_IDE_TASK_IOCTL
 #   bool '  IDE Taskfile IO' CONFIG_IDE_TASKFILE_IO
 
-   dep_bool '  Preemptible IDE delays' CONFIG_IDE_PREEMPT $CONFIG_INSTANT_ON
-
    comment 'IDE chipset support/bugfixes'
    if [ "$CONFIG_BLK_DEV_IDE" != "n" ]; then
       dep_bool '  CMD640 chipset bugfix/support' CONFIG_BLK_DEV_CMD640 $CONFIG_X86
@@ -83,10 +81,6 @@ if [ "$CONFIG_BLK_DEV_IDE" != "n" ]; then
 	       dep_mbool '      IT8172 IDE Tuning support' CONFIG_IT8172_TUNING $CONFIG_BLK_DEV_IT8172 $CONFIG_IDEDMA_PCI_AUTO
 	    fi
 	    dep_bool '    NS87415 chipset support (EXPERIMENTAL)' CONFIG_BLK_DEV_NS87415 $CONFIG_BLK_DEV_IDEDMA_PCI $CONFIG_EXPERIMENTAL
-	    if [ "$CONFIG_MIPS_ITE8172" = "y" -o "$CONFIG_MIPS_IVR" = "y" ]; then
-	       dep_mbool '    IT8172 IDE support' CONFIG_BLK_DEV_IT8172 $CONFIG_BLK_DEV_IDEDMA_PCI
-	       dep_mbool '      IT8172 IDE Tuning support' CONFIG_IT8172_TUNING $CONFIG_BLK_DEV_IT8172 $CONFIG_IDEDMA_PCI_AUTO
-	    fi
 	    dep_bool '    OPTi 82C621 chipset enhanced support (EXPERIMENTAL)' CONFIG_BLK_DEV_OPTI621 $CONFIG_EXPERIMENTAL
 #	    dep_mbool '   Pacific Digital A-DMA support (EXPERIMENTAL)' CONFIG_BLK_DEV_PDC_ADMA $CONFIG_BLK_DEV_ADMA $CONFIG_IDEDMA_PCI_WIP $CONFIG_EXPERIMENTAL
 	    dep_bool '    PROMISE PDC202{46|62|65|67|68|69|70} support' CONFIG_BLK_DEV_PDC202XX $CONFIG_BLK_DEV_IDEDMA_PCI
@@ -100,7 +94,6 @@ if [ "$CONFIG_BLK_DEV_IDE" != "n" ]; then
 	    if [ "$CONFIG_PPC" = "y" -o "$CONFIG_ARM" = "y" ]; then
 	       bool '    Winbond SL82c105 support' CONFIG_BLK_DEV_SL82C105
 	    fi
-	    dep_bool '    ATI Xilleon IDE support' CONFIG_BLK_DEV_XILLEON $CONFIG_BLK_DEV_IDEDMA_PCI
          fi
       fi
       if [ "$CONFIG_ALL_PPC" = "y" ]; then
@@ -117,17 +110,6 @@ if [ "$CONFIG_BLK_DEV_IDE" != "n" ]; then
       if [ "$CONFIG_SIBYTE_SWARM" = "y" ]; then
 	 bool '  Broadcom SiByte onboard IDE support' CONFIG_BLK_DEV_IDE_SIBYTE
       fi
-
-      if [ "$CONFIG_REDWOOD_4" = "y" ] ; then
-	 bool '  STB3xxx IDE support ' CONFIG_BLK_DEV_REDWOOD_IDE
-      fi
-      if [ "$CONFIG_IBM_OCP" = "y" ]; then
-         bool '  IBM on-chip IDE' CONFIG_IBM_OCP_IDE
-      fi
-      if [ "$CONFIG_REDWOOD_6" = "y" ] ; then
-	 bool '  STBx25xx IDE support ' CONFIG_BLK_DEV_REDWOOD6_IDE
-      fi
-
       if [ "$CONFIG_ARCH_ACORN" = "y" ]; then
 	 dep_bool '    ICS IDE interface support' CONFIG_BLK_DEV_IDE_ICSIDE $CONFIG_ARCH_ACORN
 	 dep_bool '      ICS DMA support' CONFIG_BLK_DEV_IDEDMA_ICS $CONFIG_BLK_DEV_IDE_ICSIDE
@@ -147,9 +129,6 @@ if [ "$CONFIG_BLK_DEV_IDE" != "n" ]; then
       fi
       if [ "$CONFIG_MAC" = "y" ]; then
 	 dep_bool '  Macintosh Quadra/Powerbook IDE interface support' CONFIG_BLK_DEV_MAC_IDE $CONFIG_MAC
-      fi
-      if [ "$CONFIG_CPCI405" = "y" ]; then
-	 dep_bool '  CPCI-405 IDE interface support' CONFIG_BLK_DEV_CPCI405_IDE $CONFIG_CPCI405
       fi
       if [ "$CONFIG_Q40" = "y" ]; then
 	 dep_bool '  Q40/Q60 IDE interface support' CONFIG_BLK_DEV_Q40IDE $CONFIG_Q40
@@ -199,10 +178,7 @@ if [ "$CONFIG_BLK_DEV_IDEDMA_PCI" = "y" -o \
    bool '  IGNORE word93 Validation BITS' CONFIG_IDEDMA_IVB
 fi
 
-if [ "$CONFIG_BLK_DEV_TIVO" = "y"  -o \
-     "$CONFIG_BLK_DEV_REDWOOD_IDE" = "y" -o \
-     "$CONFIG_BLK_DEV_REDWOOD6_IDE" = "y" -o \
-     "$CONFIG_IBM_OCP_IDE" = "y" ]; then
+if [ "$CONFIG_BLK_DEV_TIVO" = "y" ]; then
   define_bool CONFIG_DMA_NONPCI y
 else
   define_bool CONFIG_DMA_NONPCI n
@@ -228,10 +204,7 @@ if [ "$CONFIG_IDE_CHIPSETS" = "y" -o \
      "$CONFIG_BLK_DEV_SLC90E66" = "y" -o \
      "$CONFIG_BLK_DEV_SL82C105" = "y" -o \
      "$CONFIG_BLK_DEV_VIA82CXXX" = "y" -o \
-     "$CONFIG_BLK_DEV_XILLEON" = "y" -o \
-     "$CONFIG_STB03xxx" = "y" -o \
-     "$CONFIG_BLK_DEV_MPC8xx_IDE" = "y" -o \
-     "$CONFIG_BLK_DEV_REDWOOD6_IDE" = "y" ]; then
+     "$CONFIG_BLK_DEV_MPC8xx_IDE" = "y" ]; then
    define_bool CONFIG_BLK_DEV_IDE_MODES y
 else
    define_bool CONFIG_BLK_DEV_IDE_MODES n

@@ -42,10 +42,6 @@ dep_mbool '       SCSI tape drive support for Smart Array 5xxx' CONFIG_CISS_SCSI
 dep_tristate 'Mylex DAC960/DAC1100 PCI RAID Controller support' CONFIG_BLK_DEV_DAC960 $CONFIG_PCI
 dep_tristate 'Micro Memory MM5415 Battery Backed RAM support (EXPERIMENTAL)' CONFIG_BLK_DEV_UMEM $CONFIG_PCI $CONFIG_EXPERIMENTAL
 
-if [ "$CONFIG_XILINX_OCP" = "y" ]; then
-   tristate 'Xilinx on-chip System ACE' CONFIG_XILINX_SYSACE
-fi
-
 tristate 'Loopback device support' CONFIG_BLK_DEV_LOOP
 dep_tristate 'Network block device support' CONFIG_BLK_DEV_NBD $CONFIG_NET
 

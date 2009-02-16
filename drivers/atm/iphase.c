@@ -3,7 +3,7 @@
                     Author: Peter Wang  <pwang@iphase.com>            
 		   Some fixes: Arnaldo Carvalho de Melo <acme@conectiva.com.br>
                    Interphase Corporation  <www.iphase.com>           
-                               Version: 1.4                           
+                               Version: 1.0                           
 *******************************************************************************
       
       This software may be used and distributed according to the terms
@@ -35,17 +35,6 @@
           (i)Chip adapter cards including x575 (155M OC3 and UTP155), x525
           (25M UTP25) and x531 (DS3 and E3).
           Add SMP support.
-
-	  V1.3
-	  06dec01 - danny waldron
-		fix the logic dealing with phy_type to use 'equals' logic instead of 
-		'and' logic because some phy type values share bits. In this case, 
-		single mode did not work because the code was falling into the E3 path.
-
-	  V1.4
-	  07dec01 - danny waldron
-		return resources if the init fails to read the mac address
-		or fails to reset
 
       Support and updates available at: ftp://ftp.iphase.com/pub/atm
 
@@ -849,31 +838,25 @@ static void IaFrontEndIntr(IADEV *iadev) {
   u32 intr_status;
   u_int frmr_intr;
 
-	switch(iadev->phy_type) {
-		case FE_25MBIT_PHY:
-			mb25 = (ia_mb25_t*)iadev->phy;
-			iadev->carrier_detect =
-			Boolean(mb25->mb25_intr_status & MB25_IS_GSB);
-		break;
-		case FE_DS3_PHY:
-			suni_pm7345 = (suni_pm7345_t *)iadev->phy;
-			/* clear FRMR interrupts */
-			frmr_intr   = suni_pm7345->suni_ds3_frm_intr_stat; 
-			iadev->carrier_detect =  
-			Boolean(!(suni_pm7345->suni_ds3_frm_stat & SUNI_DS3_LOSV));
-		break;
-		case FE_E3_PHY:
-			suni_pm7345 = (suni_pm7345_t *)iadev->phy;
-			frmr_intr   = suni_pm7345->suni_e3_frm_maint_intr_ind;
-			iadev->carrier_detect =
-			Boolean(!(suni_pm7345->suni_e3_frm_fram_intr_ind_stat&SUNI_E3_LOS));
-		break;
-		default:
-			suni = (IA_SUNI *)iadev->phy;
-			intr_status = suni->suni_rsop_status & 0xff;
-			iadev->carrier_detect =
-			Boolean(!(suni->suni_rsop_status & SUNI_LOSV));
-		break;
+  if(iadev->phy_type & FE_25MBIT_PHY) {
+     mb25 = (ia_mb25_t*)iadev->phy;
+     iadev->carrier_detect =  Boolean(mb25->mb25_intr_status & MB25_IS_GSB);
+  } else if (iadev->phy_type & FE_DS3_PHY) {
+     suni_pm7345 = (suni_pm7345_t *)iadev->phy;
+     /* clear FRMR interrupts */
+     frmr_intr   = suni_pm7345->suni_ds3_frm_intr_stat; 
+     iadev->carrier_detect =  
+           Boolean(!(suni_pm7345->suni_ds3_frm_stat & SUNI_DS3_LOSV));
+  } else if (iadev->phy_type & FE_E3_PHY ) {
+     suni_pm7345 = (suni_pm7345_t *)iadev->phy;
+     frmr_intr   = suni_pm7345->suni_e3_frm_maint_intr_ind;
+     iadev->carrier_detect =
+           Boolean(!(suni_pm7345->suni_e3_frm_fram_intr_ind_stat&SUNI_E3_LOS));
+  }
+  else { 
+     suni = (IA_SUNI *)iadev->phy;
+     intr_status = suni->suni_rsop_status & 0xff;
+     iadev->carrier_detect = Boolean(!(suni->suni_rsop_status & SUNI_LOSV));
   }
   if (iadev->carrier_detect)
     printk("IA: SUNI carrier detected\n");
@@ -900,8 +883,8 @@ void ia_mb25_init (IADEV *iadev)
 void ia_suni_pm7345_init (IADEV *iadev)
 {
    volatile suni_pm7345_t *suni_pm7345 = (suni_pm7345_t *)iadev->phy;
-	switch(iadev->phy_type) {
-		case FE_DS3_PHY:
+   if (iadev->phy_type & FE_DS3_PHY)
+   {
       iadev->carrier_detect = 
           Boolean(!(suni_pm7345->suni_ds3_frm_stat & SUNI_DS3_LOSV)); 
       suni_pm7345->suni_ds3_frm_intr_enbl = 0x17;
@@ -910,8 +893,9 @@ void ia_suni_pm7345_init (IADEV *iadev)
       suni_pm7345->suni_config = 0;
       suni_pm7345->suni_splr_cfg = 0;
       suni_pm7345->suni_splt_cfg = 0;
-		break;
-		default:
+   }
+   else 
+   {
       iadev->carrier_detect = 
           Boolean(!(suni_pm7345->suni_e3_frm_fram_intr_ind_stat & SUNI_E3_LOS));
       suni_pm7345->suni_e3_frm_fram_options = 0x4;
@@ -923,8 +907,7 @@ void ia_suni_pm7345_init (IADEV *iadev)
       suni_pm7345->suni_config = SUNI_PM7345_E3ENBL;
       suni_pm7345->suni_splr_cfg = 0x41;
       suni_pm7345->suni_splt_cfg = 0x41;
-		break;
-	}
+   } 
    /*
     * Enable RSOP loss of signal interrupt.
     */
@@ -980,7 +963,7 @@ void ia_suni_pm7345_init (IADEV *iadev)
 
 /***************************** IA_LIB END *****************************/
     
-/* debug utility */
+/* pwang_test debug utility */
 int tcnter = 0, rcnter = 0;
 void xdump( u_char*  cp, int  length, char*  prefix )
 {
@@ -1075,7 +1058,7 @@ static void rx_excp_rcvd(struct atm_dev *dev)
         // TODO: update exception stat
 	vci = readw(iadev->reass_ram+excpq_rd_ptr);  
 	error = readw(iadev->reass_ram+excpq_rd_ptr+2) & 0x0007;  
-        // test
+        // pwang_test
 	excpq_rd_ptr += 4;  
 	if (excpq_rd_ptr > (readw(iadev->reass_reg + EXCP_Q_ED_ADR)& 0xffff))  
  	    excpq_rd_ptr = readw(iadev->reass_reg + EXCP_Q_ST_ADR)& 0xffff;
@@ -1201,7 +1184,7 @@ static int rx_pkt(struct atm_dev *dev)
 	      goto out_free_desc;
         }
 	skb_put(skb,len);  
-        // test
+        // pwang_test
         ATM_SKB(skb)->vcc = vcc;
         ATM_SKB(skb)->iovcnt = 0;
         ATM_DESC(skb) = desc;        
@@ -1332,7 +1315,6 @@ static void rx_dle_intr(struct atm_dev *dev)
           vcc = ATM_SKB(skb)->vcc;
 	  if (!vcc) {
 	      printk("IA: null vcc\n");  
-              atomic_inc(&vcc->stats->rx_err);
               dev_kfree_skb_any(skb);
               goto INCR_DLE;
           }
@@ -1348,7 +1330,7 @@ static void rx_dle_intr(struct atm_dev *dev)
 #endif
              goto INCR_DLE;
            }
-          // get real pkt length  test
+          // get real pkt length  pwang_test
           trailer = (struct cpcs_trailer*)((u_char *)skb->data +
                                  skb->len - sizeof(*trailer));
           length =  swap(trailer->length);
@@ -1408,7 +1390,7 @@ static int open_rx(struct atm_vcc *vcc)
 	if (vcc->qos.rxtp.traffic_class == ATM_NONE) return 0;    
 	iadev = INPH_IA_DEV(vcc->dev);  
         if (vcc->qos.rxtp.traffic_class == ATM_ABR) {  
-           if (iadev->phy_type == FE_25MBIT_PHY) {
+           if (iadev->phy_type & FE_25MBIT_PHY) {
                printk("IA:  ABR not support\n");
                return -EINVAL; 
            }
@@ -1780,7 +1762,7 @@ static int open_tx(struct atm_vcc *vcc)
 	if (vcc->qos.txtp.traffic_class == ATM_NONE) return 0;  
 	iadev = INPH_IA_DEV(vcc->dev);  
         
-        if (iadev->phy_type == FE_25MBIT_PHY) {
+        if (iadev->phy_type & FE_25MBIT_PHY) {
            if (vcc->qos.txtp.traffic_class == ATM_ABR) {
                printk("IA:  ABR not support\n");
                return -EINVAL; 
@@ -1897,7 +1879,7 @@ static int open_tx(struct atm_vcc *vcc)
                                                       srv_p.pcr, srv_p.mcr);)
 		ia_open_abr_vc(iadev, &srv_p, vcc, 1);
 	} else if (vcc->qos.txtp.traffic_class == ATM_CBR) {
-                if (iadev->phy_type == FE_25MBIT_PHY) {
+                if (iadev->phy_type & FE_25MBIT_PHY) {
                     printk("IA:  CBR not support\n");
                     return -EINVAL; 
                 }
@@ -2154,11 +2136,8 @@ static int tx_init(struct atm_dev *dev)
 		memset((caddr_t)evc, 0, sizeof(*evc));  
                 iadev->testTable[i] = kmalloc(sizeof(struct testTable_t),
 						GFP_KERNEL);
-		if (!iadev->testTable[i]) {
-		        while (--i >= 0)
-			    kfree(iadev->testTable[i]);
+		if (!iadev->testTable[i])
 			return -ENOMEM;
-		}
               	iadev->testTable[i]->lastTime = 0;
  		iadev->testTable[i]->fract = 0;
                 iadev->testTable[i]->vc_status = VC_UBR;
@@ -2169,7 +2148,7 @@ static int tx_init(struct atm_dev *dev)
 	/* Other Initialization */  
 	  
 	/* Max Rate Register */  
-        if (iadev->phy_type == FE_25MBIT_PHY) {
+        if (iadev->phy_type & FE_25MBIT_PHY) {
 	   writew(RATE25, iadev->seg_reg+MAXRATE);  
 	   writew((UBR_EN | (0x23 << 2)), iadev->seg_reg+STPARMS);  
         }
@@ -2217,18 +2196,14 @@ static int tx_init(struct atm_dev *dev)
 	return 0;  
 }   
    
-#define FE_INT_CNT_MAX 8
 static void ia_int(int irq, void *dev_id, struct pt_regs *regs)  
 {  
    struct atm_dev *dev;  
    IADEV *iadev;  
    unsigned int status;  
-   int fe_int_cnt;
-   u32 ctrl_reg;
 
    dev = dev_id;  
    iadev = INPH_IA_DEV(dev);  
-   fe_int_cnt = 0;
    while( (status = readl(iadev->reg+IPHASE5575_BUS_STATUS_REG) & 0x7f))  
    { 
         IF_EVENT(printk("ia_int: status = 0x%x\n", status);) 
@@ -2257,30 +2232,8 @@ static void ia_int(int irq, void *dev_id, struct pt_regs *regs)
 	}  
 	if (status & (STAT_FEINT | STAT_ERRINT | STAT_MARKINT))  
 	{  
-           if (status & STAT_FEINT) {
+           if (status & STAT_FEINT) 
                IaFrontEndIntr(iadev);
-				fe_int_cnt++;
-				if(fe_int_cnt > FE_INT_CNT_MAX) {
-					printk("IA: Too many front end ints, masking them off\n");
-					printk("IA: Please check the adapter and cabling\n");
-					ctrl_reg = readl(iadev->reg+IPHASE5575_BUS_CONTROL_REG);  
-					ctrl_reg = (ctrl_reg & (CTRL_LED | CTRL_FE_RST))  
-								| CTRL_B8  
-								| CTRL_B16  
-								| CTRL_B32  
-								| CTRL_B48  
-								| CTRL_B64  
-								| CTRL_B128  
-								| CTRL_ERRMASK  
-								| CTRL_DLETMASK		/* shud be removed l8r */  
-								| CTRL_DLERMASK  
-								| CTRL_SEGMASK  
-								| CTRL_REASSMASK 	  
-								| CTRL_CSPREEMPT;  
-  
-       				writel(ctrl_reg, iadev->reg+IPHASE5575_BUS_CONTROL_REG);   
-				}
-	   }
 	}  
    }  
 }  
@@ -2583,11 +2536,11 @@ __initfunc(static int ia_start(struct atm_dev *dev))
 	else  
 		printk("IA: utopia,rev.%0x\n",phy);) 
 
-        if (iadev->phy_type == FE_25MBIT_PHY) {
+        if (iadev->phy_type &  FE_25MBIT_PHY) {
            ia_mb25_init(iadev);
            return 0;
         }
-        if ((iadev->phy_type == FE_DS3_PHY) || (iadev->phy_type == FE_E3_PHY)) {
+        if (iadev->phy_type & (FE_DS3_PHY | FE_E3_PHY)) {
            ia_suni_pm7345_init(iadev);
            return 0;
         }
@@ -2921,11 +2874,9 @@ static int ia_pkt_tx (struct atm_vcc *vcc, struct sk_buff *skb) {
         int desc;
         int comp_code;
         unsigned int addr;
-        int total_len;
+        int total_len, pad, last;
         struct cpcs_trailer *trailer;
         struct ia_vcc *iavcc;
-        int adjust_val, i;
-        char *data_ptr;
         iadev = INPH_IA_DEV(vcc->dev);  
         iavcc = INPH_IA_VCC(vcc);
         if (!iavcc->txing) {
@@ -2946,39 +2897,12 @@ static int ia_pkt_tx (struct atm_vcc *vcc, struct sk_buff *skb) {
           return 0;
         }
         if ((u32)skb->data & 3) {
-           adjust_val = ((u32)skb->data & 3);
-           if (skb_headroom(skb) >= adjust_val)
-           {
-              skb->data = (unsigned char *)((u32)skb->data - adjust_val);
-              skb->tail = (unsigned char *)((u32)skb->tail - adjust_val);
-
-              data_ptr = skb->data;
-              for (i = 0; i < skb->len; i++)
-              {
-                *data_ptr = *(char *)((u32)data_ptr + adjust_val);
-                 data_ptr++;
-              }
-           }
-           else if (skb_tailroom(skb) >= adjust_val)
-           {
-              skb->data = (unsigned char *)((u32)skb->data + adjust_val);
-              skb->tail = (unsigned char *)((u32)skb->tail + adjust_val);
-
-              data_ptr = skb->tail;
-              for (i = 0; i < skb->len; i++)
-              {
-                 *data_ptr = *(char *)((u32)data_ptr - adjust_val);
-                 data_ptr--;
-              }
-           }
-           else {
-              printk("Unable to fix misaligned buffer\n");
-              if (vcc->pop)
+           printk("Misaligned SKB\n");
+           if (vcc->pop)
                  vcc->pop(vcc, skb);
-              else
+           else
                  dev_kfree_skb_any(skb);
-              return 0;
-           }
+           return 0;
         }       
 	/* Get a descriptor number from our free descriptor queue  
 	   We get the descr number from the TCQ now, since I am using  
@@ -3031,7 +2955,10 @@ static int ia_pkt_tx (struct atm_vcc *vcc, struct sk_buff *skb) {
 	/* Figure out the exact length of the packet and padding required to 
            make it  aligned on a 48 byte boundary.  */
 	total_len = skb->len + sizeof(struct cpcs_trailer);  
-	total_len = ((total_len + 47) / 48) * 48;
+	last = total_len - (total_len/48)*48;  
+	pad = 48 - last;  
+	total_len = pad + total_len;  
+	IF_TX(printk("ia packet len:%d padding:%d\n", total_len, pad);)  
  
 	/* Put the packet in a tx buffer */   
 	if (!iadev->tx_buf[desc-1])  
@@ -3072,6 +2999,9 @@ static int ia_pkt_tx (struct atm_vcc *vcc, struct sk_buff *skb) {
 	/* wr_ptr->bytes = swap(total_len);	didn't seem to affect ?? */  
 	wr_ptr->bytes = skb->len;  
 
+        /* hw bug - DLEs of 0x2d, 0x2e, 0x2f cause DMA lockup */
+        if ((wr_ptr->bytes >> 2) == 0xb)
+           wr_ptr->bytes = 0x30;
 
 	wr_ptr->mode = TX_DLE_PSI; 
 	wr_ptr->prq_wr_ptr_data = 0;
