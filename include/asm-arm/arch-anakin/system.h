@@ -15,7 +15,8 @@
 #ifndef __ASM_ARCH_SYSTEM_H
 #define __ASM_ARCH_SYSTEM_H
 
-static inline void arch_idle(void)
+static inline void
+arch_idle(void)
 {
 }
 

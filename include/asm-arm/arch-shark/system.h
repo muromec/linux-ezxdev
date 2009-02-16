@@ -11,7 +11,7 @@
 static void arch_reset(char mode)
 {
 	short temp;
-	local_irq_disable();
+	cli();
 	/* Reset the Machine via pc[3] of the sequoia chipset */
 	outw(0x09,0x24);
 	temp=inw(0x26);
@@ -21,7 +21,7 @@ static void arch_reset(char mode)
 
 }
 
-static inline void arch_idle(void)
+static void arch_idle(void)
 {
 }
 

@@ -49,7 +49,7 @@ struct sh_machine_vector
 	void (*mv_writew)(unsigned short, unsigned long);
 	void (*mv_writel)(unsigned int, unsigned long);
 
-	void* (*mv_ioremap)(unsigned long offset, unsigned long size, ...);
+	void* (*mv_ioremap)(unsigned long offset, unsigned long size);
 	void (*mv_iounmap)(void *addr);
 
 	unsigned long (*mv_isa_port2addr)(unsigned long offset);
@@ -67,7 +67,6 @@ struct sh_machine_vector
 	int (*mv_rtc_settimeofday)(const struct timeval *tv);
 
 	unsigned int mv_hw_se : 1;
-	unsigned int mv_hw_shmse : 1;
 	unsigned int mv_hw_hp600 : 1;
 	unsigned int mv_hw_hp620 : 1;
 	unsigned int mv_hw_hp680 : 1;
@@ -86,7 +85,6 @@ extern struct sh_machine_vector sh_mv;
 /* Machine check macros */
 #ifdef CONFIG_SH_GENERIC
 #define MACH_SE		(sh_mv.mv_hw_se)
-#define MACH_SHMSE	(sh_mv.mv_hw_shmse)
 #define MACH_HP600	(sh_mv.mv_hw_hp600)
 #define MACH_HP620	(sh_mv.mv_hw_hp620)
 #define MACH_HP680	(sh_mv.mv_hw_hp680)
@@ -108,11 +106,6 @@ extern struct sh_machine_vector sh_mv;
 #  define MACH_7751SE		1
 # else
 #  define MACH_7751SE		0
-# endif
-# ifdef CONFIG_SH_MOBILE_SOLUTION_ENGINE
-#  define MACH_SHMSE 	        1
-# else
-#  define MACH_SHMSE		0
 # endif
 # ifdef CONFIG_SH_HP600
 #  define MACH_HP600		1

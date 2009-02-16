@@ -11,9 +11,26 @@
 #include <asm/hardware/iomd.h>
 #include <asm/io.h>
 
-static inline void arch_idle(void)
+static void arch_idle(void)
 {
-	cpu_do_idle();
+	unsigned long start_idle;
+
+	start_idle = jiffies;
+
+	do {
+		if (current->need_resched || hlt_counter)
+			goto slow_out;
+		cpu_do_idle(IDLE_WAIT_FAST);
+	} while (time_before(jiffies, start_idle + HZ/50));
+
+	cpu_do_idle(IDLE_CLOCK_SLOW);
+
+	while (!current->need_resched && !hlt_counter) {
+		cpu_do_idle(IDLE_WAIT_SLOW);
+	}
+
+	cpu_do_idle(IDLE_CLOCK_FAST);
+slow_out:
 }
 
 static inline void arch_reset(char mode)

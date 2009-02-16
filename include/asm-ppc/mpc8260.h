@@ -1,5 +1,5 @@
 /*
- * BK Id: SCCS/s.mpc8260.h 1.15 08/13/02 21:52:58 paulus
+ * BK Id: %F% %I% %G% %U% %#%
  */
 
 /* This is the single file included by all MPC8260 build options.
@@ -20,26 +20,6 @@
 #include <platforms/est8260.h>
 #endif
 
-#ifdef CONFIG_SBS8260
-#include <platforms/sbs8260.h>
-#endif
-
-#ifdef CONFIG_RPX6
-#include <platforms/rpxsuper.h>
-#endif
-
-#ifdef CONFIG_ADS8260
-#include <platforms/ads8260.h>
-#endif
-
-#ifdef CONFIG_WILLOW
-#include <platforms/willow.h>
-#endif
-
-#ifdef CONFIG_TQM8260
-#include <platforms/tqm8260.h>
-#endif
-
 /* I don't yet have the ISA or PCI stuff done....no 8260 with
  * such thing.....
  */
@@ -56,7 +36,11 @@ extern unsigned char __res[];
 */
 #include <asm/ptrace.h>
 
-#define request_8xxirq request_irq
+extern int request_8xxirq(unsigned int irq,
+		       void (*handler)(int, void *, struct pt_regs *),
+		       unsigned long flags, 
+		       const char *device,
+		       void *dev_id);
 
 #endif /* CONFIG_8260 */
 #endif /* !__CONFIG_8260_DEFS */

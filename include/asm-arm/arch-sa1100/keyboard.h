@@ -9,9 +9,6 @@
 #include <linux/config.h>
 #include <asm/mach-types.h>
 #include <asm/arch/assabet.h>
-#ifdef CONFIG_SA1100_H3XXX
-#include <asm/arch/h3600.h>
-#endif
 
 #define kbd_disable_irq()	do { } while(0);
 #define kbd_enable_irq()	do { } while(0);
@@ -20,7 +17,6 @@ extern int sa1111_kbd_init_hw(void);
 extern void gc_kbd_init_hw(void);
 extern void smartio_kbd_init_hw(void);
 extern void cerf_kbd_init_hw(void);
-extern void h3600_kbd_init_hw(void);
 
 static inline void kbd_init_hw(void)
 {
@@ -34,10 +30,6 @@ static inline void kbd_init_hw(void)
 #ifdef CONFIG_SA1100_CERF_CPLD
 	if (machine_is_cerf())
 		cerf_kbd_init_hw();
-#endif
-#ifdef CONFIG_SA1100_H3XXX
-	if (machine_is_h3xxx())
-		h3600_kbd_init_hw();
 #endif
 #ifdef CONFIG_SA1100_PT_SYSTEM3
 	/* TODO: add system 3 board specific functions here */

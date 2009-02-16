@@ -1,5 +1,5 @@
 /*
- * BK Id: SCCS/s.amigaints.h 1.8 11/01/01 16:51:35 trini
+ * BK Id: %F% %I% %G% %U% %#%
  */
 /*
 ** amigaints.h -- Amiga Linux interrupt handling structs and prototypes

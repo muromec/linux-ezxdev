@@ -2,7 +2,6 @@
  * include/asm-sh/processor.h
  *
  * Copyright (C) 1999, 2000  Niibe Yutaka
- * Copyright (C) 2002 Paul Mundt
  */
 
 #ifndef __ASM_SH_PROCESSOR_H
@@ -10,7 +9,6 @@
 
 #include <asm/page.h>
 #include <asm/types.h>
-#include <asm/cache.h>
 #include <linux/threads.h>
 
 /*
@@ -19,22 +17,14 @@
  */
 #define current_text_addr() ({ void *pc; __asm__("mova	1f, %0\n1:":"=z" (pc)); pc; })
 
-/* Core Processor Version Register */
-#define CCN_PVR		0xff000030
-#define CCN_PRR		0xff000044
 /*
  *  CPU type and hardware bug flags. Kept separately for each CPU.
  */
 enum cpu_type {
 	CPU_SH7708,		/* Represents 7707, 7708, 7708S, 7708R, 7709 */
 	CPU_SH7729,		/* Represents 7709A, 7729 */
-	CPU_SH7750,     	/* Represents 7750 */
-	CPU_SH7750S,		/* Represents 7750S */
-	CPU_SH7750R,		/* Represents 7750R */
-	CPU_SH7751,		/* Represents 7751 */
-	CPU_SH7751R,		/* Represents 7751R */
+	CPU_SH7750,     /* Represents 7750, 7751 */
 	CPU_ST40STB1,
-	CPU_SH73180,
 	CPU_SH_NONE
 };
 
@@ -47,11 +37,6 @@ struct sh_cpuinfo {
 #ifdef CONFIG_CPU_SUBTYPE_ST40STB1
 	unsigned int memory_clock;
 #endif
-
-        struct cache_info icache;
-        struct cache_info dcache;
-
-        unsigned long flags;
 };
 
 extern struct sh_cpuinfo boot_cpu_data;
@@ -82,7 +67,6 @@ extern struct sh_cpuinfo boot_cpu_data;
  *     Interrupt level mask
  */
 #define SR_FD    0x00008000
-#define SR_DSP   0x00001000
 #define SR_IMASK 0x000000f0
 
 /*
@@ -120,38 +104,27 @@ struct thread_struct {
 
 	unsigned long trap_no, error_code;
 	unsigned long address;
-
-	/* Hardware debugging registers */
-	unsigned long ubc_pc1, ubc_pc2;
+	/* Hardware debugging registers may come here */
 
 	/* floating point info */
 	union sh_fpu_union fpu;
 };
-
-/* Count of active tasks with UBC settings */
-extern int ubc_usercnt;
 
 #define INIT_THREAD  {						\
 	sizeof(init_stack) + (long) &init_stack, /* sp */	\
 	0,					 /* pc */	\
 	0, 0, 							\
 	0, 							\
-	0, -1, 							\
 	{{{0,}},} 				/* fpu state */	\
 }
 
 /*
  * Do necessary setup to start up a newly executed thread.
  */
-#if defined(__SH4__)
-#define SRINIT SR_FD /* User mode, FPU disabled */
-#else
-#define SRINIT 0     /* User mode */
-#endif
 #define start_thread(regs, new_pc, new_sp)	 \
 	set_fs(USER_DS);			 \
 	regs->pr = 0;   		 	 \
-	regs->sr = SRINIT;                       \
+	regs->sr = 0;		/* User mode. */ \
 	regs->pc = new_pc;			 \
 	regs->regs[15] = new_sp
 
@@ -211,22 +184,18 @@ extern void save_fpu(struct task_struct *__tsk);
 
 #define unlazy_fpu(tsk) do { 			\
 	if ((tsk)->flags & PF_USEDFPU) {	\
+		grab_fpu();			\
 		save_fpu(tsk); 			\
 	}					\
 } while (0)
 
 #define clear_fpu(tsk) do { 			\
-	if ((tsk)->flags & PF_USEDFPU) { 	\
+	if ((tsk)->flags & PF_USEDFPU)	 	\
 		(tsk)->flags &= ~PF_USEDFPU; 	\
-		release_fpu();			\
-	}					\
 } while (0)
 
 /* Double presision, NANS as NANS, rounding to nearest, no exceptions */
 #define FPSCR_INIT  0x00080000
-
-#define	FPSCR_CAUSE_MASK	0x0001f000	/* Cause bits */
-#define	FPSCR_FLAG_MASK		0x0000007c	/* Flag bits */
 
 /*
  * Return saved PC of a blocked thread.

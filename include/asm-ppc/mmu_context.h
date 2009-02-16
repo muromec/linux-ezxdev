@@ -158,10 +158,6 @@ static inline void destroy_context(struct mm_struct *mm)
 static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 			     struct task_struct *tsk, int cpu)
 {
-#ifdef CONFIG_PREEMPT
-	if (preempt_get_count() == 0)
-		BUG();
-#endif
 	tsk->thread.pgdir = next->pgd;
 	get_mmu_context(next);
 	set_context(next->context, next->pgd);

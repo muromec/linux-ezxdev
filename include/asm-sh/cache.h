@@ -14,18 +14,4 @@
 #define        L1_CACHE_BYTES  32
 #endif
 
-struct cache_info {
-        unsigned int ways;
-        unsigned int sets;
-        unsigned int linesz;
-
-        unsigned int way_shift;
-        unsigned int entry_shift;
-        unsigned int entry_mask;
-
-        unsigned long flags;
-};
-
-
-
 #endif /* __ASM_SH_CACHE_H */

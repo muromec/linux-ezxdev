@@ -178,7 +178,7 @@ typedef struct cark {
 */
 #define KAPWR_KEY	((unsigned int)0x55ccaa33)
 
-/* LCD interface.  MPC821 and MPC823 Only.
+/* LCD interface.  MPC821 Only.
 */
 typedef struct lcd {
 	ushort	lcd_lcolr[16];
@@ -353,12 +353,6 @@ typedef struct fec {
 	uint	res9[0x1e];
 } fec_t;
 
-/* We need this as the fec and fb cmap use the same address space */
-union fec_lcd {
-	fec_t	fl_un_fec;
-	u_char	fl_un_cmap[0x200];
-};
-
 typedef struct comm_proc {
 	/* General control and status registers.
 	*/
@@ -430,12 +424,8 @@ typedef struct comm_proc {
 
 	/* The fast ethernet controller is not really part of the CPM,
 	 * but it resides in the address space.
-	 *
-	 * The colormap for the LCD controller is also located here
 	 */
-	union	fec_lcd fl_un;
-#define cp_fec	fl_un.fl_un_fec
-#define lcd_cmap fl_un.fl_un_cmap
+	fec_t	cp_fec;
 	char	res18[0x1000];
 
 	/* Dual Ported RAM follows.
@@ -457,7 +447,7 @@ typedef struct immap {
 	car8xx_t	im_clkrst;	/* Clocks and reset */
 	sitk8xx_t	im_sitk;	/* Sys int timer keys */
 	cark8xx_t	im_clkrstk;	/* Clocks and reset keys */
-	lcd8xx_t	im_lcd;		/* LCD (821 and 823 only) */
+	lcd8xx_t	im_lcd;		/* LCD (821 only) */
 	i2c8xx_t	im_i2c;		/* I2C control/status */
 	sdma8xx_t	im_sdma;	/* SDMA control/status */
 	cpic8xx_t	im_cpic;	/* CPM Interrupt Controller */

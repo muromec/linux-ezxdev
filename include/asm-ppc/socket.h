@@ -1,5 +1,5 @@
 /*
- * BK Id: SCCS/s.socket.h 1.11 01/07/03 21:52:53 paulus
+ * BK Id: SCCS/s.socket.h 1.6 05/17/01 18:14:25 cort
  */
 #ifndef _ASM_SOCKET_H
 #define _ASM_SOCKET_H
@@ -68,6 +68,6 @@
 					/* other similar things on the	*/
 					/* user level.			*/
 #define	SOCK_MAX	(SOCK_PACKET+1)
-#endif /* __KERNEL__ */
+#endif
 
 #endif /* _ASM_SOCKET_H */

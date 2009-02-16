@@ -1,11 +1,10 @@
 /*
- * BK Id: SCCS/s.spinlock.h 1.19 09/11/02 14:55:14 paulus
+ * BK Id: %F% %I% %G% %U% %#%
  */
 #ifndef __ASM_SPINLOCK_H
 #define __ASM_SPINLOCK_H
 
 #include <asm/system.h>
-#include <asm/processor.h>
 
 #if defined(CONFIG_DEBUG_SPINLOCK)
 #define SPINLOCK_DEBUG 1
@@ -55,17 +54,14 @@ static inline void spin_lock(spinlock_t *lock)
 	unsigned long tmp;
 
 	__asm__ __volatile__(
-	"b	1f		# spin_lock\n\
-2:	or	1,1,1		# spin at low priority\n\
-"	lwzx	%0,0,%1\n\
+	"b	1f			# spin_lock\n\
+2:	lwzx	%0,0,%1\n\
 	cmpwi	0,%0,0\n\
-	bne+	2b\n"
-	or	2,2,2		# back to medium priority\n\
-"1:	lwarx	%0,0,%1\n\
+	bne+	2b\n\
+1:	lwarx	%0,0,%1\n\
 	cmpwi	0,%0,0\n\
-	bne-	2b\n"
-	PPC405_ERR77(0,%1)
-"	stwcx.	%2,0,%1\n\
+	bne-	2b\n\
+	stwcx.	%2,0,%1\n\
 	bne-	2b\n\
 	isync"
 	: "=&r"(tmp)
@@ -128,18 +124,15 @@ static __inline__ void read_lock(rwlock_t *rw)
 	unsigned int tmp;
 
 	__asm__ __volatile__(
-	"b	2f		# read_lock\n\
-1:	or	1,1,1		# spin at low priority\n\
-"	lwzx	%0,0,%1\n\
-	cmpwi	0,%0,0\n\
-	blt+	1b\n"
-	or	2,2,2		# back to medium priority\n\
-"2:	lwarx	%0,0,%1\n\
-	addic.	%0,%0,1\n\
-	ble-	1b\n"
-	PPC405_ERR77(0,%1)
-"	stwcx.	%0,0,%1\n\
-	bne-	2b\n\
+	"b		2f		# read_lock\n\
+1:	lwzx		%0,0,%1\n\
+	cmpwi		0,%0,0\n\
+	blt+		1b\n\
+2:	lwarx		%0,0,%1\n\
+	addic.		%0,%0,1\n\
+	ble-		1b\n\
+	stwcx.		%0,0,%1\n\
+	bne-		2b\n\
 	isync"
 	: "=&r"(tmp)
 	: "r"(&rw->lock)
@@ -151,12 +144,11 @@ static __inline__ void read_unlock(rwlock_t *rw)
 	unsigned int tmp;
 
 	__asm__ __volatile__(
-	"eieio			# read_unlock\n\
-1:	lwarx	%0,0,%1\n\
-	addic	%0,%0,-1\n"
-	PPC405_ERR77(0,%1)
-"	stwcx.	%0,0,%1\n\
-	bne-	1b"
+	"eieio				# read_unlock\n\
+1:	lwarx		%0,0,%1\n\
+	addic		%0,%0,-1\n\
+	stwcx.		%0,0,%1\n\
+	bne-		1b"
 	: "=&r"(tmp)
 	: "r"(&rw->lock)
 	: "cr0", "memory");
@@ -167,18 +159,15 @@ static __inline__ void write_lock(rwlock_t *rw)
 	unsigned int tmp;
 
 	__asm__ __volatile__(
-	"b	2f		# write_lock\n\
-1:	or	1,1,1		# spin at low priority\n\
-"  	lwzx	%0,0,%1\n\
-	cmpwi	0,%0,0\n\
-	bne+	1b\n"
-	or	2,2,2		# back to medium priority\n\
-"2:	lwarx	%0,0,%1\n\
-	cmpwi	0,%0,0\n\
-	bne-	1b\n"
-	PPC405_ERR77(0,%1)
-"	stwcx.	%2,0,%1\n\
-	bne-	2b\n\
+	"b		2f		# write_lock\n\
+1:	lwzx		%0,0,%1\n\
+	cmpwi		0,%0,0\n\
+	bne+		1b\n\
+2:	lwarx		%0,0,%1\n\
+	cmpwi		0,%0,0\n\
+	bne-		1b\n\
+	stwcx.		%2,0,%1\n\
+	bne-		2b\n\
 	isync"
 	: "=&r"(tmp)
 	: "r"(&rw->lock), "r"(-1)

@@ -1,5 +1,5 @@
 /*
- * BK Id: SCCS/s.mediabay.h 1.9 12/03/01 10:00:02 trini
+ * BK Id: SCCS/s.mediabay.h 1.8 12/01/01 20:09:11 benh
  */
 /*
  * mediabay.h: definitions for using the media bay

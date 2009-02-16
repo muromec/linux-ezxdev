@@ -65,20 +65,24 @@ static unsigned long sa1100_gettimeoffset (void)
 
 static void sa1100_timer_interrupt(int irq, void *dev_id, struct pt_regs *regs)
 {
-	unsigned int next_match;
-	unsigned long flags;
+	long flags;
+	int next_match;
 
+	/* Loop until we get ahead of the free running timer.
+	 * This ensures an exact clock tick count and time acuracy.
+	 * IRQs are disabled inside the loop to ensure coherence between
+	 * lost_ticks (updated in do_timer()) and the match reg value, so we
+	 * can use do_gettimeofday() from interrupt handlers.
+	 */
 	do {
 		do_leds();
-		local_irq_save(flags);
+		do_set_rtc();
+		save_flags_cli( flags );
 		do_timer(regs);
 		OSSR = OSSR_M0;  /* Clear match on timer 0 */
 		next_match = (OSMR0 += LATCH);
-		local_irq_restore(flags);
-		do_set_rtc();
-	} while ((signed long)(next_match - OSCR) <= 0);
-
-	do_profile(regs);
+		restore_flags( flags );
+	} while( (signed long)(next_match - OSCR) <= 0 );
 }
 
 static inline void setup_timer (void)

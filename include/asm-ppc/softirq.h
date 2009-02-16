@@ -1,5 +1,5 @@
 /*
- * BK Id: SCCS/s.softirq.h 1.15 09/09/01 12:18:02 trini
+ * BK Id: SCCS/s.softirq.h 1.13 07/12/01 20:02:34 paulus
  */
 #ifdef __KERNEL__
 #ifndef __ASM_SOFTIRQ_H
@@ -10,7 +10,6 @@
 
 #define local_bh_disable()			\
 do {						\
-	preempt_disable();			\
 	local_bh_count(smp_processor_id())++;	\
 	barrier();				\
 } while (0)
@@ -19,10 +18,9 @@ do {						\
 do {						\
 	barrier();				\
 	local_bh_count(smp_processor_id())--;	\
-	preempt_enable();			\
 } while (0)
 
-#define _local_bh_enable()				\
+#define local_bh_enable()				\
 do {							\
 	if (!--local_bh_count(smp_processor_id())	\
 	    && softirq_pending(smp_processor_id())) {	\
@@ -30,14 +28,7 @@ do {							\
 	}						\
 } while (0)
 
-#define local_bh_enable()			\
-do {						\
-	_local_bh_enable();			\
-	preempt_enable();			\
-} while (0)
-
-#define in_softirq() (preempt_is_disabled() && \
-			(local_bh_count(smp_processor_id()) != 0))
+#define in_softirq() (local_bh_count(smp_processor_id()) != 0)
 
 #endif	/* __ASM_SOFTIRQ_H */
 #endif /* __KERNEL__ */

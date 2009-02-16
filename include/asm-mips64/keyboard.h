@@ -15,7 +15,6 @@
 #include <linux/ioport.h>
 #include <linux/kd.h>
 #include <linux/pm.h>
-#include <asm/bootinfo.h>
 
 #define DISABLE_KBD_DURING_INTERRUPTS 0
 
@@ -75,22 +74,6 @@ extern struct kbd_ops *kbd_ops;
 #define kbd_write_output(val) kbd_ops->kbd_write_output(val)
 #define kbd_write_command(val) kbd_ops->kbd_write_command(val)
 #define kbd_read_status() kbd_ops->kbd_read_status()
-
-#else
-
-extern int kbd_setkeycode(unsigned int scancode, unsigned int keycode);
-extern int kbd_getkeycode(unsigned int scancode);
-extern int kbd_translate(unsigned char scancode, unsigned char *keycode,
-	char raw_mode);
-extern char kbd_unexpected_up(unsigned char keycode);
-extern void kbd_leds(unsigned char leds);
-extern void kbd_init_hw(void);
-extern unsigned char *kbd_sysrq_xlate;
-
-extern unsigned char kbd_sysrq_key;
-#define SYSRQ_KEY kbd_sysrq_key
-
-#endif
 
 #else
 

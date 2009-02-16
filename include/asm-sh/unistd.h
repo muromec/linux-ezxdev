@@ -233,7 +233,6 @@
 #define __NR_fcntl64		221
 #define __NR_gettid		222
 #define __NR_tkill		223
-#define __NR_readahead		225
 
 /* user-visible error numbers are in the range -1 - -125: see <asm-sh/errno.h> */
 
@@ -249,27 +248,12 @@ do { \
 	return (type) (res); \
 } while (0)
 
-#if defined(__SH4__)
-#define TRAPA_SLEEP_BUGFIX \
-		"\n\t"               /* TRAPA/SLEEP BUG for SH4 */ \
-		"or	r0, r0\n\t"				   \
-		"or	r0, r0\n\t"				   \
-		"or	r0, r0\n\t"				   \
-		"or	r0, r0\n\t"				   \
-		"or	r0, r0\n\t"				   \
-		"nop\n"
-#else
-#define TRAPA_SLEEP_BUGFIX 
-#endif
-
-
 /* XXX - _foo needs to be __foo, while __NR_bar could be _NR_bar. */
 #define _syscall0(type,name) \
 type name(void) \
 { \
 register long __sc0 __asm__ ("r3") = __NR_##name; \
 __asm__ __volatile__ ("trapa	#0x10" \
-        TRAPA_SLEEP_BUGFIX \
 	: "=z" (__sc0) \
 	: "0" (__sc0) \
 	: "memory" ); \
@@ -282,7 +266,6 @@ type name(type1 arg1) \
 register long __sc0 __asm__ ("r3") = __NR_##name; \
 register long __sc4 __asm__ ("r4") = (long) arg1; \
 __asm__ __volatile__ ("trapa	#0x11" \
-        TRAPA_SLEEP_BUGFIX \
 	: "=z" (__sc0) \
 	: "0" (__sc0), "r" (__sc4) \
 	: "memory"); \
@@ -296,7 +279,6 @@ register long __sc0 __asm__ ("r3") = __NR_##name; \
 register long __sc4 __asm__ ("r4") = (long) arg1; \
 register long __sc5 __asm__ ("r5") = (long) arg2; \
 __asm__ __volatile__ ("trapa	#0x12" \
-        TRAPA_SLEEP_BUGFIX \
 	: "=z" (__sc0) \
 	: "0" (__sc0), "r" (__sc4), "r" (__sc5) \
 	: "memory"); \
@@ -311,7 +293,6 @@ register long __sc4 __asm__ ("r4") = (long) arg1; \
 register long __sc5 __asm__ ("r5") = (long) arg2; \
 register long __sc6 __asm__ ("r6") = (long) arg3; \
 __asm__ __volatile__ ("trapa	#0x13" \
-        TRAPA_SLEEP_BUGFIX \
 	: "=z" (__sc0) \
 	: "0" (__sc0), "r" (__sc4), "r" (__sc5), "r" (__sc6) \
 	: "memory"); \
@@ -327,7 +308,6 @@ register long __sc5 __asm__ ("r5") = (long) arg2; \
 register long __sc6 __asm__ ("r6") = (long) arg3; \
 register long __sc7 __asm__ ("r7") = (long) arg4; \
 __asm__ __volatile__ ("trapa	#0x14" \
-        TRAPA_SLEEP_BUGFIX \
 	: "=z" (__sc0) \
 	: "0" (__sc0), "r" (__sc4), "r" (__sc5), "r" (__sc6),  \
 	  "r" (__sc7) \
@@ -345,7 +325,6 @@ register long __sc6 __asm__ ("r6") = (long) arg3; \
 register long __sc7 __asm__ ("r7") = (long) arg4; \
 register long __sc0 __asm__ ("r0") = (long) arg5; \
 __asm__ __volatile__ ("trapa	#0x15" \
-        TRAPA_SLEEP_BUGFIX \
 	: "=z" (__sc0) \
 	: "0" (__sc0), "r" (__sc4), "r" (__sc5), "r" (__sc6), "r" (__sc7),  \
 	  "r" (__sc3) \

@@ -143,18 +143,7 @@ extern void __flushw_user(void);
 
 #define flush_user_windows flushw_user
 #define flush_register_windows flushw_all
-
-#define prepare_arch_schedule(prev)		task_lock(prev)
-#define finish_arch_schedule(prev)		task_unlock(prev)
-#define prepare_arch_switch(rq, next)           \
-do {    spin_lock(&(next)->switch_lock);        \
-        spin_unlock(&(rq)->lock);               \
-        flushw_all();                           \
-} while (0)
-
-#define finish_arch_switch(rq, prev)            \
-do {    spin_unlock_irq(&(prev)->switch_lock);  \
-} while (0)
+#define prepare_to_switch flushw_all
 
 #ifndef CONFIG_DEBUG_SPINLOCK
 #define CHECK_LOCKS(PREV)	do { } while(0)

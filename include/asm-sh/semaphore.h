@@ -15,7 +15,7 @@
 
 #include <linux/spinlock.h>
 #include <linux/rwsem.h>
-#include <linux/wait.h>
+
 #include <asm/system.h>
 #include <asm/atomic.h>
 

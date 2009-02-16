@@ -17,7 +17,7 @@
  
 #include <linux/init.h>
 
-#define linux_logo_banner "MontaVista Linux/PPC version " UTS_RELEASE
+#define linux_logo_banner "Linux/PPC version " UTS_RELEASE
 
 #define LINUX_LOGO_HEIGHT	80
 #define LINUX_LOGO_WIDTH	80

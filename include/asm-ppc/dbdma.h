@@ -1,5 +1,5 @@
 /*
- * BK Id: SCCS/s.dbdma.h 1.10 12/03/01 10:00:01 trini
+ * BK Id: SCCS/s.dbdma.h 1.8 12/01/01 20:09:11 benh
  */
 /*
  * Definitions for using the Apple Descriptor-Based DMA controller

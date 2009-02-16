@@ -11,11 +11,12 @@
 #define _ASM_SYSTEM_H
 
 #include <linux/config.h>
-
 #include <asm/sgidefs.h>
-#include <asm/ptrace.h>
 
 #include <linux/kernel.h>
+
+#include <asm/addrspace.h>
+#include <asm/ptrace.h>
 
 __asm__ (
 	".macro\t__sti\n\t"
@@ -56,9 +57,9 @@ __asm__ (
 	"xori\t$1,1\n\t"
 	".set\tnoreorder\n\t"
 	"mtc0\t$1,$12\n\t"
-	"nop\n\t"
-	"nop\n\t"
-	"nop\n\t"
+	"sll\t$0, $0, 1\t\t\t# nop\n\t"
+	"sll\t$0, $0, 1\t\t\t# nop\n\t"
+	"sll\t$0, $0, 1\t\t\t# nop\n\t"
 	".set\tpop\n\t"
 	".endm");
 
@@ -95,10 +96,10 @@ __asm__ (
 	"xori\t$1, 1\n\t"
 	".set\tnoreorder\n\t"
 	"mtc0\t$1, $12\n\t"
-	"nop\n\t"
-	"nop\n\t"
-	"nop\n\t"
-	".set\tpop\n\t"	
+	"sll\t$0, $0, 1\t\t\t# nop\n\t"
+	"sll\t$0, $0, 1\t\t\t# nop\n\t"
+	"sll\t$0, $0, 1\t\t\t# nop\n\t"
+	".set\tpop\n\t"
 	".endm");
 
 #define __save_and_cli(x)						\
@@ -117,9 +118,9 @@ __asm__(".macro\t__restore_flags flags\n\t"
 	"xori\t$1, 1\n\t"
 	"or\t\\flags, $1\n\t"
 	"mtc0\t\\flags, $12\n\t"
-	"nop\n\t"
-	"nop\n\t"
-	"nop\n\t"
+	"sll\t$0, $0, 1\t\t\t# nop\n\t"
+	"sll\t$0, $0, 1\t\t\t# nop\n\t"
+	"sll\t$0, $0, 1\t\t\t# nop\n\t"
 	".set\tat\n\t"
 	".set\treorder\n\t"
 	".endm");
@@ -163,20 +164,37 @@ extern void __global_restore_flags(unsigned long);
 #define local_irq_disable()	__cli()
 #define local_irq_enable()	__sti()
 
-/*
- * These are probably defined overly paranoid ...
- */
-#define mb()						\
-__asm__ __volatile__(					\
-	"# prevent instructions being moved around\n\t"	\
-	".set\tnoreorder\n\t"				\
-	"sync\n\t"					\
-	".set\treorder"					\
-	: /* no output */				\
-	: /* no input */				\
-	: "memory")
-#define rmb() mb()
-#define wmb() mb()
+#define __sync()				\
+	__asm__ __volatile__(			\
+		".set	push\n\t"		\
+		".set	noreorder\n\t"		\
+		"sync\n\t"			\
+		".set	pop"			\
+		: /* no output */		\
+		: /* no input */		\
+		: "memory")
+
+#define fast_wmb()	__sync()
+#define fast_rmb()	__sync()
+#define fast_mb()	__sync()
+#define fast_iob()				\
+	do {					\
+		__sync();			\
+		__asm__ __volatile__(		\
+			".set	push\n\t"	\
+			".set	noreorder\n\t"	\
+			"lw	$0,%0\n\t"	\
+			"nop\n\t"		\
+			".set	pop"		\
+			: /* no output */	\
+			: "m" (*(int *)KSEG1)	\
+			: "memory");		\
+	} while (0)
+
+#define wmb()		fast_wmb()
+#define rmb()		fast_rmb()
+#define mb()		fast_mb()
+#define iob()		fast_iob()
 
 #ifdef CONFIG_SMP
 #define smp_mb()	mb()
@@ -194,19 +212,20 @@ do { var = value; mb(); } while (0)
 #define set_wmb(var, value) \
 do { var = value; wmb(); } while (0)
 
-#if !defined (_LANGUAGE_ASSEMBLY)
 /*
  * switch_to(n) should switch tasks to task nr n, first
  * checking that n isn't the current task, in which case it does nothing.
  */
 extern asmlinkage void *resume(void *last, void *next);
-#endif /* !defined (_LANGUAGE_ASSEMBLY) */
 
 #define prepare_to_switch()	do { } while(0)
 
+struct task_struct;
+
 extern asmlinkage void lazy_fpu_switch(void *, void *);
 extern asmlinkage void init_fpu(void);
-extern asmlinkage void save_fp(void *);
+extern asmlinkage void save_fp(struct task_struct *);
+extern asmlinkage void restore_fp(struct task_struct *);
 
 #ifdef CONFIG_SMP
 #define SWITCH_DO_LAZY_FPU \
@@ -238,6 +257,7 @@ extern __inline__ unsigned long xchg_u32(volatile int * m, unsigned long val)
 		"sc\t%2, %1\n\t"
 		"beqzl\t%2, 1b\n\t"
 		" ll\t%0, %3\n\t"
+		"sync\n\t"
 		".set\tpop"
 		: "=&r" (val), "=m" (*m), "=&r" (dummy)
 		: "R" (*m), "Jr" (val)
@@ -259,6 +279,7 @@ extern __inline__ unsigned long xchg_u64(volatile int * m, unsigned long val)
 		"scd\t%2, %1\n\t"
 		"beqzl\t%2, 1b\n\t"
 		" lld\t%0, %3\n\t"
+		"sync\n\t"
 		".set\tpop"
 		: "=&r" (val), "=m" (*m), "=&r" (dummy)
 		: "R" (*m), "Jr" (val)
@@ -283,6 +304,16 @@ static inline unsigned long __xchg(unsigned long x, volatile void * ptr,
 	return x;
 }
 
-extern void set_except_vector(int n, void *addr);
+extern void *set_except_vector(int n, void *addr);
+
+extern void __die(const char *, struct pt_regs *, const char *file,
+	const char *func, unsigned long line) __attribute__((noreturn));
+extern void __die_if_kernel(const char *, struct pt_regs *, const char *file,
+	const char *func, unsigned long line);
+
+#define die(msg, regs)							\
+	__die(msg, regs, __FILE__ ":", __FUNCTION__, __LINE__)
+#define die_if_kernel(msg, regs)					\
+	__die_if_kernel(msg, regs, __FILE__ ":", __FUNCTION__, __LINE__)
 
 #endif /* _ASM_SYSTEM_H */

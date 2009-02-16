@@ -43,8 +43,7 @@ extern void generic_writeb(unsigned char b, unsigned long addr);
 extern void generic_writew(unsigned short b, unsigned long addr);
 extern void generic_writel(unsigned int b, unsigned long addr);
 
-extern void *generic_ioremap(unsigned long offset, unsigned long size, ...);
-extern void *generic_ioremap_readonly(unsigned long offset, unsigned long size, ...);
+extern void *generic_ioremap(unsigned long offset, unsigned long size);
 extern void generic_iounmap(void *addr);
 
 extern unsigned long generic_isa_port2addr(unsigned long offset);

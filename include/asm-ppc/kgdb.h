@@ -1,5 +1,5 @@
 /*
- * BK Id: SCCS/s.kgdb.h 1.8 11/16/01 16:08:22 dgibson
+ * BK Id: SCCS/s.kgdb.h 1.5 05/17/01 18:14:24 cort
  */
 /*
  * kgdb.h: Defines and declarations for serial line source level
@@ -38,6 +38,8 @@ int kgdb_sstep(struct pt_regs *regs);
 void kgdb(struct pt_regs *regs);
 int kgdb_iabr_match(struct pt_regs *regs);
 int kgdb_dabr_match(struct pt_regs *regs);
+static void kgdb_fault_handler(struct pt_regs *regs);
+static void handle_exception (struct pt_regs *regs);
 
 /*
  * external low-level support routines (ie macserial.c)

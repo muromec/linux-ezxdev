@@ -34,8 +34,6 @@ typedef struct {
 
 #define synchronize_irq()	barrier()
 
-#define release_irqlock(cpu)	do { } while (0)
-
 #else
 
 #error Super-H SMP is not available

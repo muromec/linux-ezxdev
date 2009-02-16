@@ -85,9 +85,8 @@
 #define PMAC_TYPE_QUICKSILVER		0x45	/* QuickSilver G4s */
 #define PMAC_TYPE_PISMO			0x46	/* Pismo PowerBook */
 #define PMAC_TYPE_TITANIUM		0x47	/* Titanium PowerBook */
-#define PMAC_TYPE_TITANIUM2		0x48	/* Titanium II PowerBook (no L3, M6) */
-#define PMAC_TYPE_TITANIUM3		0x49	/* Titanium III PowerBook (with L3 & M7) */
-#define PMAC_TYPE_TITANIUM4		0x50	/* Titanium IV PowerBook (with L3 & M9) */
+#define PMAC_TYPE_TITANIUM2		0x48	/* Titanium II PowerBook */
+#define PMAC_TYPE_TITANIUM3		0x49	/* Titanium III PowerBook (with L3) */
 #define PMAC_TYPE_EMAC			0x50	/* eMac */
 #define PMAC_TYPE_UNKNOWN_CORE99	0x5f
 

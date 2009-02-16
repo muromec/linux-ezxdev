@@ -12,6 +12,7 @@
 #ifndef _ASM_MIPSREGS_H
 #define _ASM_MIPSREGS_H
 
+#include <linux/config.h>
 #include <linux/linkage.h>
 
 /*
@@ -76,33 +77,7 @@
 #define CP0_IWATCH $18
 #define CP0_DWATCH $19
 
-/* 
- * Coprocessor 0 Set 1 register names
- */
-#define CP0_S1_DERRADDR0  $26
-#define CP0_S1_DERRADDR1  $27
-#define CP0_S1_INTCONTROL $20
-
 /*
- *  TX39 Series
- */
-#define CP0_TX39_CACHE	$7
-
-/*
- * R4640/R4650 cp0 register names.  These registers are listed
- * here only for completeness; without MMU these CPUs are not useable
- * by Linux.  A future ELKS port might take make Linux run on them
- * though ...
- */
-#define CP0_IBASE $0
-#define CP0_IBOUND $1
-#define CP0_DBASE $2
-#define CP0_DBOUND $3
-#define CP0_CALG $17
-#define CP0_IWATCH $18
-#define CP0_DWATCH $19
-
-/* 
  * Coprocessor 0 Set 1 register names
  */
 #define CP0_S1_DERRADDR0  $26
@@ -175,37 +150,42 @@
 /*
  * Values for PageMask register
  */
-#include <linux/config.h>
 #ifdef CONFIG_CPU_VR41XX
 
-#define PM_1K   0x00000000
-#define PM_4K   0x00001800
-#define PM_16K  0x00007800
-#define PM_64K  0x0001f800
-#define PM_256K 0x0007f800
+/* Why doesn't stupidity hurt ... */
+
+#define PM_1K		0x00000000
+#define PM_4K		0x00001800
+#define PM_16K		0x00007800
+#define PM_64K		0x0001f800
+#define PM_256K		0x0007f800
 
 #else
 
-#define PM_4K   0x00000000
-#define PM_16K  0x00006000
-#define PM_64K  0x0001e000
-#define PM_256K 0x0007e000
-#define PM_1M   0x001fe000
-#define PM_4M   0x007fe000
-#define PM_16M  0x01ffe000
+#define PM_4K		0x00000000
+#define PM_16K		0x00006000
+#define PM_64K		0x0001e000
+#define PM_256K		0x0007e000
+#define PM_1M		0x001fe000
+#define PM_4M		0x007fe000
+#define PM_16M		0x01ffe000
+#define PM_64M		0x07ffe000
+#define PM_256M		0x1fffe000
 
 #endif
 
 /*
  * Values used for computation of new tlb entries
  */
-#define PL_4K   12
-#define PL_16K  14
-#define PL_64K  16
-#define PL_256K 18
-#define PL_1M   20
-#define PL_4M   22
-#define PL_16M  24
+#define PL_4K		12
+#define PL_16K		14
+#define PL_64K		16
+#define PL_256K		18
+#define PL_1M		20
+#define PL_4M		22
+#define PL_16M		24
+#define PL_64M		26
+#define PL_256M		28
 
 /*
  * R4x00 interrupt enable / cause bits
@@ -246,60 +226,6 @@
 #define ST0_KX 			0x00000080
 #define ST0_DE			0x00010000
 #define ST0_CE			0x00020000
-
-/*
- * Bitfields in the R[23]000 cp0 status register.
- */
-#define ST0_IEC                 0x00000001
-#define ST0_KUC			0x00000002
-#define ST0_IEP			0x00000004
-#define ST0_KUP			0x00000008
-#define ST0_IEO			0x00000010
-#define ST0_KUO			0x00000020
-/* bits 6 & 7 are reserved on R[23]000 */
-#define ST0_ISC			0x00010000
-#define ST0_SWC			0x00020000
-#define ST0_CM			0x00080000
-
-/*
- * Bits specific to the R4640/R4650
- */
-#define ST0_UM                 (1   <<  4)
-#define ST0_IL                 (1   << 23)
-#define ST0_DL                 (1   << 24)
-
-/*
- * Bitfields in the TX39 family CP0 Configuration Register 3
- */
-#define TX39_CONF_ICS_SHIFT	19
-#define TX39_CONF_ICS_MASK	0x00380000
-#define TX39_CONF_ICS_1KB 	0x00000000
-#define TX39_CONF_ICS_2KB 	0x00080000
-#define TX39_CONF_ICS_4KB 	0x00100000
-#define TX39_CONF_ICS_8KB 	0x00180000
-#define TX39_CONF_ICS_16KB 	0x00200000
-
-#define TX39_CONF_DCS_SHIFT	16
-#define TX39_CONF_DCS_MASK	0x00070000
-#define TX39_CONF_DCS_1KB 	0x00000000
-#define TX39_CONF_DCS_2KB 	0x00010000
-#define TX39_CONF_DCS_4KB 	0x00020000
-#define TX39_CONF_DCS_8KB 	0x00030000
-#define TX39_CONF_DCS_16KB 	0x00040000
-
-#define TX39_CONF_CWFON 	0x00004000
-#define TX39_CONF_WBON  	0x00002000
-#define TX39_CONF_RF_SHIFT	10
-#define TX39_CONF_RF_MASK	0x00000c00
-#define TX39_CONF_DOZE		0x00000200
-#define TX39_CONF_HALT		0x00000100
-#define TX39_CONF_LOCK		0x00000080
-#define TX39_CONF_ICE		0x00000020
-#define TX39_CONF_DCE		0x00000010
-#define TX39_CONF_IRSIZE_SHIFT	2
-#define TX39_CONF_IRSIZE_MASK	0x0000000c
-#define TX39_CONF_DRSIZE_SHIFT	0
-#define TX39_CONF_DRSIZE_MASK	0x00000003
 
 /*
  * Bitfields in the R[23]000 cp0 status register.
@@ -448,8 +374,10 @@
 #define CONF_CM_CACHABLE_CUW		6
 #define CONF_CM_CACHABLE_ACCELERATED	7
 #define CONF_CM_CMASK			7
+#define CONF_CU				(1 <<  3)
 #define CONF_DB				(1 <<  4)
 #define CONF_IB				(1 <<  5)
+#define CONF_SE				(1 << 12)
 #define CONF_SC				(1 << 17)
 #define CONF_AC                         (1 << 23)
 #define CONF_HALT                       (1 << 25)
@@ -466,7 +394,7 @@
  * R10000 performance counter definitions.
  *
  * FIXME: The R10000 performance counter opens a nice way to implement CPU
- *        time accounting with a precision of one cycle.  I don't have
+ *        time accounting with a precission of one cycle.  I don't have
  *        R10000 silicon but just a manual, so ...
  */
 
@@ -518,7 +446,34 @@
 #define CEB_KERNEL	2	/* Count events in kernel mode EXL = ERL = 0 */
 #define CEB_EXL		1	/* Count events with EXL = 1, ERL = 0 */
 
-#ifndef _LANGUAGE_ASSEMBLY
+#ifndef __ASSEMBLY__
+
+/*
+ * Functions to access the r10k performance counter and control registers
+ */
+#define read_r10k_perf_cntr(counter)                            \
+({ unsigned int __res;                                          \
+        __asm__ __volatile__(                                   \
+        "mfpc\t%0, "STR(counter)                                \
+        : "=r" (__res));                                        \
+        __res;})
+
+#define write_r10k_perf_cntr(counter,val)                       \
+        __asm__ __volatile__(                                   \
+        "mtpc\t%0, "STR(counter)                                \
+        : : "r" (val));
+
+#define read_r10k_perf_cntl(counter)                            \
+({ unsigned int __res;                                          \
+        __asm__ __volatile__(                                   \
+        "mfps\t%0, "STR(counter)                                \
+        : "=r" (__res));                                        \
+        __res;})
+
+#define write_r10k_perf_cntl(counter,val)                       \
+        __asm__ __volatile__(                                   \
+        "mtps\t%0, "STR(counter)                                \
+        : : "r" (val));
 
 /*
  * Macros to access the system control coprocessor
@@ -531,7 +486,7 @@
         __res;})
 
 #define read_64bit_cp0_register(source)                         \
-({ int __res;                                                   \
+({ unsigned long __res;                                         \
         __asm__ __volatile__(                                   \
         ".set\tmips3\n\t"                                       \
         "dmfc0\t%0,"STR(source)"\n\t"                           \
@@ -551,8 +506,8 @@
         ".set\tmips0"                                           \
         : : "r" (value))
 
-/* 
- * This should be changed when we get a compiler that support the MIPS32 ISA. 
+/*
+ * This should be changed when we get a compiler that support the MIPS32 ISA.
  */
 #define read_mips32_cp0_config1()                               \
 ({ int __res;                                                   \
@@ -644,7 +599,7 @@ static inline unsigned long get_entrylo0(void)
 {
 	unsigned long val;
 
-	__asm__ __volatile__(	
+	__asm__ __volatile__(
 		".set noreorder\n\t"
 		"dmfc0 %0, $2\n\t"
 		".set reorder"
@@ -826,7 +781,6 @@ static inline void set_taghi(unsigned long val)
 		: : "Jr" (val));
 }
 
-/* CP0_CONTEXT register */
 static inline unsigned long get_context(void)
 {
 	unsigned long val;
@@ -846,6 +800,52 @@ static inline void set_context(unsigned long val)
 		".set noreorder\n\t"
 		"dmtc0 %z0, $4\n\t"
 		".set reorder"
+		: : "Jr" (val));
+}
+
+static inline unsigned long get_xcontext(void)
+{
+	unsigned long val;
+
+	__asm__ __volatile__(
+		".set noreorder\n\t"
+		"dmfc0 %0, $20\n\t"
+		".set reorder"
+		: "=r" (val));
+
+	return val;
+}
+
+static inline void set_xcontext(unsigned long val)
+{
+	__asm__ __volatile__(
+		".set noreorder\n\t"
+		"dmtc0 %z0, $20\n\t"
+		".set reorder"
+		: : "Jr" (val));
+}
+
+static inline unsigned long get_errorepc(void)
+{
+	unsigned long val;
+
+	__asm__ __volatile__(
+		".set push\n\t"
+		".set reorder\n\t"
+		"dmfc0 %0, $30\n\t"
+		".set pop"
+		: "=r" (val));
+
+	return val;
+}
+
+static inline void set_errorepc(unsigned long val)
+{
+	__asm__ __volatile__(
+		".set push\n\t"
+		".set reorder\n\t"
+		"dmtc0 %z0, $30\n\t"
+		".set pop"
 		: : "Jr" (val));
 }
 
@@ -919,6 +919,6 @@ do {									\
 	if (mips_cpu.options & MIPS_CPU_FPU)				\
 		__disable_fpu();					\
 } while (0)
-#endif /* defined (_LANGUAGE_ASSEMBLY) */
+#endif /* !__ASSEMBLY__ */
 
 #endif /* _ASM_MIPSREGS_H */

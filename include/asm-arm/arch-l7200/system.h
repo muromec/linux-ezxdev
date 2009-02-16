@@ -12,8 +12,9 @@
 #ifndef __ASM_ARCH_SYSTEM_H
 #define __ASM_ARCH_SYSTEM_H
 
-static inline void arch_idle(void)
+static void arch_idle(void)
 {
+	/* fixme: this needs to be cleaned up (converted from ASM code) --rmk */
 	*(unsigned long *)(IO_BASE + 0x50004) = 1;	/* idle mode */
 }
 

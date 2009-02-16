@@ -6,7 +6,6 @@
 
 #define local_bh_disable()			\
 do {						\
-	preempt_disable();			\
 	local_bh_count(smp_processor_id())++;	\
 	barrier();				\
 } while (0)
@@ -15,7 +14,6 @@ do {						\
 do {						\
 	barrier();				\
 	local_bh_count(smp_processor_id())--;	\
-	preempt_enable();			\
 } while (0)
 
 #define local_bh_enable()				\
@@ -25,7 +23,6 @@ do {							\
 	    && softirq_pending(smp_processor_id())) {	\
 		do_softirq();				\
 	}						\
-	preempt_enable();				\
 } while (0)
 
 #define in_softirq() (local_bh_count(smp_processor_id()) != 0)

@@ -22,9 +22,8 @@
 #include <linux/init.h>
 #include <linux/version.h>
 
-#define linux_logo_banner "MontaVista Linux/SuperH version " UTS_RELEASE
-/* Montavista has one logo to rule them all, and in the darkness bind them */
-#if 0
+#define linux_logo_banner "Linux/SuperH version " UTS_RELEASE
+
 #define __HAVE_ARCH_LINUX_LOGO 1
 #define __HAVE_ARCH_LINUX_LOGO16 1
 #define __HAVE_ARCH_LINUX_LOGOBW 1
@@ -1415,6 +1414,5 @@ unsigned char linux_logo16[] __initdata = {
 
 
 #endif /* INCLUDE_LINUX_LOGO_DATA */
-#endif
 
 #include <linux/linux_logo.h>

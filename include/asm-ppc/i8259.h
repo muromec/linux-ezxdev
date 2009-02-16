@@ -1,5 +1,5 @@
 /*
- * BK Id: SCCS/s.i8259.h 1.17 10/16/02 10:15:45 paulus
+ * BK Id: %F% %I% %G% %U% %#%
  */
 
 #ifndef _PPC_KERNEL_i8259_H
@@ -11,5 +11,6 @@ extern struct hw_interrupt_type i8259_pic;
 
 void i8259_init(unsigned long int_ack);
 int i8259_irq(struct pt_regs *regs);
+int i8259_poll(struct pt_regs *regs);
 
 #endif /* _PPC_KERNEL_i8259_H */

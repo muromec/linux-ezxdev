@@ -88,7 +88,7 @@ symbol		=	value
 #define	PANIC(msg)                                      \
 		.set	push;				\
 		.set	reorder;                        \
-		la	a0,8f;                          \
+		PTR_LA	a0,8f;                          \
 		jal	panic;                          \
 9:		b	9b;                             \
 		.set	pop;				\
@@ -100,7 +100,7 @@ symbol		=	value
 #define PRINT(string)                                   \
 		.set	push;				\
 		.set	reorder;                        \
-		la	a0,8f;                          \
+		PTR_LA	a0,8f;                          \
 		jal	printk;                         \
 		.set	pop;				\
 		TEXT(string)
@@ -130,19 +130,30 @@ symbol		=	value
  */
 #if (_MIPS_ISA == _MIPS_ISA_MIPS4 ) || (_MIPS_ISA == _MIPS_ISA_MIPS5) || \
     (_MIPS_ISA == _MIPS_ISA_MIPS64)
+
 #define PREF(hint,addr)                                 \
-		pref	hint,addr
+		.set	push;				\
+		.set	mips4;				\
+		pref	hint,addr;			\
+		.set	pop
+
 #define PREFX(hint,addr)                                \
-		prefx	hint,addr
+		.set	push;				\
+		.set	mips4;				\
+		prefx	hint,addr;			\
+		.set	pop
+
 #else
+
 #define PREF(hint,addr)
 #define PREFX(hint,addr)
+
 #endif
 
 /*
  * MIPS ISA IV/V movn/movz instructions and equivalents for older CPUs.
  */
-#if _MIPS_ISA == _MIPS_ISA_MIPS1
+#if (_MIPS_ISA == _MIPS_ISA_MIPS1)
 #define MOVN(rd,rs,rt)                                  \
 		.set	push;				\
 		.set	reorder;			\
@@ -154,7 +165,7 @@ symbol		=	value
 		.set	push;				\
 		.set	reorder;			\
 		bnez	rt,9f;                          \
-		move	rd,rt;                          \
+		move	rd,rs;                          \
 		.set	pop;				\
 9:
 #endif /* _MIPS_ISA == _MIPS_ISA_MIPS1 */
@@ -358,15 +369,15 @@ symbol		=	value
  */
 #if (_MIPS_ISA == _MIPS_ISA_MIPS1) || (_MIPS_ISA == _MIPS_ISA_MIPS2) || \
     (_MIPS_ISA == _MIPS_ISA_MIPS32)
-#define MFC0	mfc0
-#define MTC0	mtc0
+#define MFC0		mfc0
+#define MTC0		mtc0
 #endif
 #if (_MIPS_ISA == _MIPS_ISA_MIPS3) || (_MIPS_ISA == _MIPS_ISA_MIPS4) || \
     (_MIPS_ISA == _MIPS_ISA_MIPS5) || (_MIPS_ISA == _MIPS_ISA_MIPS64)
-#define MFC0	dmfc0
-#define MTC0	dmtc0
+#define MFC0		dmfc0
+#define MTC0		dmtc0
 #endif
 
-#define SSNOP	sll zero, zero, 1
+#define SSNOP		sll zero,zero,1
 
 #endif /* __ASM_ASM_H */
