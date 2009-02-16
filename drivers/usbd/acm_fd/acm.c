@@ -1093,7 +1093,7 @@ void acm_event_irq (struct usb_function_instance *function, usb_device_event_t e
 	switch (event) {
 	case DEVICE_CONFIGURED:
 		TRACE_MSG("CONFIGURED");
-#ifdef CONFIG_ARCH_EZXBASE
+#ifdef CONFIG_MODEM_CONNECTIONS
 		queue_motusbd_event(USB_ACM_READY);
 		//printk (KERN_INFO "%s: modem_connection_status_inform_kernel OK\n", __FUNCTION__);
 		modem_connection_status_inform_kernel(CONNECTION_USB, CONNECTION_OK);
@@ -1113,7 +1113,7 @@ void acm_event_irq (struct usb_function_instance *function, usb_device_event_t e
 		TRACE_MSG("RESET continue");
                 acm->connected = 0;
 
-#ifdef CONFIG_ARCH_EZXBASE
+#ifdef CONFIG_MODEM_CONNECTIONS
 		//printk (KERN_INFO "%s: modem_connection_status_inform_kernel broken\n", __FUNCTION__);
 		modem_connection_status_inform_kernel(CONNECTION_USB, CONNECTION_BROKEN);
 #endif
