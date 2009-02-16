@@ -948,8 +948,6 @@ if [ "$CONFIG_PREEMPT" = "y" ]; then
    bool 'Break selected locks' CONFIG_LOCK_BREAK
 fi
 
-source drivers/ha/Config.in
-
 bool 'Kernel .config support' CONFIG_IKCONFIG
 dep_bool '  Enable access to .config through /proc/ikconfig' CONFIG_IKCONFIG_PROC $CONFIG_IKCONFIG $CONFIG_PROC_FS
 endmenu
