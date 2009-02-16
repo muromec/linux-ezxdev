@@ -81,10 +81,6 @@ fi
 bool 'Virtual memory file system support (former shm fs)' CONFIG_TMPFS
 define_bool CONFIG_RAMFS y
 
-tristate 'Persistent and Protected RAM file system support' CONFIG_PRAM_FS
-dep_bool '  Disable write protection (default is enabled)' CONFIG_PRAMFS_NOWP $CONFIG_PRAM_FS
-dep_bool '  Root file system on pramfs' CONFIG_ROOT_PRAMFS $CONFIG_PRAM_FS
-
 tristate 'ISO 9660 CDROM file system support' CONFIG_ISO9660_FS
 dep_mbool '  Microsoft Joliet CDROM extensions' CONFIG_JOLIET $CONFIG_ISO9660_FS
 dep_mbool '  Transparent decompression extension' CONFIG_ZISOFS $CONFIG_ISO9660_FS
@@ -127,16 +123,6 @@ dep_mbool '  UDF write support (DANGEROUS)' CONFIG_UDF_RW $CONFIG_UDF_FS $CONFIG
 
 tristate 'UFS file system support (read only)' CONFIG_UFS_FS
 dep_mbool '  UFS file system write support (DANGEROUS)' CONFIG_UFS_FS_WRITE $CONFIG_UFS_FS $CONFIG_EXPERIMENTAL
-
-tristate 'SGI XFS filesystem support' CONFIG_XFS_FS
-dep_mbool    '  Enable XFS Realtime support' CONFIG_XFS_RT $CONFIG_XFS_FS
-dep_mbool    '  Enable XFS Quota' CONFIG_XFS_QUOTA $CONFIG_XFS_FS
-if [ "$CONFIG_XFS_FS" != "n" ]; then
-    dep_tristate '  Enable XFS DMAPI' CONFIG_XFS_DMAPI $CONFIG_XFS_FS
-    if [ "$CONFIG_XFS_DMAPI" != "n" ]; then
-       define_bool CONFIG_HAVE_XFS_DMAPI y
-    fi
-fi
 
 if [ "$CONFIG_NET" = "y" ]; then
 

@@ -386,22 +386,12 @@ struct super_block *adfs_read_super(struct super_block *sb, void *data, int sile
 	sb->u.adfs_sb.s_size     = adfs_discsize(dr, sb->s_blocksize_bits);
 	sb->u.adfs_sb.s_version  = dr->format_version;
 	sb->u.adfs_sb.s_log2sharesize = dr->log2sharesize;
-
-	printk(KERN_DEBUG "ADFS: idlen %d map bit size %d sector size %d\n",
-		dr->idlen, 1 << dr->log2bpmb, 1 << dr->log2secsize);
-	printk(KERN_DEBUG "ADFS: map size %d map2blk %d version %d share size %d\n",
-		sb->u.adfs_sb.s_map_size,
-		sb->u.adfs_sb.s_map2blk,
-		sb->u.adfs_sb.s_version,
-		1 << sb->u.adfs_sb.s_log2sharesize);
 	
 	sb->u.adfs_sb.s_map = adfs_read_map(sb, dr);
 	if (!sb->u.adfs_sb.s_map)
 		goto error_free_bh;
 
 	brelse(bh);
-
-	printk(KERN_DEBUG "ADFS: ids per zone %d\n", sb->u.adfs_sb.s_ids_per_zone);
 
 	/*
 	 * set up enough so that we can read an inode

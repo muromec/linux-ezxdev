@@ -37,7 +37,6 @@ subdir-$(CONFIG_JBD)		+= jbd
 subdir-$(CONFIG_EXT2_FS)	+= ext2
 subdir-$(CONFIG_CRAMFS)		+= cramfs
 subdir-$(CONFIG_RAMFS)		+= ramfs
-subdir-$(CONFIG_PRAM_FS)	+= pramfs
 subdir-$(CONFIG_CODA_FS)	+= coda
 subdir-$(CONFIG_INTERMEZZO_FS)	+= intermezzo
 subdir-$(CONFIG_MINIX_FS)	+= minix
@@ -76,24 +75,6 @@ subdir-$(CONFIG_SUN_OPENPROMFS)	+= openpromfs
 subdir-$(CONFIG_BEFS_FS)	+= befs
 subdir-$(CONFIG_JFS_FS)		+= jfs
 
-subdir-$(CONFIG_XFS_DMAPI)	+= xfs_dmapi
-subdir-$(CONFIG_XFS_FS)		+= xfs
-mod-subdirs			+= xfs
-# xfs_support is used by xfs and a couple of other SGI components.  Because CML1
-# does not correctly handle inter-menu dependencies, set CONFIG_XFS_SUPPORT
-# here.  CML2 is not a problem, thank goodness.  The support code can be linked
-# into vmlinux even if xfs is not selected or is a module so xfs_support needs
-# to be exposed at this level.  Keith Owens.
-ifneq ($(findstring y,$(CONFIG_XFS_FS) $(CONFIG_XSCSI) $(CONFIG_XVM)),)
-  CONFIG_XFS_SUPPORT := y
-else
-  ifneq ($(findstring m,$(CONFIG_XFS_FS) $(CONFIG_XSCSI) $(CONFIG_XVM)),)
-    CONFIG_XFS_SUPPORT := m
-  else
-    CONFIG_XFS_SUPPORT :=
-  endif
-endif
-subdir-$(CONFIG_XFS_SUPPORT)	+= xfs_support
 
 obj-$(CONFIG_BINFMT_AOUT)	+= binfmt_aout.o
 obj-$(CONFIG_BINFMT_EM86)	+= binfmt_em86.o
