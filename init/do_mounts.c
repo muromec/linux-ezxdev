@@ -16,7 +16,6 @@
 #include <linux/fd.h>
 #include <linux/tty.h>
 #include <linux/init.h>
-#include <linux/security.h>
 
 #include <linux/nfs_fs.h>
 #include <linux/nfs_fs_sb.h>
@@ -972,9 +971,7 @@ out:
 	sys_umount("/dev", 0);
 	sys_mount(".", "/", NULL, MS_MOVE, NULL);
 	sys_chroot(".");
-	security_sb_post_mountroot();
 	mount_devfs_fs ();
-
 }
 
 #if defined(BUILD_CRAMDISK) && defined(CONFIG_BLK_DEV_RAM)

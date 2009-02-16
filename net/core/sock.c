@@ -118,7 +118,6 @@
 #include <linux/poll.h>
 #include <linux/tcp.h>
 #include <linux/init.h>
-#include <linux/security.h>
 
 #include <asm/uaccess.h>
 #include <asm/system.h>
@@ -600,16 +599,10 @@ struct sock *sk_alloc(int family, int priority, int zero_it)
 {
 	struct sock *sk = kmem_cache_alloc(sk_cachep, priority);
 
-	if (sk) {
-		if (zero_it) {
-			memset(sk, 0, sizeof(struct sock));
-			sk->family = family;
-			sock_lock_init(sk);
-		}
-		if (security_sock_alloc(sk, priority)) {
-			kmem_cache_free(sk_cachep, sk);
-			return NULL;
-		}
+	if(sk && zero_it) {
+		memset(sk, 0, sizeof(struct sock));
+		sk->family = family;
+		sock_lock_init(sk);
 	}
 
 	return sk;
@@ -634,8 +627,6 @@ void sk_free(struct sock *sk)
 
 	if (atomic_read(&sk->omem_alloc))
 		printk(KERN_DEBUG "sk_free: optmem leakage (%d bytes) detected.\n", atomic_read(&sk->omem_alloc));
-
-	security_sock_free(sk);
 
 	kmem_cache_free(sk_cachep, sk);
 }

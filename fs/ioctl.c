@@ -9,7 +9,6 @@
 #include <linux/mm.h>
 #include <linux/smp_lock.h>
 #include <linux/file.h>
-#include <linux/security.h>
 
 #include <linux/trace.h>
 
@@ -61,17 +60,6 @@ asmlinkage long sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg)
 	if (!filp)
 		goto out;
 	error = 0;
-    /* Call the Linux Security Module to perform its checks. */
-    error = security_file_ioctl(filp, cmd, arg);
-    if (error) {
-        fput(filp);
-        goto out;
-    }
-    
-	TRACE_FILE_SYSTEM(TRACE_EV_FILE_SYSTEM_IOCTL,
-			  fd,
-			  cmd,
-			  NULL);
 	lock_kernel();
 	switch (cmd) {
 		case FIOCLEX:

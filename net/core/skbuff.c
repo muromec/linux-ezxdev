@@ -56,7 +56,6 @@
 #include <linux/rtnetlink.h>
 #include <linux/init.h>
 #include <linux/highmem.h>
-#include <linux/security.h>
 
 #include <net/protocol.h>
 #include <net/dst.h>
@@ -200,11 +199,6 @@ struct sk_buff *alloc_skb(unsigned int size,int gfp_mask)
 	if (data == NULL)
 		goto nodata;
 
-	if (security_skb_alloc(skb, gfp_mask)) {
- 		kfree(data);
-		goto nodata;
-	}
-
 	/* XXX: does not include slab overhead */ 
 	skb->truesize = size + sizeof(struct sk_buff);
 
@@ -263,9 +257,6 @@ static inline void skb_headerinit(void *p, kmem_cache_t *cache,
 #endif
 #ifdef CONFIG_NET_SCHED
 	skb->tc_index = 0;
-#endif
-#ifdef CONFIG_SECURITY_NETWORK
-	skb->lsm_security = NULL;
 #endif
 }
 
@@ -344,7 +335,6 @@ void __kfree_skb(struct sk_buff *skb)
 #ifdef CONFIG_NETFILTER
 	nf_conntrack_put(skb->nfct);
 #endif
-	security_skb_free(skb);
 	skb_headerinit(skb, NULL, 0);  /* clean state */
 	kfree_skbmem(skb);
 }
@@ -372,11 +362,6 @@ struct sk_buff *skb_clone(struct sk_buff *skb, int gfp_mask)
 		n = kmem_cache_alloc(skbuff_head_cache, gfp_mask);
 		if (!n)
 			return NULL;
-	}
-	
-	if (security_skb_clone(n, skb)) {
-		skb_head_to_pool(n);
-		return NULL;
 	}
 
 #define C(x) n->x = skb->x
@@ -465,7 +450,6 @@ static void copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
 #ifdef CONFIG_NET_SCHED
 	new->tc_index = old->tc_index;
 #endif
-	security_skb_copy(new, old);
 }
 
 /**

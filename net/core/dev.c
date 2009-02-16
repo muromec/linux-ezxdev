@@ -105,7 +105,6 @@
 #include <linux/init.h>
 #include <linux/kmod.h>
 #include <linux/module.h>
-#include <linux/security.h>
 #if defined(CONFIG_NET_RADIO) || defined(CONFIG_NET_PCMCIA_RADIO)
 #include <linux/wireless.h>		/* Note : will define WIRELESS_EXT */
 #include <net/iw_handler.h>
@@ -2599,8 +2598,6 @@ int unregister_netdevice(struct net_device *dev)
 #ifdef CONFIG_NET_DIVERT
 	free_divert_blk(dev);
 #endif
-
-	security_netdev_unregister(dev);
 
 	if (dev->features & NETIF_F_DYNALLOC) {
 #ifdef NET_REFCNT_DEBUG

@@ -33,7 +33,6 @@
 #include <linux/seq_file.h>
 #include <linux/namespace.h>
 #include <linux/mm.h>
-#include <linux/security.h>
 
 #ifdef CONFIG_MEMORY_ACCOUNTING
 #include <asm/memory.h>
@@ -624,7 +623,7 @@ static struct file_operations proc_info_file_operations = {
 };
 
 #define MAY_PTRACE(p) \
-(p==current||(p->p_pptr==current&&(p->ptrace & PT_PTRACED)&&p->state==TASK_STOPPED&&security_ptrace(current,p)==0))
+(p==current||(p->p_pptr==current&&(p->ptrace & PT_PTRACED)&&p->state==TASK_STOPPED))
 
 
 static int mem_open(struct inode* inode, struct file* file)

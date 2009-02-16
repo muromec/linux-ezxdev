@@ -23,7 +23,6 @@
 #include <linux/swapctl.h>
 #include <linux/prefetch.h>
 #include <linux/locks.h>
-#include <linux/security.h>
 
 /*
  * New inode.c implementation.
@@ -90,12 +89,7 @@ static inline struct inode *alloc_inode(int gfp_mask)
 	inode = ((struct inode *) kmem_cache_alloc(inode_cachep, SLAB_KERNEL));
 	if (!inode)
 		return NULL;
-	inode->i_security = NULL;
 	
-	if (security_inode_alloc(inode)) {
-		kmem_cache_free(inode_cachep, (inode));
-		return NULL;
-	}
 	return inode;
 }
 
@@ -103,10 +97,7 @@ static void destroy_inode(struct inode *inode)
 {
 	if (inode_has_buffers(inode))
 		BUG();
-        security_inode_free(inode);
-/* Reinitialise the waitqueue head because __wait_on_freeing_inode() --ss
-	   may have left stale entries on it which it can't remove (since  --ss
-	   it knows we're freeing the inode right now  -- ss*/
+        
 	init_waitqueue_head(&inode->i_wait); //ss
 	kmem_cache_free(inode_cachep, (inode));
 }
@@ -1228,8 +1219,6 @@ void iput(struct inode *inode)
 
 			if (inode->i_data.nrpages)
 				truncate_inode_pages(&inode->i_data, 0);
-
-			security_inode_delete(inode);
 
 			if (op && op->delete_inode) {
 				void (*delete)(struct inode *) = op->delete_inode;

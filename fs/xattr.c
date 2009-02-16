@@ -15,7 +15,6 @@
 #include <linux/smp_lock.h>
 #include <linux/file.h>
 #include <linux/xattr.h>
-#include <linux/security.h>
 #include <asm/uaccess.h>
 
 /*
@@ -88,9 +87,6 @@ setxattr(struct dentry *d, char *name, void *value, size_t size, int flags)
 
 	error = -EOPNOTSUPP;
 	if (d->d_inode->i_op && d->d_inode->i_op->setxattr) {
-		error = security_inode_setxattr(d, kname, kvalue, size, flags);
-		if (error)
-			goto out;
 		down(&d->d_inode->i_sem);
 		lock_kernel();
 		error = d->d_inode->i_op->setxattr(d, kname, kvalue, size, flags);
@@ -98,7 +94,6 @@ setxattr(struct dentry *d, char *name, void *value, size_t size, int flags)
 		up(&d->d_inode->i_sem);
 	}
 
-out:
 	xattr_free(kvalue, size);
 	return error;
 }
@@ -167,9 +162,6 @@ getxattr(struct dentry *d, char *name, void *value, size_t size)
 
 	error = -EOPNOTSUPP;
 	if (d->d_inode->i_op && d->d_inode->i_op->getxattr) {
-		error = security_inode_getxattr(d, kname);
-		if (error)
-			goto out;
 		down(&d->d_inode->i_sem);
 		lock_kernel();
 		error = d->d_inode->i_op->getxattr(d, kname, kvalue, size);
@@ -180,7 +172,6 @@ getxattr(struct dentry *d, char *name, void *value, size_t size)
 	if (kvalue && error > 0)
 		if (copy_to_user(value, kvalue, error))
 			error = -EFAULT;
-out:
 	xattr_free(kvalue, size);
 	return error;
 }
@@ -242,9 +233,6 @@ listxattr(struct dentry *d, char *list, size_t size)
 
 	error = -EOPNOTSUPP;
 	if (d->d_inode->i_op && d->d_inode->i_op->listxattr) {
-		error = security_inode_listxattr(d);
-		if (error)
-			goto out;
 		down(&d->d_inode->i_sem);
 		lock_kernel();
 		error = d->d_inode->i_op->listxattr(d, klist, size);
@@ -255,7 +243,6 @@ listxattr(struct dentry *d, char *list, size_t size)
 	if (klist && error > 0)
 		if (copy_to_user(list, klist, error))
 			error = -EFAULT;
-out:
 	xattr_free(klist, size);
 	return error;
 }
@@ -319,16 +306,12 @@ removexattr(struct dentry *d, char *name)
 
 	error = -EOPNOTSUPP;
 	if (d->d_inode->i_op && d->d_inode->i_op->removexattr) {
-		error = security_inode_removexattr(d, kname);
-		if (error)
-			goto out;
 		down(&d->d_inode->i_sem);
 		lock_kernel();
 		error = d->d_inode->i_op->removexattr(d, kname);
 		unlock_kernel();
 		up(&d->d_inode->i_sem);
 	}
-out:
 	return error;
 }
 

@@ -17,7 +17,6 @@
 */
 /*
  *
- *  2005-Apr-04  Motorola  Add security patch
  */
 
 
@@ -32,7 +31,6 @@
 #include <linux/slab.h>
 #include <linux/namespace.h>
 #include <linux/completion.h>
-#include <linux/security.h>
 
 #include <asm/uaccess.h>
 
@@ -138,7 +136,7 @@ int exec_usermodehelper(char *program_path, char *argv[], char *envp[])
 	/* Give kmod all effective privileges.. */
 	curtask->euid = curtask->fsuid = 0;
 	curtask->egid = curtask->fsgid = 0;
-	security_task_kmod_set_label();
+        cap_set_full(curtask->cap_effective);
 
 	/* Allow execve args to be in kernel space. */
 	set_fs(KERNEL_DS);

@@ -44,7 +44,6 @@
 #include <linux/proc_fs.h>
 #include <linux/smp_lock.h>
 #include <linux/notifier.h>
-#include <linux/security.h>
 #include <net/sock.h>
 #include <net/scm.h>
 
@@ -617,12 +616,7 @@ static int netlink_sendmsg(struct socket *sock, struct msghdr *msg, int len,
 	   check them, when this message will be delivered
 	   to corresponding kernel module.   --ANK (980802)
 	 */
-
-	err = security_netlink_send(skb);
-	if (err) {
-		kfree_skb(skb);
-		goto out;
-	}
+	NETLINK_CB(skb).eff_cap = current->cap_effective;
 
 	err = -EFAULT;
 	if (memcpy_fromiovec(skb_put(skb,len), msg->msg_iov, len)) {

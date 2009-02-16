@@ -32,7 +32,6 @@
 #include <linux/devfs_fs_kernel.h>
 #include <linux/major.h>
 #include <linux/acct.h>
-#include <linux/security.h>
 #include <linux/quotaops.h>
 
 #include <asm/uaccess.h>
@@ -276,11 +275,6 @@ static struct super_block *alloc_super(void)
 	struct super_block *s = kmalloc(sizeof(struct super_block),  GFP_USER);
 	if (s) {
 		memset(s, 0, sizeof(struct super_block));
-		if (security_sb_alloc(s)) {
-			kfree(s);
-			s = NULL;
-			goto out;
-		}
 		INIT_LIST_HEAD(&s->s_dirty);
 		INIT_LIST_HEAD(&s->s_locked_inodes);
 		INIT_LIST_HEAD(&s->s_files);
@@ -297,7 +291,6 @@ static struct super_block *alloc_super(void)
 		s->s_maxbytes = MAX_NON_LFS;
 		s->s_qop = sb_generic_quota_ops;
 	}
-out:
 	return s;
 }
 
@@ -309,7 +302,6 @@ out:
  */
 static inline void destroy_super(struct super_block *s)
 {
-	security_sb_free(s);
 	kfree(s);
 }
 
@@ -864,15 +856,12 @@ static struct super_block *get_sb_single(struct file_system_type *fs_type,
 	return s;
 }
 
-void kill_super(struct super_block *sb);
-
 struct vfsmount *
 do_kern_mount(const char *fstype, int flags, char *name, void *data)
 {
 	struct file_system_type *type = get_fs_type(fstype);
 	struct super_block *sb = ERR_PTR(-ENOMEM);
 	struct vfsmount *mnt;
-	int error;
 
 	if (!type)
 		return ERR_PTR(-ENODEV);
@@ -881,52 +870,6 @@ do_kern_mount(const char *fstype, int flags, char *name, void *data)
 	if (!mnt)
 		goto out;
 
-#ifdef CONFIG_ARCH_EZX
-	/* Added by Susan */
-	if ( !strcmp(fstype,"cramfs") )
-	{
-		roflash_area dev_def;
-		struct nameidata nd;
-		unsigned short dev_nr;
-		int error = 0;
-		
-		if ( !strcmp(name,"/dev/root") )
-		{
-			dev_def = *((roflash_area *)roflash_get_dev(0));
-			dev_nr = MKDEV(ROFLASH_MAJOR,0);
-		}
-		else
-		{
-			if (path_init(name, LOOKUP_FOLLOW|LOOKUP_POSITIVE, &nd))
-			error = path_walk(name, &nd);
-			if (error)
-				return ERR_PTR(error);
-
-			printk(KERN_NOTICE "do_kern_mount:dev_nr(i_dev)(%d)\n",nd.dentry->d_inode->i_dev);
-			printk(KERN_NOTICE "do_kern_mount:dev_nr(i_rdev)(%d)\n",nd.dentry->d_inode->i_rdev);
-
-			dev_nr = nd.dentry->d_inode->i_rdev;
-			
-			if (MAJOR(dev_nr) == ROFLASH_MAJOR)
-				dev_def = *((roflash_area *)roflash_get_dev(MINOR(dev_nr)));
-//			printk(KERN_NOTICE "do_kern_mount:dev_def.l_x_b(%x)\n",dev_def.l_x_b);
-		}				
-		
-		if (MAJOR(dev_nr) == ROFLASH_MAJOR)  //cramfs is mounted on NOR //
-		{
-			if ( (dev_def.l_x_b == ROFLASH_LINEAR) || (dev_def.l_x_b == ROFLASH_LINEAR_XIP) )
-				sb = get_sb_linear_dev(type, flags, data,dev_nr);
-			if (dev_def.l_x_b == ROFLASH_BLOCK)
-				sb = get_sb_bdev(type, flags, name, data);
-		}
-		else  //cramfs is mounted on DOC //
-			sb = get_sb_bdev(type,flags,name,data);
-	}
-	else
-	{
-#endif
-
-	
 	if (type->fs_flags & FS_REQUIRES_DEV)
 		sb = get_sb_bdev(type, flags, name, data);
 	else if (type->fs_flags & FS_SINGLE)
@@ -935,21 +878,10 @@ do_kern_mount(const char *fstype, int flags, char *name, void *data)
 		sb = get_sb_nodev(type, flags, name, data);
 
 
-#ifdef CONFIG_ARCH_EZX
-	}
-#endif
-
 	if (IS_ERR(sb))
 		goto out_mnt;
 	if (type->fs_flags & FS_NOMOUNT)
 		sb->s_flags |= MS_NOUSER;
-	error = security_sb_kern_mount(sb);
-	if (error) {
-		up_write(&sb->s_umount);
-		kill_super(sb);
-		sb = ERR_PTR(error);
-		goto out_mnt;
-	}
 	mnt->mnt_sb = sb;
 	mnt->mnt_root = dget(sb->s_root);
 	mnt->mnt_mountpoint = sb->s_root;

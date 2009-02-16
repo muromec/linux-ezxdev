@@ -17,7 +17,6 @@
 #include <linux/quotaops.h>
 #include <linux/acct.h>
 #include <linux/module.h>
-#include <linux/security.h>
 
 #include <asm/uaccess.h>
 
@@ -291,10 +290,6 @@ static int do_umount(struct vfsmount *mnt, int flags)
 	struct super_block * sb = mnt->mnt_sb;
 	int retval = 0;
 
-	retval = security_sb_umount(mnt, flags);
-	if (retval)
-		return retval;
-
 	/*
 	 * If we may have to abort operations to get out of this
 	 * mount, and they will themselves hold resources we must
@@ -344,7 +339,6 @@ static int do_umount(struct vfsmount *mnt, int flags)
 		DQUOT_OFF(sb);
 		acct_auto_close(sb->s_dev);
 		unlock_kernel();
-		security_sb_umount_close(mnt);
 		spin_lock(&dcache_lock);
 	}
 	retval = -EBUSY;
@@ -354,8 +348,6 @@ static int do_umount(struct vfsmount *mnt, int flags)
 		retval = 0;
 	}
 	spin_unlock(&dcache_lock);
-	if (retval)
-		security_sb_umount_busy(mnt);
 	up_write(&current->namespace->sem);
 	return retval;
 }
@@ -473,10 +465,6 @@ static int graft_tree(struct vfsmount *mnt, struct nameidata *nd)
 	if (IS_DEADDIR(nd->dentry->d_inode))
 		goto out_unlock;
 
-	err = security_sb_check_sb(mnt, nd);
-	if (err)
-		goto out_unlock;
-
 	spin_lock(&dcache_lock);
 	if (IS_ROOT(nd->dentry) || !d_unhashed(nd->dentry)) {
 		struct list_head head;
@@ -489,8 +477,6 @@ static int graft_tree(struct vfsmount *mnt, struct nameidata *nd)
 	spin_unlock(&dcache_lock);
 out_unlock:
 	up(&nd->dentry->d_inode->i_zombie);
-	if (!err)
-		security_sb_post_addmount(mnt, nd);
 	return err;
 }
 
@@ -560,8 +546,6 @@ static int do_remount(struct nameidata *nd,int flags,int mnt_flags,void *data)
 	if (!err)
 		nd->mnt->mnt_flags=mnt_flags;
 	up_write(&sb->s_umount);
-	if (!err)
-		security_sb_post_remount(nd->mnt, flags, data);
 	return err;
 }
 
@@ -763,10 +747,6 @@ long do_mount(char * dev_name, char * dir_name, char *type_page,
 	if (retval)
 		return retval;
 
-	retval = security_sb_mount(dev_name, &nd, type_page, flags, data_page);
-	if (retval)
-		goto dput_out;
-
 	if (flags & MS_REMOUNT)
 		retval = do_remount(&nd, flags & ~MS_REMOUNT, mnt_flags,
 				    data_page);
@@ -777,7 +757,6 @@ long do_mount(char * dev_name, char * dir_name, char *type_page,
 	else
 		retval = do_add_mount(&nd, type_page, flags, mnt_flags,
 				      dev_name, data_page);
-dput_out:
 	path_release(&nd);
 	return retval;
 }
@@ -961,12 +940,6 @@ asmlinkage long sys_pivot_root(const char *new_root, const char *put_old)
 	if (error)
 		goto out1;
 
-	error = security_sb_pivotroot(&old_nd, &new_nd);
-	if (error) {
-		path_release(&old_nd);
-		goto out1;
-	}
-
 	read_lock(&current->fs->lock);
 	user_nd.mnt = mntget(current->fs->rootmnt);
 	user_nd.dentry = dget(current->fs->root);
@@ -1011,7 +984,6 @@ asmlinkage long sys_pivot_root(const char *new_root, const char *put_old)
 	attach_mnt(new_nd.mnt, &root_parent);
 	spin_unlock(&dcache_lock);
 	chroot_fs_refs(&user_nd, &new_nd);
-	security_sb_post_pivotroot(&user_nd, &new_nd);
 	error = 0;
 	path_release(&root_parent);
 	path_release(&parent_nd);

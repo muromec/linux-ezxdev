@@ -4,15 +4,9 @@
  * Copyright (C) 1997  Andrew Main <zefram@fysh.org>
  * Integrated into 2.1.97+,  Andrew G. Morgan <morgan@transmeta.com>
  */ 
-/*
- *
- *  2005-Apr-04  Motorola  Add security patch 
- */
 
 #include <linux/mm.h>
-#include <linux/security.h>
 #include <asm/uaccess.h>
-
 unsigned securebits = SECUREBITS_DEFAULT; /* systemwide security settings */
 
 kernel_cap_t cap_bset = CAP_INIT_EFF_SET;
@@ -64,7 +58,9 @@ asmlinkage long sys_capget(cap_user_header_t header, cap_user_data_t dataptr)
      }
 
      if (!error) { 
-	     error = security_capget(target, &data.effective, &data.inheritable, &data.permitted);
+	     data.permitted = cap_t(target->cap_permitted);
+	     data.inheritable = cap_t(target->cap_inheritable);
+	     data.effective = cap_t(target->cap_effective);
      }
 
      if (target != current)
@@ -93,7 +89,9 @@ static void cap_set_pg(int pgrp,
      for_each_task(target) {
              if (target->pgrp != pgrp)
                      continue;
-	     security_capset_set(target, effective, inheritable, permitted);
+             target->cap_effective   = *effective;
+             target->cap_inheritable = *inheritable;
+             target->cap_permitted   = *permitted;
      }
      read_unlock(&tasklist_lock);
 }
@@ -112,7 +110,9 @@ static void cap_set_all(kernel_cap_t *effective,
      for_each_task(target) {
              if (target == current || target->pid == 1)
                      continue;
-	     security_capset_set(target, effective, inheritable, permitted);
+             target->cap_effective   = *effective;
+             target->cap_inheritable = *inheritable;
+             target->cap_permitted   = *permitted;
      }
      read_unlock(&tasklist_lock);
 }
@@ -169,12 +169,30 @@ asmlinkage long sys_capset(cap_user_header_t header, const cap_user_data_t data)
              target = current;
      }
 
-     error = security_capset_check(target, &effective, &inheritable, &permitted);
-     if (error)
-	     goto out;
+
+     /* verify restrictions on target's new Inheritable set */
+     if (!cap_issubset(inheritable,
+                       cap_combine(target->cap_inheritable,
+                                   current->cap_permitted))) {
+             goto out;
+     }
+
+     /* verify restrictions on target's new Permitted set */
+     if (!cap_issubset(permitted,
+                       cap_combine(target->cap_permitted,
+                                   current->cap_permitted))) {
+             goto out;
+     }
+
+     /* verify the _new_Effective_ is a subset of the _new_Permitted_ */
+     if (!cap_issubset(effective, permitted)) {
+             goto out;
+     }
 
      /* having verified that the proposed changes are legal,
            we now put them into effect. */
+     error = 0;
+
      if (pid < 0) {
              if (pid == -1)  /* all procs other than current and init */
                      cap_set_all(&effective, &inheritable, &permitted);
@@ -183,7 +201,10 @@ asmlinkage long sys_capset(cap_user_header_t header, const cap_user_data_t data)
                      cap_set_pg(-pid, &effective, &inheritable, &permitted);
              goto spin_out;
      } else {
-	     security_capset_set(target, &effective, &inheritable, &permitted);
+             /* FIXME: do we need to have a write lock here..? */
+             target->cap_effective   = effective;
+             target->cap_inheritable = inheritable;
+             target->cap_permitted   = permitted;
      }
 
 out:

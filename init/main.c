@@ -35,7 +35,6 @@
 #include <linux/iobuf.h>
 #include <linux/bootmem.h>
 #include <linux/tty.h>
-#include <linux/security.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
@@ -449,7 +448,6 @@ asmlinkage void __init start_kernel(void)
   
 	fork_init(num_mappedpages);
 	proc_caches_init();
-	security_scaffolding_startup();
 	vfs_caches_init(num_physpages);
 	buffer_init(num_physpages);
 	page_cache_init(num_physpages);

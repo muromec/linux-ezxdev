@@ -17,7 +17,6 @@
 #include <linux/dnotify.h>
 #include <linux/fcntl.h>
 #include <linux/quotaops.h>
-#include <linux/security.h>
 
 /* Taken over from the old code... */
 
@@ -135,14 +134,10 @@ int notify_change(struct dentry * dentry, struct iattr * attr)
 		attr->ia_mtime = now;
 
 	lock_kernel();
-	if (inode->i_op && inode->i_op->setattr) {
-		error = security_inode_setattr(dentry, attr);
-		if (!error)
-			error = inode->i_op->setattr(dentry, attr);
-	} else {
+	if (inode->i_op && inode->i_op->setattr) 
+		error = inode->i_op->setattr(dentry, attr);
+	else {
 		error = inode_change_ok(inode, attr);
-		if (!error)
-			error = security_inode_setattr(dentry, attr);
 		if (!error) {
 			if ((ia_valid & ATTR_UID && attr->ia_uid != inode->i_uid) ||
 			    (ia_valid & ATTR_GID && attr->ia_gid != inode->i_gid))

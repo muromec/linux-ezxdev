@@ -17,7 +17,6 @@
 #include <linux/mm.h>
 #include <linux/highmem.h>
 #include <linux/smp_lock.h>
-#include <linux/security.h>
 
 #include <asm/pgtable.h>
 #include <asm/uaccess.h>
@@ -48,9 +47,7 @@ int ptrace_check_attach(struct task_struct *child, int kill)
 
 int ptrace_attach(struct task_struct *task)
 {
-    int retval;
 	task_lock(task);
-    retval = -EPERM;
 	if (task->pid <= 1)
 		goto bad;
 	if (task == current)
@@ -70,9 +67,6 @@ int ptrace_attach(struct task_struct *task)
 		goto bad;
 	/* the same process cannot be attached many times */
 	if (task->ptrace & PT_PTRACED)
-		goto bad;
-	retval = security_ptrace(current, task);
-	if (retval)
 		goto bad;
 
 	/* Go */
@@ -94,7 +88,7 @@ int ptrace_attach(struct task_struct *task)
 
 bad:
 	task_unlock(task);
-	return retval;
+	return -EPERM;
 }
 
 int ptrace_detach(struct task_struct *child, unsigned int data)
@@ -131,7 +125,6 @@ int access_process_vm(struct task_struct *tsk, unsigned long addr, void *buf, in
 	struct vm_area_struct *vma;
 	struct page *page;
 	void *old_buf = buf;
-	
 
 	/* Worry about races with exit() */
 	task_lock(tsk);

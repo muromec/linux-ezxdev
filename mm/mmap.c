@@ -10,7 +10,6 @@
  *
  * modified by w15879, for EZX platform
  *
- * 2005-Apr-04 Add security patch, Ni Jili
  */
 
 
@@ -25,7 +24,6 @@
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/personality.h>
-#include <linux/security.h>
 
 #include <asm/uaccess.h>
 #include <asm/pgalloc.h>
@@ -549,10 +547,6 @@ unsigned long do_mmap_pgoff(struct file * file, unsigned long addr,
 		}
 	}
 
-	error = security_file_mmap(file, prot, flags);
-	if (error)
-		return error;
-		
 	/* Clear old maps */
 munmap_back:
 	vma = find_vma_prepare(mm, addr, &prev, &rb_link, &rb_parent);

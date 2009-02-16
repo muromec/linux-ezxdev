@@ -14,11 +14,6 @@
  * Move the mm functionality over to mm/shmem.c, Christoph Rohland <cr@sap.com>
  *
  */
-/*
- *
- * 2005-Apr-04 Motorola  Add security patch
- */
-
 
 #include <linux/config.h>
 #include <linux/slab.h>
@@ -28,11 +23,22 @@
 #include <linux/mman.h>
 #include <linux/proc_fs.h>
 #include <asm/uaccess.h>
-#include <linux/security.h>
 
 #include "util.h"
 
-#include <linux/trace.h>
+struct shmid_kernel /* private to the kernel */
+{	
+	struct kern_ipc_perm	shm_perm;
+	struct file *		shm_file;
+	int			id;
+	unsigned long		shm_nattch;
+	unsigned long		shm_segsz;
+	time_t			shm_atim;
+	time_t			shm_dtim;
+	time_t			shm_ctim;
+	pid_t			shm_cprid;
+	pid_t			shm_lprid;
+};
 
 #define shm_flags	shm_perm.mode
 
@@ -119,10 +125,8 @@ static void shm_destroy (struct shmid_kernel *shp)
 	shm_tot -= (shp->shm_segsz + PAGE_SIZE - 1) >> PAGE_SHIFT;
 	shm_rmid (shp->id);
 	shm_unlock(shp->id);
-
 	shmem_lock(shp->shm_file, 0);
 	fput (shp->shm_file);
-	security_shm_free(shp);
 	kfree (shp);
 }
 
@@ -190,17 +194,6 @@ static int newseg (key_t key, int shmflg, size_t size)
 	shp = (struct shmid_kernel *) kmalloc (sizeof (*shp), GFP_USER);
 	if (!shp)
 		return -ENOMEM;
-
-	shp->shm_perm.key = key;
-	shp->shm_flags = (shmflg & S_IRWXUGO);
-
-	shp->shm_perm.security = NULL;
-	error = security_shm_alloc(shp);
-	if (error) {
-		kfree(shp);
-		return error;
-	}
-
 	sprintf (name, "SYSV%08x", key);
 	file = shmem_file_setup(name, size);
 	error = PTR_ERR(file);
@@ -211,7 +204,8 @@ static int newseg (key_t key, int shmflg, size_t size)
 	id = shm_addid(shp);
 	if(id == -1) 
 		goto no_id;
-
+	shp->shm_perm.key = key;
+	shp->shm_flags = (shmflg & S_IRWXUGO);
 	shp->shm_cprid = current->pid;
 	shp->shm_lprid = 0;
 	shp->shm_atim = shp->shm_dtim = 0;
@@ -229,7 +223,6 @@ static int newseg (key_t key, int shmflg, size_t size)
 no_id:
 	fput(file);
 no_file:
-	security_shm_free(shp);
 	kfree(shp);
 	return error;
 }
@@ -257,16 +250,11 @@ asmlinkage long sys_shmget (key_t key, size_t size, int shmflg)
 			err = -EINVAL;
 		else if (ipcperms(&shp->shm_perm, shmflg))
 			err = -EACCES;
-		else {
-			int shmid = shm_buildid(id, shp->shm_perm.seq);
-			err = security_shm_associate(shp, shmflg);
-			if (!err)
-				err = shmid;
-		}
+		else
+			err = shm_buildid(id, shp->shm_perm.seq);
 		shm_unlock(id);
 	}
 	up(&shm_ids.sem);
-	TRACE_IPC(TRACE_EV_IPC_SHM_CREATE, err, shmflg);
 	return err;
 }
 
@@ -401,10 +389,6 @@ asmlinkage long sys_shmctl (int shmid, int cmd, struct shmid_ds *buf)
 	{
 		struct shminfo64 shminfo;
 
-		err = security_shm_shmctl(NULL, cmd);
-		if (err)
-			return err;
-
 		memset(&shminfo,0,sizeof(shminfo));
 		shminfo.shmmni = shminfo.shmseg = shm_ctlmni;
 		shminfo.shmmax = shm_ctlmax;
@@ -422,10 +406,6 @@ asmlinkage long sys_shmctl (int shmid, int cmd, struct shmid_ds *buf)
 	case SHM_INFO:
 	{
 		struct shm_info shm_info;
-
-		err = security_shm_shmctl(NULL, cmd);
-		if (err)
-			return err;
 
 		memset(&shm_info,0,sizeof(shm_info));
 		down(&shm_ids.sem);
@@ -452,7 +432,6 @@ asmlinkage long sys_shmctl (int shmid, int cmd, struct shmid_ds *buf)
 		shp = shm_lock(shmid);
 		if(shp==NULL)
 			return -EINVAL;
-
 		if(cmd==SHM_STAT) {
 			err = -EINVAL;
 			if (shmid > shm_ids.max_id)
@@ -467,11 +446,6 @@ asmlinkage long sys_shmctl (int shmid, int cmd, struct shmid_ds *buf)
 		err=-EACCES;
 		if (ipcperms (&shp->shm_perm, S_IRUGO))
 			goto out_unlock;
-
-		err = security_shm_shmctl(shp, cmd);
-		if (err)
-			goto out_unlock;
-		
 		kernel_to_ipc64_perm(&shp->shm_perm, &tbuf.shm_perm);
 		tbuf.shm_segsz	= shp->shm_segsz;
 		tbuf.shm_atime	= shp->shm_atim;
@@ -500,11 +474,6 @@ asmlinkage long sys_shmctl (int shmid, int cmd, struct shmid_ds *buf)
 		err = shm_checkid(shp,shmid);
 		if(err)
 			goto out_unlock;
-
-		err = security_shm_shmctl(shp, cmd);
-		if (err)
-			goto out_unlock;
-		
 		if(cmd==SHM_LOCK) {
 			shmem_lock(shp->shm_file, 1);
 			shp->shm_flags |= SHM_LOCKED;
@@ -535,18 +504,12 @@ asmlinkage long sys_shmctl (int shmid, int cmd, struct shmid_ds *buf)
 		err = shm_checkid(shp, shmid);
 		if(err)
 			goto out_unlock_up;
-
 		if (current->euid != shp->shm_perm.uid &&
 		    current->euid != shp->shm_perm.cuid && 
 		    !capable(CAP_SYS_ADMIN)) {
 			err=-EPERM;
 			goto out_unlock_up;
 		}
-
-		err = security_shm_shmctl(shp, cmd);
-		if (err)
-			goto out_unlock_up;
-
 		if (shp->shm_nattch){
 			shp->shm_flags |= SHM_DEST;
 			/* Do not find it any more */
@@ -570,17 +533,12 @@ asmlinkage long sys_shmctl (int shmid, int cmd, struct shmid_ds *buf)
 		err = shm_checkid(shp,shmid);
 		if(err)
 			goto out_unlock_up;
-
 		err=-EPERM;
 		if (current->euid != shp->shm_perm.uid &&
 		    current->euid != shp->shm_perm.cuid && 
 		    !capable(CAP_SYS_ADMIN)) {
 			goto out_unlock_up;
 		}
-		
-		err = security_shm_shmctl(shp, cmd);
-		if (err)
-			goto out_unlock_up;
 
 		shp->shm_perm.uid = setbuf.uid;
 		shp->shm_perm.gid = setbuf.gid;
@@ -665,13 +623,6 @@ asmlinkage long sys_shmat (int shmid, char *shmaddr, int shmflg, ulong *raddr)
 		shm_unlock(shmid);
 		return -EACCES;
 	}
-
-	err = security_shm_shmat(shp, shmaddr, shmflg);
-	if (err) {
-		shm_unlock(shmid);
-		return err;
-	}
-		
 	file = shp->shm_file;
 	size = file->f_dentry->d_inode->i_size;
 	shp->shm_nattch++;

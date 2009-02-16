@@ -57,7 +57,6 @@
 
 #include <linux/netdevice.h>
 #include <linux/skbuff.h>	/* struct sk_buff */
-#include <linux/security.h>
 #include <net/protocol.h>		/* struct inet_protocol */
 #if defined(CONFIG_X25) || defined(CONFIG_X25_MODULE)
 #include <net/x25.h>
@@ -674,11 +673,6 @@ struct sock {
 
 	/* RPC layer private data */
 	void			*user_data;
-
-#ifdef CONFIG_SECURITY_NETWORK
-	/* LSM security field */
-	void 			*security;
-#endif
   
 	/* Callbacks */
 	void			(*state_change)(struct sock *sk);
@@ -690,17 +684,6 @@ struct sock {
 						struct sk_buff *skb);  
 	void                    (*destruct)(struct sock *sk);
 };
-
-static inline void clone_sk(struct sock *newsk, struct sock *sk) {
-#ifdef CONFIG_SECURITY_NETWORK 
-	/* Save/restore the LSM security pointer around the copy */
-	void *sptr = newsk->security; 
-	memcpy(newsk, sk, sizeof(*newsk));
-	newsk->security = sptr;
-#else
-	memcpy(newsk, sk, sizeof(*newsk));
-#endif
-}
 
 /* The per-socket spinlock must be held here. */
 #define sk_add_backlog(__sk, __skb)			\
@@ -1156,7 +1139,6 @@ static inline void skb_set_owner_w(struct sk_buff *skb, struct sock *sk)
 	skb->sk = sk;
 	skb->destructor = sock_wfree;
 	atomic_add(skb->truesize, &sk->wmem_alloc);
-	security_skb_set_owner_w(skb, sk);
 }
 
 static inline void skb_set_owner_r(struct sk_buff *skb, struct sock *sk)

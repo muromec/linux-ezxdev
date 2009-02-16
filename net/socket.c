@@ -79,7 +79,6 @@
 #include <linux/cache.h>
 #include <linux/module.h>
 #include <linux/highmem.h>
-#include <linux/security.h>
 
 #include <linux/trace.h>
 
@@ -512,10 +511,6 @@ int sock_sendmsg(struct socket *sock, struct msghdr *msg, int size)
 
 	TRACE_SOCKET(TRACE_EV_SOCKET_SEND, sock->type, size);
 
-	err = security_socket_sendmsg(sock, msg, size);
-	if (err)
-		return err;
-
 	err = scm_send(sock, msg, &scm);
 	if (err >= 0) {
 		err = sock->ops->sendmsg(sock, msg, size, &scm);
@@ -527,11 +522,6 @@ int sock_sendmsg(struct socket *sock, struct msghdr *msg, int size)
 int sock_recvmsg(struct socket *sock, struct msghdr *msg, int size, int flags)
 {
 	struct scm_cookie scm;
-	int err;
-
-	err = security_socket_recvmsg(sock, msg, size, flags);
-	if (err)
-		return err;
 
 	memset(&scm, 0, sizeof(scm));
 
@@ -846,7 +836,6 @@ int sock_wake_async(struct socket *sock, int how, int band)
 int sock_create(int family, int type, int protocol, struct socket **res)
 {
 	int i;
-	int err;
 	struct socket *sock;
 
 	/*
@@ -870,10 +859,6 @@ int sock_create(int family, int type, int protocol, struct socket **res)
 		}
 		family = PF_PACKET;
 	}
-
-	err = security_socket_create(family, type, protocol);
-	if (err)
-		return err;
 		
 #if defined(CONFIG_KMOD) && defined(CONFIG_NET)
 	/* Attempt to load a protocol module if the find failed. 
@@ -919,8 +904,6 @@ int sock_create(int family, int type, int protocol, struct socket **res)
 	}
 
 	*res = sock;
-
-	security_socket_post_create(sock, family, type, protocol);
 
 out:
 	net_family_read_unlock();
@@ -1033,14 +1016,8 @@ asmlinkage long sys_bind(int fd, struct sockaddr *umyaddr, int addrlen)
 
 	if((sock = sockfd_lookup(fd,&err))!=NULL)
 	{
-		if((err=move_addr_to_kernel(umyaddr,addrlen,address))>=0) {
-			err = security_socket_bind(sock, (struct sockaddr *)address, addrlen);
-			if (err) {
-				sockfd_put(sock);
-				return err;
-			}
+		if((err=move_addr_to_kernel(umyaddr,addrlen,address))>=0)
 			err = sock->ops->bind(sock, (struct sockaddr *)address, addrlen);
-		}
 		sockfd_put(sock);
 	}			
 	return err;
@@ -1061,13 +1038,6 @@ asmlinkage long sys_listen(int fd, int backlog)
 	if ((sock = sockfd_lookup(fd, &err)) != NULL) {
 		if ((unsigned) backlog > SOMAXCONN)
 			backlog = SOMAXCONN;
-
-		err = security_socket_listen(sock, backlog);
-		if (err) {
-			sockfd_put(sock);
-			return err;
-		}
-
 		err=sock->ops->listen(sock, backlog);
 		sockfd_put(sock);
 	}
@@ -1104,10 +1074,6 @@ asmlinkage long sys_accept(int fd, struct sockaddr *upeer_sockaddr, int *upeer_a
 	newsock->type = sock->type;
 	newsock->ops = sock->ops;
 
-	err = security_socket_accept(sock, newsock);
-	if (err)
-		goto out_release;
-
 	err = sock->ops->accept(sock, newsock, sock->file->f_flags);
 	if (err < 0)
 		goto out_release;
@@ -1126,8 +1092,6 @@ asmlinkage long sys_accept(int fd, struct sockaddr *upeer_sockaddr, int *upeer_a
 
 	if ((err = sock_map_fd(newsock)) < 0)
 		goto out_release;
-
-	security_socket_post_accept(sock, newsock);
 
 out_put:
 	sockfd_put(sock);
@@ -1164,14 +1128,8 @@ asmlinkage long sys_connect(int fd, struct sockaddr *uservaddr, int addrlen)
 	err = move_addr_to_kernel(uservaddr, addrlen, address);
 	if (err < 0)
 		goto out_put;
-
-	err = security_socket_connect(sock, (struct sockaddr *)address, addrlen);
-	if (err)
-		goto out_put;
-
 	err = sock->ops->connect(sock, (struct sockaddr *) address, addrlen,
 				 sock->file->f_flags);
-
 out_put:
 	sockfd_put(sock);
 out:
@@ -1192,11 +1150,6 @@ asmlinkage long sys_getsockname(int fd, struct sockaddr *usockaddr, int *usockad
 	sock = sockfd_lookup(fd, &err);
 	if (!sock)
 		goto out;
-
-	err = security_socket_getsockname(sock);
-	if (err)
-		goto out_put;
-
 	err = sock->ops->getname(sock, (struct sockaddr *)address, &len, 0);
 	if (err)
 		goto out_put;
@@ -1221,12 +1174,6 @@ asmlinkage long sys_getpeername(int fd, struct sockaddr *usockaddr, int *usockad
 
 	if ((sock = sockfd_lookup(fd, &err))!=NULL)
 	{
-		err = security_socket_getpeername(sock);
-		if (err) {
-			sockfd_put(sock);
-			return err;
-		}
-
 		err = sock->ops->getname(sock, (struct sockaddr *)address, &len, 1);
 		if (!err)
 			err=move_addr_to_user(address,len, usockaddr, usockaddr_len);
@@ -1355,12 +1302,6 @@ asmlinkage long sys_setsockopt(int fd, int level, int optname, char *optval, int
 			
 	if ((sock = sockfd_lookup(fd, &err))!=NULL)
 	{
-		err = security_socket_setsockopt(sock,level,optname);
-		if (err) {
-			sockfd_put(sock);
-			return err;
-		}
-
 		if (level == SOL_SOCKET)
 			err=sock_setsockopt(sock,level,optname,optval,optlen);
 		else
@@ -1382,13 +1323,6 @@ asmlinkage long sys_getsockopt(int fd, int level, int optname, char *optval, int
 
 	if ((sock = sockfd_lookup(fd, &err))!=NULL)
 	{
-		err = security_socket_getsockopt(sock, level, 
-							   optname);
-		if (err) {
-			sockfd_put(sock);
-			return err;
-		}
-
 		if (level == SOL_SOCKET)
 			err=sock_getsockopt(sock,level,optname,optval,optlen);
 		else
@@ -1410,12 +1344,6 @@ asmlinkage long sys_shutdown(int fd, int how)
 
 	if ((sock = sockfd_lookup(fd, &err))!=NULL)
 	{
-		err = security_socket_shutdown(sock, how);
-		if (err) {
-			sockfd_put(sock);
-			return err;
-		}
-				
 		err=sock->ops->shutdown(sock, how);
 		sockfd_put(sock);
 	}

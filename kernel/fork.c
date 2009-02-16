@@ -27,7 +27,6 @@
 #include <linux/namespace.h>
 #include <linux/personality.h>
 #include <linux/compiler.h>
-#include <linux/security.h>
 #include <linux/mman.h>
 
 #include <linux/trace.h>
@@ -643,10 +642,6 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 			goto fork_out;
 	}
 
-	retval = security_task_create(clone_flags);
-	if (retval)
-		goto fork_out;
-
 	retval = -ENOMEM;
 	p = alloc_task_struct();
 	if (!p)
@@ -734,16 +729,13 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 	p->array = NULL;
 	p->lock_depth = -1;		/* -1 = no lock */
 	p->start_time = jiffies;
-	p->security = NULL;
 
 	INIT_LIST_HEAD(&p->local_pages);
 
 	retval = -ENOMEM;
-	if (security_task_alloc(p))
-		goto bad_fork_cleanup;
 	/* copy all the process information */
 	if (copy_files(clone_flags, p))
-		goto bad_fork_cleanup_security;
+		goto bad_fork_cleanup;
 	if (copy_fs(clone_flags, p))
 		goto bad_fork_cleanup_files;
 	if (copy_sighand(clone_flags, p))
@@ -860,8 +852,6 @@ bad_fork_cleanup_fs:
 	exit_fs(p); /* blocking */
 bad_fork_cleanup_files:
 	exit_files(p); /* blocking */
-bad_fork_cleanup_security:
-	security_task_free(p);
 bad_fork_cleanup:
 	put_exec_domain(p->exec_domain);
 	if (p->binfmt && p->binfmt->module)

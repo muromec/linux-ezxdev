@@ -22,7 +22,6 @@
 #include <linux/tcp.h>
 #include <linux/slab.h>
 #include <linux/random.h>
-#include <linux/security.h>
 #include <net/tcp.h>
 
 extern int sysctl_tcp_syncookies;
@@ -184,8 +183,6 @@ struct sock *cookie_v4_check(struct sock *sk, struct sk_buff *skb,
 		tcp_openreq_free(req);
 		goto out; 
 	}
-
-	security_tcp_connection_request(sk, skb, req);
 
 	/* Try to redo what tcp_v4_send_synack did. */
 	req->window_clamp = rt->u.dst.window;  

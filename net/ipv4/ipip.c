@@ -113,7 +113,6 @@
 #include <linux/mroute.h>
 #include <linux/init.h>
 #include <linux/netfilter_ipv4.h>
-#include <linux/security.h>
 
 #include <net/sock.h>
 #include <net/ip.h>
@@ -506,7 +505,6 @@ int ipip_rcv(struct sk_buff *skb)
 		skb->nf_debug = 0;
 #endif
 #endif
-		security_ip_decapsulate(skb);
 		ipip_ecn_decapsulate(iph, skb);
 		netif_rx(skb);
 		read_unlock(&ipip_lock);
@@ -658,8 +656,6 @@ static int ipip_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 	skb->nf_debug = 0;
 #endif
 #endif
-
-	security_ip_encapsulate(skb);
 
 	IPTUNNEL_XMIT();
 	tunnel->recursion--;

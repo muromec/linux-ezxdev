@@ -3,7 +3,6 @@
 #
 # modified by w15879, for EZX platform
 #
-# 2005-Apr-05 Add security LSM patch,  Ni Jili
 
 VERSION = 2
 PATCHLEVEL = 4
@@ -195,11 +194,11 @@ export SVGA_MODE = -DSVGA_MODE=NORMAL_VGA
 
 #export RAMDISK = -DRAMDISK=512
 
-CORE_FILES	=kernel/kernel.o mm/mm.o fs/fs.o ipc/ipc.o security/vmlinux-obj.o
+CORE_FILES	=kernel/kernel.o mm/mm.o fs/fs.o ipc/ipc.o
 NETWORKS	=net/network.o
 
 LIBS		=$(TOPDIR)/lib/lib.a
-SUBDIRS		=kernel drivers mm fs net ipc lib security
+SUBDIRS		=kernel drivers mm fs net ipc lib
 
 DRIVERS-n :=
 DRIVERS-y :=

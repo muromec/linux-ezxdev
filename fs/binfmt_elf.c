@@ -42,7 +42,6 @@
 #include <linux/smp_lock.h>
 #include <linux/compiler.h>
 #include <linux/highmem.h>
-#include <linux/security.h>
 
 #include <asm/uaccess.h>
 #include <asm/param.h>
@@ -211,7 +210,6 @@ create_elf_tables(char *p, int argc, int envc,
 	NEW_AUX_ENT(11, AT_GID, (elf_addr_t) current->gid);
 	NEW_AUX_ENT(12, AT_EGID, (elf_addr_t) current->egid);
 
-//Susan -- need to review with Sunzhongdong  	NEW_AUX_ENT(13, AT_SECURE, (elf_addr_t) security_bprm_secureexec(bprm));
 
 #ifdef ARCH_DLINFO
 	/* 

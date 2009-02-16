@@ -187,8 +187,6 @@ EXPORT_SYMBOL(__mark_buffer_dirty);
 EXPORT_SYMBOL(__mark_inode_dirty);
 EXPORT_SYMBOL(fd_install);
 EXPORT_SYMBOL(get_empty_filp);
-EXPORT_SYMBOL(open_private_file);
-EXPORT_SYMBOL(close_private_file);
 EXPORT_SYMBOL(filp_open);
 EXPORT_SYMBOL(filp_close);
 EXPORT_SYMBOL(put_filp);

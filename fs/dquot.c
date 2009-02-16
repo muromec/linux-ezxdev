@@ -72,7 +72,6 @@
 #include <linux/smp_lock.h>
 #include <linux/init.h>
 #include <linux/proc_fs.h>
-#include <linux/security.h>
 
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
@@ -2016,9 +2015,6 @@ static int quota_on(struct super_block *sb, short type, char *path)
 		goto out_lock;
 	error = -EIO;
 	if (!f->f_op || !f->f_op->read || !f->f_op->write)
-		goto out_f;
-	error = security_quota_on(f);
-	if (error)
 		goto out_f;
 	inode = f->f_dentry->d_inode;
 	error = -EACCES;

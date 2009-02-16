@@ -19,7 +19,6 @@
 #include <asm/uaccess.h>
 #include <linux/kernel.h>
 #include <linux/smp_lock.h>
-#include <linux/security.h>
 
 int nr_dquots, nr_free_dquots;
 
@@ -118,9 +117,6 @@ sys_quotactl(int cmd, const char *special, qid_t id, __kernel_caddr_t addr)
 		unlock_kernel();
 		return PTR_ERR(sb);
 	}
-    ret = security_quotactl (cmds, type, id, sb);
-    if (ret)
-         goto out;
 	ret = -EINVAL;
 	switch (cmds) {
 		case Q_QUOTAON:

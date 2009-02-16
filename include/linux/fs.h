@@ -78,7 +78,6 @@ extern int leases_enable, dir_notify_enable, lease_break_time;
 #define MAY_EXEC 1
 #define MAY_WRITE 2
 #define MAY_READ 4
-#define MAY_APPEND 8
 
 #define FMODE_READ 1
 #define FMODE_WRITE 2
@@ -510,7 +509,6 @@ struct inode {
 
 	atomic_t		i_writecount;
 	unsigned int		i_attr_flags;
-	void			*i_security;
 	__u32			i_generation;
 	union {
 		struct minix_inode_info		minix_i;
@@ -584,7 +582,6 @@ struct fown_struct {
 	int pid;		/* pid or -pgrp where SIGIO should be sent */
 	uid_t uid, euid;	/* uid/euid of process setting the owner */
 	int signum;		/* posix.1b rt signal to be delivered on IO */
-	void *security;
 };
 
 struct file {
@@ -602,7 +599,6 @@ struct file {
 	int			f_error;
 
 	unsigned long		f_version;
-	void			*f_security;
 
 	/* needed for tty driver, and maybe others */
 	void			*private_data;
@@ -624,10 +620,7 @@ extern int init_private_file(struct file *, struct dentry *, int);
 
 /* NOTICE:  The below two functions are introduced by patch_lsm branch */
 
-/* Initialize and open a private file and allocate its security structure. */
-extern int open_private_file(struct file *, struct dentry *, int);
-/* Release a private file and free its security structure. */
-extern void close_private_file(struct file *file);
+extern int init_private_file(struct file *, struct dentry *, int);
 
 #define	MAX_NON_LFS	((1UL<<31) - 1)
 
@@ -691,11 +684,11 @@ extern struct list_head file_lock_list;
 
 #include <linux/fcntl.h>
 
-extern int fcntl_getlk(struct file *, struct flock *);
-extern int fcntl_setlk(struct file *, unsigned int, struct flock *);
+extern int fcntl_getlk(unsigned int, struct flock *);
+extern int fcntl_setlk(unsigned int, unsigned int, struct flock *);
 
-extern int fcntl_getlk64(struct file *, struct flock64 *);
-extern int fcntl_setlk64(struct file *, unsigned int, struct flock64 *);
+extern int fcntl_getlk64(unsigned int, struct flock64 *);
+extern int fcntl_setlk64(unsigned int, unsigned int, struct flock64 *);
 
 /* fs/locks.c */
 extern void locks_init_lock(struct file_lock *);
@@ -819,7 +812,6 @@ struct super_block {
 	struct semaphore	s_lock;
 	int			s_count;
 	atomic_t		s_active;
-	void                    *s_security;
 
 	struct list_head	s_dirty;	/* dirty inodes */
 	struct list_head	s_locked_inodes;/* inodes being synced */

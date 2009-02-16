@@ -4,7 +4,6 @@
  */
 /*
  *
- * 2005-Apr-04  Motorooa  Add security patch 
  */
 
 
@@ -17,7 +16,6 @@
 #include <linux/prctl.h>
 #include <linux/init.h>
 #include <linux/highuid.h>
-#include <linux/security.h>
 
 #include <asm/uaccess.h>
 
@@ -144,11 +142,7 @@ asmlinkage long sys_setgroups16(int gidsetsize, old_gid_t *grouplist)
 	if (copy_from_user(groups, grouplist, gidsetsize * sizeof(old_gid_t)))
 		return -EFAULT;
 	for (i = 0 ; i < gidsetsize ; i++)
-		new_groups[i] = (gid_t)groups[i];
-	i = security_task_setgroups(gidsetsize, new_groups);
-	if (i)
-		return i;
-	memcpy(current->groups, new_groups, gidsetsize * sizeof(gid_t));
+                current->groups[i] = (gid_t)groups[i];
 	current->ngroups = gidsetsize;
 	return 0;
 }

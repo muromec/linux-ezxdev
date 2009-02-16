@@ -87,7 +87,7 @@ static int nfsd_get_name(struct dentry *dentry, char *name,
 	/*
 	 * Open the directory ...
 	 */
-	error = open_private_file(&file, dentry, O_RDONLY);
+	error = init_private_file(&file, dentry, FMODE_READ);
 	if (error)
 		goto out;
 	error = -EINVAL;
@@ -115,7 +115,8 @@ static int nfsd_get_name(struct dentry *dentry, char *name,
 	}
 
 out_close:
-	close_private_file(&file);
+	if (file.f_op->release)
+		file.f_op->release(dir, &file);
 out:
 	return error;
 }

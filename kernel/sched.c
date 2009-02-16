@@ -26,7 +26,6 @@
 #include <linux/mm.h>
 #include <linux/nmi.h>
 #include <linux/init.h>
-#include <linux/security.h>
 #include <asm/uaccess.h>
 #include <linux/highmem.h>
 #include <linux/smp_lock.h>
@@ -1316,9 +1315,6 @@ asmlinkage long sys_nice(int increment)
 		nice = -20;
 	if (nice > 19)
 		nice = 19;
-    retval = security_task_setnice(current, current->static_prio);
-    if (retval)
-        return retval;
 	set_user_nice(current, nice);
 	return 0;
 }
@@ -1395,9 +1391,6 @@ int setscheduler(pid_t pid, int policy, struct sched_param *param)
 	retval = -ESRCH;
 	if (!p)
 		goto out_unlock_tasklist;
-    retval = security_task_getscheduler(p);
-    if (retval)
-        goto out_unlock_tasklist;
 	/*
 	 * To be able to change p->policy safely, the apropriate
 	 * runqueue lock must be held.
@@ -1430,9 +1423,6 @@ int setscheduler(pid_t pid, int policy, struct sched_param *param)
 	if ((current->euid != p->euid) && (current->euid != p->uid) &&
 	    !capable(CAP_SYS_NICE))
 		goto out_unlock;
-    retval = security_task_setscheduler(p, policy, &lp);
-    if (retval)
-         goto out_unlock;
          
 	array = p->array;
 	if (array)
@@ -1505,11 +1495,9 @@ asmlinkage long sys_sched_getscheduler(pid_t pid)
 	retval = -ESRCH;
 	read_lock(&tasklist_lock);
 	p = find_process_by_pid(pid);
-	if (p) {
-        retval = security_task_getscheduler(p);
-        if (!retval)
+	if (p) 
              retval = p->policy ;
-    }
+    
 	read_unlock(&tasklist_lock);
 
 out_nounlock:
@@ -1535,9 +1523,6 @@ asmlinkage long sys_sched_getparam(pid_t pid, struct sched_param *param)
 	retval = -ESRCH;
 	if (!p)
 		goto out_unlock;
-    retval = security_task_getscheduler(p);
-    if (retval)
-        goto out_unlock;
 	lp.sched_priority = p->rt_priority;
 	read_unlock(&tasklist_lock);
 
@@ -1583,11 +1568,6 @@ asmlinkage int sys_sched_setaffinity(pid_t pid, unsigned int len,
 	if (!p) {
 		read_unlock(&tasklist_lock);
 		return -ESRCH;
-	}
-    retval = security_task_getscheduler(p);
-    if (retval){
-		read_unlock(&tasklist_lock);
-		return retval;
 	}
 
 	/*
@@ -1635,9 +1615,6 @@ asmlinkage int sys_sched_getaffinity(pid_t pid, unsigned int len,
 	p = find_process_by_pid(pid);
 	if (!p)
 		goto out_unlock;
-    retval = security_task_getscheduler(p);
-    if (retval)
-        goto out_unlock;
 	retval = 0;
 	mask = p->cpus_allowed & cpu_online_map;
 
@@ -1777,10 +1754,6 @@ asmlinkage long sys_sched_rr_get_interval(pid_t pid, struct timespec *interval)
     if (!p)
          goto out_unlock;
                   
-    retval = security_task_getscheduler(p);
-    if (retval)
-        goto out_unlock;
-        
 	if (p)
 		jiffies_to_timespec(p->policy & SCHED_FIFO ?
 					 0 : task_timeslice(p), &t);

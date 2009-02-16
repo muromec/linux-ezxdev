@@ -58,7 +58,6 @@
 #include <linux/random.h>
 #include <linux/cache.h>
 #include <linux/init.h>
-#include <linux/security.h>
 
 #include <net/icmp.h>
 #include <net/tcp.h>
@@ -1305,8 +1304,6 @@ static int tcp_v4_send_synack(struct sock *sk, struct open_request *req,
 	if (skb) {
 		struct tcphdr *th = skb->h.th;
 
-		security_tcp_synack(sk, skb, req);
-
 		th->check = tcp_v4_check(th, skb->len,
 					 req->af.v4_req.loc_addr, req->af.v4_req.rmt_addr,
 					 csum_partial((char *)th, skb->len, skb->csum));
@@ -1514,8 +1511,6 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 		isn = tcp_v4_init_sequence(sk, skb);
 	}
 	req->snt_isn = isn;
-
-	security_tcp_connection_request(sk, skb, req);
 
 	if (tcp_v4_send_synack(sk, req, dst))
 		goto drop_and_free;
@@ -1766,9 +1761,6 @@ int tcp_v4_rcv(struct sk_buff *skb)
 
 process:
 	if(!ipsec_sk_policy(sk,skb))
-		goto discard_and_relse;
-
-	if (security_sock_rcv_skb(sk, skb))
 		goto discard_and_relse;
 
 	if (sk->state == TCP_TIME_WAIT)

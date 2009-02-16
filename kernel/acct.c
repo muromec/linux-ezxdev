@@ -59,7 +59,6 @@
 #include <linux/smp_lock.h>
 #include <linux/file.h>
 #include <linux/tty.h>
-#include <linux/security.h>
 #include <asm/uaccess.h>
 
 /*
@@ -186,10 +185,6 @@ asmlinkage long sys_acct(const char *name)
 		if (!file->f_op->write) 
 			goto out_err;
 	}
-
-	error = security_acct(file);
-	if (error)
-		goto out_err;
 
 	error = 0;
 	lock_kernel();

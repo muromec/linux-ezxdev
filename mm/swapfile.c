@@ -7,7 +7,6 @@
 /*
  * Copyright (C) 2005 Motorola Inc.
  *
- * add security patch by w20586, for EZX platform
  * remove warning by e12051, for EZX platform
  */
 
@@ -20,7 +19,6 @@
 #include <linux/vmalloc.h>
 #include <linux/pagemap.h>
 #include <linux/shm.h>
-#include <linux/security.h>
 
 #include <asm/pgtable.h>
 
@@ -738,19 +736,6 @@ asmlinkage long sys_swapoff(const char * specialfile)
 		}
 		prev = type;
 	}
-
-	err = security_swapoff(p);
-	if (err) {
-		swap_list_unlock();
-		goto out_dput;
-	}
-
-	err = -EINVAL;
-	if (type < 0) {
-		swap_list_unlock();
-		goto out_dput;
-	}
-
 	if (prev < 0) {
 		swap_list.head = p->next;
 	} else {
@@ -923,11 +908,6 @@ asmlinkage long sys_swapon(const char * specialfile, int swap_flags)
 	p->swap_file = nd.dentry;
 	p->swap_vfsmnt = nd.mnt;
 	swap_inode = nd.dentry->d_inode;
-
-	error = security_swapon(p);
-	if (error)
-		 goto bad_swap_2;
-
 	error = -EINVAL;
 
 	if (S_ISBLK(swap_inode->i_mode)) {

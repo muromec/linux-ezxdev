@@ -8,7 +8,6 @@
  */
 /*
  *
- * 2005-Apr-04 Motorola  Add security patch 
  */
 
 
@@ -16,7 +15,6 @@
 #include <linux/smp_lock.h>
 #include <linux/shm.h>
 #include <linux/mman.h>
-#include <linux/security.h>
 
 #include <asm/uaccess.h>
 #include <asm/pgalloc.h>
@@ -319,10 +317,6 @@ asmlinkage long sys_mprotect(unsigned long start, size_t len, unsigned long prot
 			error = -EACCES;
 			goto out;
 		}
-
-		error = security_file_mprotect(vma, prot);
-		if (error)
-			goto out;
 
 #ifdef	CONFIG_HAVE_XFS_DMAPI	/* Temporary until dmapi is in main kernel */
 		if((vma->vm_flags & VM_MAYSHARE) &&

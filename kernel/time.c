@@ -32,7 +32,6 @@
 #include <linux/mm.h>
 #include <linux/timex.h>
 #include <linux/smp_lock.h>
-#include <linux/security.h>
 
 #include <asm/uaccess.h>
 
@@ -154,16 +153,10 @@ inline static void warp_clock(void)
 int do_sys_settimeofday(struct timeval *tv, struct timezone *tz)
 {
 	static int firsttime = 1;
-	int error = 0;
 
 	if (!capable(CAP_SYS_TIME))
 		return -EPERM;
 
-        /* Call the Linux Security Module to perform its checks */
-        error = security_settime(tv, tz);
-        if (error)
-                return error;
-		
 	if (tz) {
 		/* SMP safe, global irq locking makes it work. */
 		sys_tz = *tz;

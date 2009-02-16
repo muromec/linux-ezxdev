@@ -97,7 +97,6 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/smp_lock.h>
-#include <linux/security.h>
 
 #if defined(CONFIG_SH_KGDB_CONSOLE) || \
     defined(__arm__) && defined(CONFIG_KGDB_CONSOLE)
@@ -1486,10 +1485,6 @@ static int tty_fasync(int fd, struct file * filp, int on)
 		if (!waitqueue_active(&tty->read_wait))
 			tty->minimum_to_wake = 1;
 		if (filp->f_owner.pid == 0) {
-			retval = security_file_set_fowner(filp);
-			if (retval)
-				return retval;
-
 			filp->f_owner.pid = (-tty->pgrp) ? : current->pid;
 			filp->f_owner.uid = current->uid;
 			filp->f_owner.euid = current->euid;

@@ -52,7 +52,6 @@
 #include <linux/highmem.h>
 #include <linux/module.h>
 #include <linux/completion.h>
-#include <linux/security.h>
 
 #include <linux/trace.h>
 
@@ -2975,10 +2974,6 @@ asmlinkage long sys_bdflush(int func, long data)
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
-
-	error = security_bdflush(func, data);
-	if( error )
-		return error;
 
 	if (func == 1) {
 		/* do_exit directly and let kupdate to do its work alone. */

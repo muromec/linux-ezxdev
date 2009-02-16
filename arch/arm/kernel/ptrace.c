@@ -14,7 +14,6 @@
 /*
  * Copyright (C) 2005 Motorola Inc.
  *
- * 2005-Apr-05   merge security LSM patch from arch/i386/kernel/ptrace.c		Ni jili
  */
 
 #include <linux/config.h>
@@ -25,7 +24,6 @@
 #include <linux/smp_lock.h>
 #include <linux/ptrace.h>
 #include <linux/user.h>
-#include <linux/security.h>
 #include <linux/bitops.h>
 #include <linux/init.h>
 
@@ -808,9 +806,6 @@ asmlinkage int sys_ptrace(long request, long pid, long addr, long data)
 		/* are we already being traced? */
 		if (current->ptrace & PT_PTRACED)
 			goto out;
-         ret = security_ptrace(current->p_pptr, current);
-         if (ret)
-            goto out;
 		/* set the ptrace bit in the process flags. */
 		current->ptrace |= PT_PTRACED;
 		ret = 0;

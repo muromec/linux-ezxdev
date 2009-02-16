@@ -45,7 +45,6 @@
 #include <linux/highmem.h>
 #include <linux/spinlock.h>
 #include <linux/personality.h>
-#include <linux/security.h>
 #define __NO_VERSION__
 #include <linux/module.h>
 
@@ -653,7 +652,6 @@ int prepare_binprm(struct linux_binprm *bprm)
 {
 	int mode;
 	struct inode * inode = bprm->file->f_dentry->d_inode;
-	int retval;
 
 	mode = inode->i_mode;
 	/*
@@ -683,10 +681,27 @@ int prepare_binprm(struct linux_binprm *bprm)
 			bprm->e_gid = inode->i_gid;
 	}
 
-	/* fill in binprm security blob */
-	retval = security_bprm_set(bprm);
-	if (retval)
-		return retval;
+	/* We don't have VFS support for capabilities yet */
+	cap_clear(bprm->cap_inheritable);
+	cap_clear(bprm->cap_permitted);
+	cap_clear(bprm->cap_effective);
+
+	/*  To support inheritance of root-permissions and suid-root
+         *  executables under compatibility mode, we raise all three
+         *  capability sets for the file.
+         *
+         *  If only the real uid is 0, we only raise the inheritable
+         *  and permitted sets of the executable file.
+         */
+
+	if (!issecure(SECURE_NOROOT)) {
+		if (bprm->e_uid == 0 || current->uid == 0) {
+			cap_set_full(bprm->cap_inheritable);
+			cap_set_full(bprm->cap_permitted);
+		}
+		if (bprm->e_uid == 0) 
+			cap_set_full(bprm->cap_effective);
+	}
 
 	memset(bprm->buf,0,BINPRM_BUF_SIZE);
 	return kernel_read(bprm->file,0,bprm->buf,BINPRM_BUF_SIZE);
@@ -709,9 +724,16 @@ int prepare_binprm(struct linux_binprm *bprm)
 
 void compute_creds(struct linux_binprm *bprm) 
 {
+	kernel_cap_t new_permitted, working;
 	int do_unlock = 0;
 
-	if (bprm->e_uid != current->uid || bprm->e_gid != current->gid) {
+	new_permitted = cap_intersect(bprm->cap_permitted, cap_bset);
+	working = cap_intersect(bprm->cap_inheritable,
+				current->cap_inheritable);
+	new_permitted = cap_combine(new_permitted, working);
+
+	if (bprm->e_uid != current->uid || bprm->e_gid != current->gid ||
+	    !cap_issubset(new_permitted, current->cap_permitted)) {
                 current->mm->dumpable = 0;
 		
 		lock_kernel();
@@ -723,17 +745,32 @@ void compute_creds(struct linux_binprm *bprm)
 				bprm->e_uid = current->uid;
 				bprm->e_gid = current->gid;
 			}
+			if(!capable(CAP_SETPCAP)) {
+				new_permitted = cap_intersect(new_permitted,
+							current->cap_permitted);
+			}
 		}
 		do_unlock = 1;
 	}
+
+
+	/* For init, we want to retain the capabilities set
+         * in the init_task struct. Thus we skip the usual
+         * capability rules */
+	if (current->pid != 1) {
+		current->cap_permitted = new_permitted;
+		current->cap_effective =
+			cap_intersect(new_permitted, bprm->cap_effective);
+	}
+	
+        /* AUD: Audit candidate if current->cap_effective is set */
 
         current->suid = current->euid = current->fsuid = bprm->e_uid;
         current->sgid = current->egid = current->fsgid = bprm->e_gid;
 
 	if(do_unlock)
 		unlock_kernel();
-
-	security_bprm_compute_creds(bprm);
+	current->keep_capabilities = 0;
 }
 
 
@@ -803,10 +840,6 @@ int search_binary_handler(struct linux_binprm *bprm,struct pt_regs *regs)
 	    }
 	}
 #endif
-	retval = security_bprm_check(bprm);
-	if (retval) 
-		return retval;
-
 	/* kernel module loader fixup */
 	/* so we don't try to load run modprobe in kernel space. */
 	set_fs(USER_DS);
@@ -888,7 +921,6 @@ int do_execve(char * filename, char ** argv, char ** envp, struct pt_regs * regs
 	bprm.sh_bang = 0;
 	bprm.loader = 0;
 	bprm.exec = 0;
-	bprm.security = NULL;
 	if ((bprm.argc = count(argv, bprm.p / sizeof(void *))) < 0) {
 		allow_write_access(file);
 		fput(file);
@@ -900,10 +932,6 @@ int do_execve(char * filename, char ** argv, char ** envp, struct pt_regs * regs
 		fput(file);
 		return bprm.envc;
 	}
-
-	retval = security_bprm_alloc(&bprm);
-	if (retval) 
-		goto out;
 
 	retval = prepare_binprm(&bprm);
 	if (retval < 0) 
@@ -923,11 +951,9 @@ int do_execve(char * filename, char ** argv, char ** envp, struct pt_regs * regs
 		goto out; 
 
 	retval = search_binary_handler(&bprm,regs);
-	if (retval >= 0) {
+	if (retval >= 0)
 		/* execve success */
-		security_bprm_free(&bprm);
 		return retval;
-	}
 
 out:
 	/* Something went wrong, return the inode and free the argument pages*/
@@ -940,9 +966,6 @@ out:
 		if (page)
 			__free_page(page);
 	}
-
-	if (bprm.security)
-		security_bprm_free(&bprm);
 
 	return retval;
 }

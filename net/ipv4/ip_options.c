@@ -23,7 +23,6 @@
 #include <linux/icmp.h>
 #include <linux/netdevice.h>
 #include <linux/rtnetlink.h>
-#include <linux/security.h>
 #include <net/sock.h>
 #include <net/ip.h>
 #include <net/icmp.h>
@@ -439,11 +438,7 @@ int ip_options_compile(struct ip_options * opt, struct sk_buff * skb)
 				opt->router_alert = optptr - iph;
 			break;
 		      case IPOPT_SEC:
-		      case IPOPT_CIPSO:
 		      case IPOPT_SID:
-		      	if (security_ip_decode_options(skb, optptr, &pp_ptr))
-				goto error;
-			break;
 		      default:
 			if (!skb && !capable(CAP_NET_RAW)) {
 				pp_ptr = optptr;
