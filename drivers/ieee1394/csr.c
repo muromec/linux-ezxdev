@@ -10,7 +10,6 @@
  */
 
 #include <linux/string.h>
-#include <linux/sched.h>
 
 #include "ieee1394_types.h"
 #include "hosts.h"

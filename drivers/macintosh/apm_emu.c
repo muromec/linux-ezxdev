@@ -436,40 +436,40 @@ static int apm_emu_get_info(char *buf, char **start, off_t fpos, int length)
 	int		percentage     = -1;
 	int             time_units     = -1;
 	int		real_count     = 0;
+	int		charge         = -1;
+	int		current        = 0;
 	int		i;
 	char *		p = buf;
 	char		charging       = 0;
-	long		charge	       = -1;
-	long		current        = 0;
-	unsigned long	btype          = 0;
 
 	ac_line_status = ((pmu_power_flags & PMU_PWR_AC_PRESENT) != 0);
 	for (i=0; i<pmu_battery_count; i++) {
+		if (percentage < 0)
+			percentage = 0;
+		if (charge < 0)
+			charge = 0;
 		if (pmu_batteries[i].flags & PMU_BATT_PRESENT) {
 			percentage += (pmu_batteries[i].charge * 100) /
 				pmu_batteries[i].max_charge;
-			if (percentage < 0)
-				percentage = 0;
-			if (charge < 0)
-				charge = 0;
-			charge += pmu_batteries[i].charge;
-			current += pmu_batteries[i].current;
-			if (btype == 0)
-				btype = (pmu_batteries[i].flags & PMU_BATT_TYPE_MASK);
+			/* hrm... should we provide the remaining charge
+			 * time when AC is plugged ? If yes, just remove
+			 * that test --BenH
+			 */
+			if (!ac_line_status) {
+				charge += pmu_batteries[i].charge;
+				current += pmu_batteries[i].current;
+			}
 			real_count++;
 			if ((pmu_batteries[i].flags & PMU_BATT_CHARGING))
 				charging++;
 		}
 	}
 	if (real_count) {
-		if (current < 0) {
-			if (btype == PMU_BATT_TYPE_SMART)
-				time_units = (charge * 59) / (current * -1);
-			else
-				time_units = (charge * 16440) / (current * -60);
-		}
+		time_units = (charge * 59) / (current * -1);
+		if(!charging)
+			battery_flag &= ~0x08;
 		percentage /= real_count;
-		if (charging > 0) {
+		if (battery_flag & 0x08) {
 			battery_status = 0x03;
 			battery_flag = 0x08;
 		} else if (percentage <= APM_CRITICAL) {
@@ -516,7 +516,6 @@ static struct miscdevice apm_device = {
 static int __init apm_emu_init(void)
 {
 	struct proc_dir_entry *apm_proc;
-	int retval;
 
 	if (sys_ctrler != SYS_CTRLER_PMU) {
 		printk(KERN_INFO "apm_emu: Requires a machine with a PMU.\n");
@@ -524,18 +523,10 @@ static int __init apm_emu_init(void)
 	}
 		
 	apm_proc = create_proc_info_entry("apm", 0, NULL, apm_emu_get_info);
-	if (!apm_proc) {
-		printk(KERN_ERR "apm_emu: create_proc_info_entry failed.\n");
-		return -ENOENT;
-	}
-	SET_MODULE_OWNER(apm_proc);
+	if (apm_proc)
+		SET_MODULE_OWNER(apm_proc);
 
-	retval = misc_register(&apm_device);
-	if (retval < 0) {
-		printk(KERN_ERR "apm_emu: misc_register failed\n");
-		remove_proc_entry("apm", NULL);
-		return retval;
-	}
+	misc_register(&apm_device);
 
 	pmu_register_sleep_notifier(&apm_sleep_notifier);
 

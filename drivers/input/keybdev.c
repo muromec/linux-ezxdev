@@ -40,7 +40,7 @@
 #if defined(CONFIG_X86) || defined(CONFIG_IA64) || defined(__alpha__) || \
     defined(__mips__) || defined(CONFIG_SPARC64) || defined(CONFIG_SUPERH) || \
     defined(CONFIG_PPC) || defined(__mc68000__) || defined(__hppa__) || \
-    defined(__arm__) || defined(CONFIG_XTENSA)
+    defined(__arm__)
 
 static int x86_sysrq_alt = 0;
 #ifdef CONFIG_SPARC64

@@ -13,8 +13,8 @@
 
 mod-subdirs :=	dio hil mtd sbus video macintosh usb input telephony sgi ide \
 		message/i2o message/fusion scsi md ieee1394 pnp isdn atm \
-		fc4 net/hamradio i2c l3 acpi bluetooth serial maple vme \
-		sensors usb/device
+		fc4 net/hamradio i2c acpi bluetooth serial \
+		usb/device
 mod-subdirs +=	spi mmc
 mod-subdirs +=  usbd
 # MVL-CEE added base
@@ -57,8 +57,6 @@ subdir-$(CONFIG_TRACE)		+= trace
 subdir-$(CONFIG_HAMRADIO)	+= net/hamradio
 subdir-$(CONFIG_SERIAL_CORE)	+= serial
 subdir-$(CONFIG_I2C)		+= i2c
-subdir-$(CONFIG_SENSORS) 	+= sensors
-subdir-$(CONFIG_L3)		+= l3
 subdir-$(CONFIG_SPI)		+= spi
 subdir-$(CONFIG_ACPI)		+= acpi
 subdir-$(CONFIG_MOT_POWER_IC)	+= power_ic

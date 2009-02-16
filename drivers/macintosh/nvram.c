@@ -113,7 +113,8 @@ int __init nvram_init(void)
 {
 	printk(KERN_INFO "Macintosh non-volatile memory driver v%s\n",
 		NVRAM_VERSION);
-	return misc_register(&nvram_dev);
+	misc_register(&nvram_dev);
+	return 0;
 }
 
 void __exit nvram_cleanup(void)

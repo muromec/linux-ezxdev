@@ -345,6 +345,11 @@ find_via_pmu()
 	} else
 		pmu_kind = PMU_UNKNOWN;
 
+#ifdef CONFIG_PMAC_PBOOK
+	if (pmac_call_feature(PMAC_FTR_SLEEP_STATE,NULL,0,-1) >= 0)
+		can_sleep = 1;
+#endif /* CONFIG_PMAC_PBOOK */
+
 	via = (volatile unsigned char *) ioremap(vias->addrs->address, 0x2000);
 
 	out_8(&via[IER], IER_CLR | 0x7f);	/* disable all intrs */
@@ -405,8 +410,6 @@ int via_pmu_start(void)
 	bright_req_3.complete = 1;
 #ifdef CONFIG_PMAC_PBOOK
 	batt_req.complete = 1;
-	if (pmac_call_feature(PMAC_FTR_SLEEP_STATE,NULL,0,-1) >= 0)
-		can_sleep = 1;
 #endif
 
 	if (request_irq(vias->intrs[0].line, via_pmu_interrupt, 0, "VIA-PMU",
@@ -433,20 +436,12 @@ int via_pmu_start(void)
 
 #ifdef CONFIG_PMAC_PBOOK
   	if (machine_is_compatible("AAPL,3400/2400") ||
-  		machine_is_compatible("AAPL,3500")) {
-		int mb = pmac_call_feature(PMAC_FTR_GET_MB_INFO,
-			NULL, PMAC_MB_INFO_MODEL, 0);
+  		machine_is_compatible("AAPL,3500"))
 		pmu_battery_count = 1;
-		if (mb == PMAC_TYPE_COMET)
-			pmu_batteries[0].flags |= PMU_BATT_TYPE_COMET;
-		else
-			pmu_batteries[0].flags |= PMU_BATT_TYPE_HOOPER;
-	} else if (machine_is_compatible("AAPL,PowerBook1998") ||
-		machine_is_compatible("PowerBook1,1")) {
+	else if (machine_is_compatible("AAPL,PowerBook1998") ||
+		machine_is_compatible("PowerBook1,1"))
 		pmu_battery_count = 2;
-		pmu_batteries[0].flags |= PMU_BATT_TYPE_SMART;
-		pmu_batteries[1].flags |= PMU_BATT_TYPE_SMART;
-	} else {
+	else {
 		struct device_node* prim = find_devices("power-mgt");
 		u32 *prim_info = NULL;
 		if (prim)
@@ -454,9 +449,6 @@ int via_pmu_start(void)
 		if (prim_info) {
 			/* Other stuffs here yet unknown */
 			pmu_battery_count = (prim_info[6] >> 16) & 0xff;
-			pmu_batteries[0].flags |= PMU_BATT_TYPE_SMART;
-			if (pmu_battery_count > 1)
-				pmu_batteries[1].flags |= PMU_BATT_TYPE_SMART;
 		}
 	}
 #endif /* CONFIG_PMAC_PBOOK */
@@ -566,11 +558,147 @@ static inline void wakeup_decrementer(void)
 
 #ifdef CONFIG_PMAC_PBOOK
 
-/* This new version of the code for 2400/3400/3500 powerbooks
- * is inspired from the implementation in gkrellm-pmu
+/* 
+ * WARNING ! This code probably needs some debugging... -- BenH.
  */
+#ifdef NEW_OHARE_CODE
 static void __pmac
 done_battery_state_ohare(struct adb_request* req)
+{
+	unsigned int bat_flags = 0;
+	int current = 0;
+	unsigned int capa, max, voltage, time;
+	int lrange[] = { 0, 275, 850, 1680, 2325, 
+				2765, 3160, 3500, 3830, 4115, 
+				4360, 4585, 4795, 4990, 5170, 
+				5340, 5510, 5710, 5930, 6150, 
+				6370, 6500
+				};
+	
+	if (req->reply[0] & 0x01)
+		pmu_power_flags |= PMU_PWR_AC_PRESENT;
+	else
+		pmu_power_flags &= ~PMU_PWR_AC_PRESENT;
+
+	if (req->reply[0] & 0x04) {
+		int vb, i, j, k, charge, pcharge;
+		bat_flags |= PMU_BATT_PRESENT;
+		vb = (req->reply[1] << 8) | req->reply[2];
+		voltage = ((vb * 2650) + 726650)/100;
+		vb *= 100;
+		current = req->reply[5];
+		if ((req->reply[0] & 0x01) == 0 && (current > 200))
+			vb += (current - 200) * 15;
+		else if (req->reply[0] & 0x02)
+			vb = (vb - 2000);
+	  	i = (33000 - vb) / 10;
+	  	j = i - (i % 100);
+		k = j/100;
+		if (k <= 0)
+	       		charge = 0;
+		else if (k >= 21)
+	       		charge = 650000;
+	  	else
+			charge = (lrange[k + 1] - lrange[k]) * (i - j) + (lrange[k] * 100);
+		charge = (1000 - charge / 650) / 10;
+		if (req->reply[0] & 0x40) {
+			pcharge = (req->reply[6] << 8) + req->reply[7];
+			if (pcharge > 6500)
+				pcharge = 6500;
+			pcharge *= 100;
+			pcharge = (1000 - pcharge / 650) / 10;
+			if (pcharge < charge)
+				charge = pcharge;
+		}
+		capa = charge;
+		max = 100;
+		time = (charge * 16440) / current;
+		current = -current;
+		
+	} else
+		capa = max = current = voltage = time = 0;
+
+	if (req->reply[0] & 0x02)
+		bat_flags |= PMU_BATT_CHARGING;
+
+	pmu_batteries[pmu_cur_battery].flags = bat_flags;
+	pmu_batteries[pmu_cur_battery].charge = capa;
+	pmu_batteries[pmu_cur_battery].max_charge = max;
+	pmu_batteries[pmu_cur_battery].current = current;
+	pmu_batteries[pmu_cur_battery].voltage = voltage;
+	pmu_batteries[pmu_cur_battery].time_remaining = time;
+}
+#else /* NEW_OHARE_CODE */
+static void __pmac
+done_battery_state_ohare(struct adb_request* req)
+{
+	unsigned int bat_flags = 0;
+	int current = 0;
+	unsigned int capa, max, voltage, time;
+	int lrange[] = { 0, 275, 850, 1680, 2325, 
+				2765, 3160, 3500, 3830, 4115, 
+				4360, 4585, 4795, 4990, 5170, 
+				5340, 5510, 5710, 5930, 6150, 
+				6370, 6500
+				};
+	
+	if (req->reply[0] & 0x01)
+		pmu_power_flags |= PMU_PWR_AC_PRESENT;
+	else
+		pmu_power_flags &= ~PMU_PWR_AC_PRESENT;
+
+	if (req->reply[0] & 0x04) {
+		int vb, i, j, charge, pcharge;
+		bat_flags |= PMU_BATT_PRESENT;
+		vb = (req->reply[1] << 8) | req->reply[2];
+		voltage = ((vb * 2650) + 726650)/100;
+		current = *((signed char *)&req->reply[5]);
+		if ((req->reply[0] & 0x01) == 0 && (current > 200))
+			vb += (current - 200) * 15;
+		else if (req->reply[0] & 0x02)
+			vb = (vb - 10) * 100;
+	  	i = (33000 - vb) / 10;
+	  	j = i - (i % 100);
+	  	if (j <= 0)
+	       		charge = 0;
+	  	else if (j >= 21)
+	       		charge = 650000;
+	  	else
+			charge = (lrange[j + 1] - lrange[j]) * (i - j) + (lrange[j] * 100);
+		charge = (1000 - charge / 650) / 10;
+		if (req->reply[0] & 0x40) {
+			pcharge = (req->reply[6] << 8) + req->reply[7];
+			if (pcharge > 6500)
+				pcharge = 6500;
+			pcharge *= 100;
+			pcharge = (1000 - pcharge / 650) / 10;
+			if (pcharge < charge)
+				charge = pcharge;
+		}
+		capa = charge;
+		max = 100;
+		time = (charge * 274) / current;
+		current = -current;
+		
+	} else
+		capa = max = current = voltage = time = 0;
+
+	if ((req->reply[0] & 0x02) && (current > 0))
+		bat_flags |= PMU_BATT_CHARGING;
+	if (req->reply[0] & 0x04) /* CHECK THIS ONE */
+		bat_flags |= PMU_BATT_PRESENT;
+
+	pmu_batteries[pmu_cur_battery].flags = bat_flags;
+	pmu_batteries[pmu_cur_battery].charge = capa;
+	pmu_batteries[pmu_cur_battery].max_charge = max;
+	pmu_batteries[pmu_cur_battery].current = current;
+	pmu_batteries[pmu_cur_battery].voltage = voltage;
+	pmu_batteries[pmu_cur_battery].time_remaining = time;
+}
+#endif /* NEW_OHARE_CODE */
+
+ static void __pmac
+done_battery_state_comet(struct adb_request* req)
 {
 	/* format:
 	 *  [0]    :  flags
@@ -590,62 +718,57 @@ done_battery_state_ohare(struct adb_request* req)
 	 *  [6][7] :  pcharge
 	 *              --tkoba
 	 */
-	unsigned int bat_flags = PMU_BATT_TYPE_HOOPER;
-	long pcharge, charge, vb, vmax, lmax;
-	long vmax_charging, vmax_charged;
-	long current, voltage, time, max;
-	int mb = pmac_call_feature(PMAC_FTR_GET_MB_INFO,
-			NULL, PMAC_MB_INFO_MODEL, 0);
 
+	unsigned int bat_flags = 0;
+	int current = 0;
+	unsigned int max = 100;
+	unsigned int charge, voltage, time;
+	int lrange[] = { 0, 600, 750, 900, 1000, 1080, 
+				1180, 1250, 1300, 1340, 1360, 
+				1390, 1420, 1440, 1470, 1490, 
+				1520, 1550, 1580, 1610, 1650, 
+				1700
+				};
+	
 	if (req->reply[0] & 0x01)
 		pmu_power_flags |= PMU_PWR_AC_PRESENT;
 	else
 		pmu_power_flags &= ~PMU_PWR_AC_PRESENT;
-	
-	if (mb == PMAC_TYPE_COMET) {
-		vmax_charged = 189;
-		vmax_charging = 213;
-		lmax = 6500;
-	} else {
-		vmax_charged = 330;
-		vmax_charging = 330;
-		lmax = 6500;
-	}
-	vmax = vmax_charged;
 
-	/* If battery installed */
-	if (req->reply[0] & 0x04) {
+	if (req->reply[0] & 0x04) {	/* battery exist */
+		int vb, i;
 		bat_flags |= PMU_BATT_PRESENT;
-		if (req->reply[0] & 0x02)
-			bat_flags |= PMU_BATT_CHARGING;
 		vb = (req->reply[1] << 8) | req->reply[2];
-		voltage = (vb * 265 + 72665) / 10;
+		voltage = ((vb * 2650) + 726650)/100;
+		vb *= 10;
 		current = req->reply[5];
-		if ((req->reply[0] & 0x01) == 0) {
-			if (current > 200)
-				vb += ((current - 200) * 15)/100;
-		} else if (req->reply[0] & 0x02) {
-			vb = (vb * 97) / 100;
-			vmax = vmax_charging;
+		if ((req->reply[0] & 0x01) == 0 && (current > 200))
+			vb += ((current - 200) * 3);	/* vb = 500<->1800 */
+		else if (req->reply[0] & 0x02)
+			vb = ((vb - 800) * 1700/13)/100;	/*  in charging vb = 1300<->2130 */
+
+		if (req->reply[0] & 0x20) {	/* full charged */
+			charge = max;
+		} else {
+			if (lrange[21] < vb)
+				charge = max;
+			else {
+				if (vb < lrange[1])
+					charge = 0;
+				else {
+					for (i=21; vb < lrange[i]; --i);
+					charge = (i * 100)/21;
+				}
+			}
+			if (charge > max) charge = max;
 		}
-		charge = (100 * vb) / vmax;
-		if (req->reply[0] & 0x40) {
-			pcharge = (req->reply[6] << 8) + req->reply[7];
-			if (pcharge > lmax)
-				pcharge = lmax;
-			pcharge *= 100;
-			pcharge = 100 - pcharge / lmax;
-			if (pcharge < charge)
-				charge = pcharge;
-		}
-		if (current > 0)
-			time = (charge * 16440) / current;
-		else
-			time = 0;
-		max = 100;
+		time = (charge * 72);
 		current = -current;
 	} else
-		charge = max = current = voltage = time = 0;
+		max = current = voltage = time = 0;
+
+	if (req->reply[0] & 0x02)
+		bat_flags |= PMU_BATT_CHARGING;
 
 	pmu_batteries[pmu_cur_battery].flags = bat_flags;
 	pmu_batteries[pmu_cur_battery].charge = charge;
@@ -677,7 +800,7 @@ done_battery_state_smart(struct adb_request* req)
 	 *  [8][9] : voltage
 	 */
 	 
-	unsigned int bat_flags = PMU_BATT_TYPE_SMART;
+	unsigned int bat_flags = 0;
 	int current;
 	unsigned int capa, max, voltage;
 	
@@ -735,10 +858,17 @@ query_battery_state(void)
 {
 	if (!batt_req.complete)
 		return;
-	if (pmu_kind == PMU_OHARE_BASED)
-		pmu_request(&batt_req, done_battery_state_ohare,
-			1, PMU_BATTERY_STATE);
-	else
+	if (pmu_kind == PMU_OHARE_BASED) {
+		int mb = pmac_call_feature(PMAC_FTR_GET_MB_INFO,
+			NULL, PMAC_MB_INFO_MODEL, 0);
+
+		if (mb == PMAC_TYPE_COMET)
+			pmu_request(&batt_req, done_battery_state_comet,
+				1, PMU_BATTERY_STATE);
+		else
+			pmu_request(&batt_req, done_battery_state_ohare,
+				1, PMU_BATTERY_STATE);
+	} else
 		pmu_request(&batt_req, done_battery_state_smart,
 			2, PMU_SMART_BATTERY_STATE, pmu_cur_battery+1);
 }
@@ -1090,14 +1220,9 @@ recv_byte(void)
 static inline void
 pmu_done(struct adb_request *req)
 {
-	void (*done)(struct adb_request *) = req->done;
-	mb();
 	req->complete = 1;
-    	/* Here, we assume that if the request has a done member, the
-    	 * struct request will survive to setting req->complete to 1
-    	 */
-	if (done)
-		(*done)(req);
+	if (req->done)
+		(*req->done)(req);
 }
 
 static void __openfirmware
