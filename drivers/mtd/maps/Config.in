@@ -78,6 +78,7 @@ if [ "$CONFIG_ARM" = "y" ]; then
    dep_tristate '  CFI Flash device mapped on the XScale IQ80310 board' CONFIG_MTD_IQ80310 $CONFIG_MTD_CFI $CONFIG_ARCH_IQ80310
    dep_tristate '  CFI Flash device mapped on Epxa10db' CONFIG_MTD_EPXA10DB $CONFIG_MTD_CFI  $CONFIG_MTD_PARTITIONS $CONFIG_ARCH_CAMELOT
    dep_tristate '  NV-RAM mapping AUTCPU12 board' CONFIG_MTD_AUTCPU12 $CONFIG_ARCH_AUTCPU12
+   dep_tristate '  CFI Flash device mapped on PXA board' CONFIG_MTD_BULVERDE $CONFIG_MTD_CFI $CONFIG_ARCH_PXA $CONFIG_MTD_PARTITIONS
 fi
 if [ "$CONFIG_ALPHA" = "y" ]; then
    dep_tristate '  Flash chip mapping on TSUNAMI' CONFIG_MTD_TSUNAMI $CONFIG_MTD_GENPROBE
