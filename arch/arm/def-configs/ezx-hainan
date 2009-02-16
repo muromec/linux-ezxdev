@@ -153,7 +153,6 @@ CONFIG_IPM_DEEPIDLE=y
 CONFIG_CMDLINE="root=3e00 rootfstype=cramfs paniclog=on ip=off"
 CONFIG_ALIGNMENT_TRAP=y
 # CONFIG_PREEMPT is not set
-# CONFIG_EVENT_BROKER is not set
 # CONFIG_IKCONFIG is not set
 # CONFIG_IKCONFIG_PROC is not set
 
@@ -214,34 +213,17 @@ CONFIG_MTD_CFI_UTIL=y
 #
 # Mapping drivers for chip access
 #
-# CONFIG_MTD_COMPLEX_MAPPINGS is not set
 # CONFIG_MTD_PHYSMAP is not set
+# CONFIG_MTD_NORA is not set
 # CONFIG_MTD_ARM_INTEGRATOR is not set
 # CONFIG_MTD_CDB89712 is not set
 # CONFIG_MTD_SA1100 is not set
-# CONFIG_MTD_IPAQ is not set
 # CONFIG_MTD_DC21285 is not set
 # CONFIG_MTD_IQ80310 is not set
-# CONFIG_MTD_IQ80321 is not set
-# CONFIG_MTD_LUBBOCK is not set
-# CONFIG_MTD_BULVERDE is not set
-# CONFIG_MTD_IXP425 is not set
 # CONFIG_MTD_EPXA10DB is not set
-# CONFIG_MTD_FORTUNET is not set
 # CONFIG_MTD_AUTCPU12 is not set
-# CONFIG_MTD_EDB7312 is not set
-# CONFIG_MTD_H720X is not set
-# CONFIG_MTD_IMPA7 is not set
-# CONFIG_MTD_CEIVA is not set
-# CONFIG_MTD_NOR_TOTO is not set
-CONFIG_MTD_EZX=y
-# CONFIG_MTD_BRH is not set
-# CONFIG_MTD_OMAP is not set
-# CONFIG_MTD_OMAP_0 is not set
-# CONFIG_MTD_OMAP_1 is not set
-# CONFIG_MTD_XT2000 is not set
+CONFIG_MTD_BULVERDE=y
 # CONFIG_MTD_PCI is not set
-# CONFIG_MTD_PCMCIA is not set
 
 #
 # Self-contained MTD device drivers
@@ -250,24 +232,15 @@ CONFIG_MTD_EZX=y
 # CONFIG_MTD_SLRAM is not set
 # CONFIG_MTD_MTDRAM is not set
 # CONFIG_MTD_BLKMTD is not set
+# CONFIG_MTD_DOC1000 is not set
 # CONFIG_MTD_DOC2000 is not set
 # CONFIG_MTD_DOC2001 is not set
-# CONFIG_MTD_DOC2001PLUS is not set
 # CONFIG_MTD_DOCPROBE is not set
-# CONFIG_MTD_DOCECC is not set
 
 #
 # NAND Flash Device Drivers
 #
 # CONFIG_MTD_NAND is not set
-# CONFIG_MTD_NAND_SPIA is not set
-# CONFIG_MTD_NAND_TOTO is not set
-# CONFIG_MTD_NAND_AUTCPU12 is not set
-# CONFIG_MTD_NAND_EDB7312 is not set
-# CONFIG_MTD_NAND_H1900 is not set
-# CONFIG_MTD_NAND_P2 is not set
-# CONFIG_MTD_NAND_MX2 is not set
-# CONFIG_MTD_NAND_DISKONCHIP is not set
 # CONFIG_MTD_XIP is not set
 
 #
@@ -292,12 +265,6 @@ CONFIG_MTD_EZX=y
 # CONFIG_BLK_DEV_RAM is not set
 # CONFIG_BLK_DEV_INITRD is not set
 # CONFIG_BLK_STATS is not set
-
-#
-# EZX ROFLASH device
-#
-# CONFIG_ARCH_EZX_ROFLASH is not set
-# CONFIG_L18_DEBUG is not set
 
 #
 # Multi-device support (RAID and LVM)
@@ -353,6 +320,7 @@ CONFIG_IP_PNP_BOOTP=y
 # Appletalk devices
 #
 # CONFIG_DEV_APPLETALK is not set
+CONFIG_BLUEZ=m
 
 #
 # Bluetooth support
@@ -514,7 +482,6 @@ CONFIG_SERIAL_CONSOLE=y
 # CONFIG_SERIAL_NONSTANDARD is not set
 CONFIG_UNIX98_PTYS=y
 CONFIG_UNIX98_PTY_COUNT=256
-CONFIG_PTY_BLUETOOTH=y
 
 #
 # I2C support
@@ -524,26 +491,14 @@ CONFIG_I2C=y
 # CONFIG_I2C_ALGOPCF is not set
 CONFIG_I2C_PXA_ALGO=y
 CONFIG_I2C_PXA_ADAP=y
-# CONFIG_I2C_ADCM2700 is not set
 CONFIG_I2C_A780_CAMERA=y
 # CONFIG_I2C_OV9640 is not set
 # CONFIG_I2C_OV9650 is not set
 CONFIG_I2C_MT9M111=y
 # CONFIG_I2C_ADCM3800 is not set
 CONFIG_I2C_MI2010SOC=y
-# CONFIG_I2C_MAINBOARD is not set
 # CONFIG_I2C_CHARDEV is not set
 # CONFIG_I2C_PROC is not set
-
-#
-# L3 serial bus support
-#
-# CONFIG_L3 is not set
-# CONFIG_L3_ALGOBIT is not set
-# CONFIG_L3_BIT_SA1100_GPIO is not set
-# CONFIG_L3_BIT_OMAP_GPIO is not set
-# CONFIG_L3_SA1111 is not set
-# CONFIG_BIT_SA1100_GPIO is not set
 
 #
 # Mice
@@ -561,15 +516,9 @@ CONFIG_I2C_MI2010SOC=y
 # Watchdog Cards
 #
 # CONFIG_WATCHDOG is not set
-# CONFIG_LINUX_LED is not set
-# CONFIG_CPCI735_LED is not set
-# CONFIG_PXA_E680_LED is not set
 # CONFIG_AMD_PM768 is not set
 # CONFIG_NVRAM is not set
 # CONFIG_RTC is not set
-CONFIG_PXA_RTC=y
-# CONFIG_X1226_RTC is not set
-# CONFIG_RV5C387_RTC is not set
 # CONFIG_DTLK is not set
 # CONFIG_R3964 is not set
 # CONFIG_APPLICOM is not set
@@ -580,13 +529,6 @@ CONFIG_PXA_RTC=y
 # CONFIG_FTAPE is not set
 # CONFIG_AGP is not set
 # CONFIG_DRM is not set
-# CONFIG_BULVERDE_SRAM_DEV is not set
-CONFIG_SSP_PCAP_SUPPORT_PRIMARY_SPI=y
-
-#
-# Modem connections
-#
-# CONFIG_MODEM_CONNECTIONS is not set
 
 #
 # Multimedia devices
@@ -676,9 +618,6 @@ CONFIG_JFFS2_SUMMARY=y
 # CONFIG_ROOT_CRAMFS_LINEAR is not set
 # CONFIG_TMPFS is not set
 CONFIG_RAMFS=y
-# CONFIG_PRAM_FS is not set
-# CONFIG_PRAMFS_NOWP is not set
-# CONFIG_ROOT_PRAMFS is not set
 # CONFIG_ISO9660_FS is not set
 # CONFIG_JOLIET is not set
 # CONFIG_ZISOFS is not set
@@ -704,9 +643,6 @@ CONFIG_EXT2_FS=y
 # CONFIG_UDF_RW is not set
 # CONFIG_UFS_FS is not set
 # CONFIG_UFS_FS_WRITE is not set
-# CONFIG_XFS_FS is not set
-# CONFIG_XFS_RT is not set
-# CONFIG_XFS_QUOTA is not set
 
 #
 # Network File Systems
