@@ -71,9 +71,6 @@ subdir-$(CONFIG_SSI)		+= ssi
 subdir-$(CONFIG_MAPLE)		+= maple
 subdir-$(CONFIG_VMEBUS)		+= vme
 
-# MVL-CEE added dpm
-subdir-$(CONFIG_DPM)		+= dpm
-
 MARVELL_SUBDIR_FLAG=n
 
 ifeq ($(CONFIG_MARVELL_WIFI), m)
