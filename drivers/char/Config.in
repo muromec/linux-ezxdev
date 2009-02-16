@@ -1,9 +1,6 @@
 #
 # Character device configuration
 #
-# Copyright (C) 2005 Motorola, Inc.
-# - Port to EzX platform.
-#
 mainmenu_option next_comment
 comment 'Character devices'
 
@@ -68,98 +65,67 @@ if [ "$CONFIG_SERIAL_NONSTANDARD" = "y" ]; then
       tristate '  Specialix SX (and SI) card support' CONFIG_SX
       tristate '  Specialix RIO system support' CONFIG_RIO
       if [ "$CONFIG_RIO" != "n" ]; then
-         bool '    Support really old RIO/PCI cards' CONFIG_RIO_OLDPCI
+        bool '    Support really old RIO/PCI cards' CONFIG_RIO_OLDPCI
       fi
    fi
    bool '  Stallion multiport serial support' CONFIG_STALDRV
    if [ "$CONFIG_STALDRV" = "y" ]; then
-      tristate '    Stallion EasyIO or EC8/32 support' CONFIG_STALLION
-      tristate '    Stallion EC8/64, ONboard, Brumby support' CONFIG_ISTALLION
+     tristate '    Stallion EasyIO or EC8/32 support' CONFIG_STALLION
+     tristate '    Stallion EC8/64, ONboard, Brumby support' CONFIG_ISTALLION
    fi
    if [ "$CONFIG_MIPS" = "y" ]; then
-      bool '  TX3912/PR31700 serial port support' CONFIG_SERIAL_TX3912
-      dep_bool '     Console on TX3912/PR31700 serial port' CONFIG_SERIAL_TX3912_CONSOLE $CONFIG_SERIAL_TX3912
-      bool '  Enable Au1000 UART Support' CONFIG_AU1000_UART
-      if [ "$CONFIG_AU1000_UART" = "y" ]; then
-         bool '        Enable Au1000 serial console' CONFIG_AU1000_SERIAL_CONSOLE
+     bool '  TX3912/PR31700 serial port support' CONFIG_SERIAL_TX3912
+     dep_bool '     Console on TX3912/PR31700 serial port' CONFIG_SERIAL_TX3912_CONSOLE $CONFIG_SERIAL_TX3912
+     bool '  Enable Au1000 UART Support' CONFIG_AU1000_UART
+     if [ "$CONFIG_AU1000_UART" = "y" ]; then
+        bool '        Enable Au1000 serial console' CONFIG_AU1000_SERIAL_CONSOLE
+     fi
+     bool 'TXx927 SIO support' CONFIG_TXX927_SERIAL 
+     if [ "$CONFIG_TXX927_SERIAL" = "y" ]; then
+        bool 'TXx927 SIO Console support' CONFIG_TXX927_SERIAL_CONSOLE  
+     fi                             
+     if [ "$CONFIG_SIBYTE_SB1250" = "y" ]; then
+        bool '  Support for sb1250 onchip DUART' CONFIG_SIBYTE_SB1250_DUART
+        if [ "$CONFIG_SIBYTE_SB1250_DUART" = "y" ]; then
+           bool '  Console on SB1250 DUART' CONFIG_SIBYTE_SB1250_DUART_CONSOLE
+	   if [ "$CONFIG_SIBYTE_SB1250_DUART_CONSOLE" = "y" ]; then
+	      define_bool CONFIG_SERIAL_CONSOLE y
+	   fi
+	   int  '  Output buffers size (in bytes)' CONFIG_SB1250_DUART_OUTPUT_BUF_SIZE 1024
+	   bool '  Leave port 1 alone (for kgdb or audio)' CONFIG_SIBYTE_SB1250_DUART_NO_PORT_1
+       fi
+     fi
+  fi
+fi
+if [ "$CONFIG_EXPERIMENTAL" = "y" -a "$CONFIG_ZORRO" = "y" ]; then
+   tristate 'Commodore A2232 serial support (EXPERIMENTAL)' CONFIG_A2232
+fi
+if [ "$CONFIG_FOOTBRIDGE" = "y" ]; then
+   bool 'DC21285 serial port support' CONFIG_SERIAL_21285
+   if [ "$CONFIG_SERIAL_21285" = "y" ]; then
+      if [ "$CONFIG_OBSOLETE" = "y" ]; then
+         bool '  Use /dev/ttyS0 device (OBSOLETE)' CONFIG_SERIAL_21285_OLD
       fi
-      bool 'TXx927 SIO support' CONFIG_TXX927_SERIAL 
-      if [ "$CONFIG_TXX927_SERIAL" = "y" ]; then
-         bool 'TXx927 SIO Console support' CONFIG_TXX927_SERIAL_CONSOLE  
-      fi                             
-      if [ "$CONFIG_SIBYTE_SB1250" = "y" ]; then
-         bool '  Support for sb1250 onchip DUART' CONFIG_SIBYTE_SB1250_DUART
-         if [ "$CONFIG_SIBYTE_SB1250_DUART" = "y" ]; then
-            bool '  Console on SB1250 DUART' CONFIG_SIBYTE_SB1250_DUART_CONSOLE
-            if [ "$CONFIG_SIBYTE_SB1250_DUART_CONSOLE" = "y" ]; then
-               define_bool CONFIG_SERIAL_CONSOLE y
-            fi
-            int  '  Output buffers size (in bytes)' CONFIG_SB1250_DUART_OUTPUT_BUF_SIZE 1024
-            bool '  Leave port 1 alone (for kgdb or audio)' CONFIG_SIBYTE_SB1250_DUART_NO_PORT_1
-         fi
-      fi
-   fi
-   if [ "$CONFIG_EXPERIMENTAL" = "y" -a "$CONFIG_ZORRO" = "y" ]; then
-      tristate 'Commodore A2232 serial support (EXPERIMENTAL)' CONFIG_A2232
-   fi
-   if [ "$CONFIG_FOOTBRIDGE" = "y" ]; then
-      bool 'DC21285 serial port support' CONFIG_SERIAL_21285
-      if [ "$CONFIG_SERIAL_21285" = "y" ]; then
-         if [ "$CONFIG_OBSOLETE" = "y" ]; then
-            bool '  Use /dev/ttyS0 device (OBSOLETE)' CONFIG_SERIAL_21285_OLD
-         fi
-         bool '  Console on DC21285 serial port' CONFIG_SERIAL_21285_CONSOLE
-      fi
+      bool '  Console on DC21285 serial port' CONFIG_SERIAL_21285_CONSOLE
    fi
    if [ "$CONFIG_MIPS" = "y" ]; then
-      bool '  TMPTX3912/PR31700 serial port support' CONFIG_SERIAL_TX3912
-      dep_bool '     Console on TMPTX3912/PR31700 serial port' CONFIG_SERIAL_TX3912_CONSOLE $CONFIG_SERIAL_TX3912
-      bool '  Enable Au1000 UART Support' CONFIG_AU1000_UART
-      if [ "$CONFIG_AU1000_UART" = "y" ]; then
+     bool '  TMPTX3912/PR31700 serial port support' CONFIG_SERIAL_TX3912
+     dep_bool '     Console on TMPTX3912/PR31700 serial port' CONFIG_SERIAL_TX3912_CONSOLE $CONFIG_SERIAL_TX3912
+     bool '  Enable Au1000 UART Support' CONFIG_AU1000_UART
+     if [ "$CONFIG_AU1000_UART" = "y" ]; then
          bool '        Enable Au1000 serial console' CONFIG_AU1000_SERIAL_CONSOLE
-      fi
-      dep_tristate '  Au1000 USB TTY Device support' CONFIG_AU1000_USB_TTY $CONFIG_AU1000_USB_DEVICE
-      if [ "$CONFIG_AU1000_USB_TTY" != "y" ]; then
-         dep_tristate '  Au1000 USB Raw Device support' CONFIG_AU1000_USB_RAW $CONFIG_AU1000_USB_DEVICE
-      fi
-      if [ "$CONFIG_CPU_TX4925" = "y" ]; then
-         bool 'TX4925 serial support (via generic serial)' CONFIG_TX4925_SIO
-         if [ "$CONFIG_TX4925_SIO" = "y" ]; then
-            bool '  Support serial console' CONFIG_TX4925_SIO_CONSOLE
-         fi
-      fi
-      if [ "$CONFIG_CPU_TX4927" = "y" ]; then
-         bool 'TX4927 serial support (via generic serial)' CONFIG_TX4927_SIO
-         if [ "$CONFIG_TX4927_SIO" = "y" ]; then
-            bool '  Support serial console' CONFIG_TX4927_SIO_CONSOLE
-         fi
-      fi
-      bool 'TXx927 SIO support' CONFIG_TXX927_SERIAL 
-      if [ "$CONFIG_TXX927_SERIAL" = "y" ]; then
-         bool 'TXx927 SIO Console support' CONFIG_TXX927_SERIAL_CONSOLE  
-      fi                             
-      if [ "$CONFIG_SIBYTE_SB1250" = "y" ]; then
-         bool '  Support for sb1250 onchip DUART' CONFIG_SIBYTE_SB1250_DUART
-         if [ "$CONFIG_SIBYTE_SB1250_DUART" = "y" ]; then
-            bool '  Console on SB1250 DUART' CONFIG_SIBYTE_SB1250_DUART_CONSOLE
-            if [ "$CONFIG_SIBYTE_SB1250_DUART_CONSOLE" = "y" ]; then
-               define_bool CONFIG_SERIAL_CONSOLE y
-            fi
-            int  '  Output buffers size (in bytes)' CONFIG_SB1250_DUART_OUTPUT_BUF_SIZE 1024
-            bool '  Leave port 1 alone (for kgdb or audio)' CONFIG_SIBYTE_SB1250_DUART_NO_PORT_1
-         fi
-      fi
+     fi
    fi
    if [ "$CONFIG_PARISC" = "y" ]; then
-      bool '  PDC software console support' CONFIG_PDC_CONSOLE
+     bool '  PDC software console support' CONFIG_PDC_CONSOLE
    fi
 fi
 if [ "$CONFIG_MIPS_ITE8172" = "y" ]; then
    bool 'Enable Qtronix 990P Keyboard Support' CONFIG_QTRONIX_KEYBOARD
    if [ "$CONFIG_QTRONIX_KEYBOARD" = "y" ]; then
-      define_bool CONFIG_IT8172_CIR y
+     define_bool CONFIG_IT8172_CIR y
    else
-      bool '    Enable PS2 Keyboard Support' CONFIG_PC_KEYB
+     bool '    Enable PS2 Keyboard Support' CONFIG_PC_KEYB
    fi
    bool 'Enable Smart Card Reader 0 Support ' CONFIG_IT8172_SCR0
    bool 'Enable Smart Card Reader 1 Support ' CONFIG_IT8172_SCR1
@@ -167,82 +133,13 @@ fi
 if [ "$CONFIG_MIPS_IVR" = "y" ]; then
    bool 'Enable Qtronix 990P Keyboard Support' CONFIG_QTRONIX_KEYBOARD
    if [ "$CONFIG_QTRONIX_KEYBOARD" = "y" ]; then
-      define_bool CONFIG_IT8172_CIR y
+     define_bool CONFIG_IT8172_CIR y
    fi
    bool 'Enable Smart Card Reader 0 Support ' CONFIG_IT8172_SCR0
 fi
-if [ "$CONFIG_VR4122" = "y" -o "$CONFIG_VR4131" = "y" ]; then
-   bool 'NEC VRC4173 support' CONFIG_VRC4173
-   if [ "$CONFIG_VRC4173" != "n" ]; then
-      bool '    Enable PS/2 Unit Support' CONFIG_VRC4173_PS2U
-      bool '    Enable Touch Panel Interface Unit Support' CONFIG_VRC4173_PIU
-   fi
-fi
-if [ "$CONFIG_ATI_XILLEON" = "y" ]; then
-   bool 'ATI Xilleon Front Panel support' CONFIG_ATI_XILLEON_FP
-   tristate 'ATI Xilleon UIRT remote support' CONFIG_ATI_XILLEON_IR
-fi
-
-if [ "$CONFIG_GT64260" = "y" ]; then
-   bool 'GT64260 mpsc serial port support' CONFIG_GT64260_MPSC
-   if [ "$CONFIG_GT64260_MPSC" = "y" ]; then
-      bool '  MPSC Console support' CONFIG_GT64260_CONSOLE
-      if [ "$CONFIG_GT64260_CONSOLE" = "y" ]; then
-         define_bool CONFIG_SERIAL_CONSOLE y
-         choice 'Default console port' \
-            "MPSC0		CONFIG_GT64260_CONSOLE_0 \
-             MPSC1		CONFIG_GT64260_CONSOLE_1" MPSC0
-         if [ "$CONFIG_USE_PPCBOOT" != "y" ]; then
-            int 'Serial Console Baudrate' CONFIG_SERIAL_CONSOLE_BAUD 115200
-         fi
-         choice 'Baud Rate Generator Clock Source' \
-            "BCLKIN	CONFIG_GT64260_BCLKIN	\
-             SCLK0	CONFIG_GT64260_SCLK0	\
-             TSCLK0	CONFIG_GT64260_TSCLK0	\
-             SCLK1	CONFIG_GT64260_SCLK1	\
-             TSCLK1	CONFIG_GT64260_TSCLK1	\
-             TCLK	CONFIG_GT64260_TCLK"	TCLK
-         if [ "$CONFIG_GT64260_BCLKIN" = "y" ]; then
-            define_int CONFIG_GT64260_CLKSRC	0
-         fi
-         if [ "$CONFIG_GT64260_SCLK0" = "y" ]; then
-            define_int CONFIG_GT64260_CLKSRC	2
-         fi
-         if [ "$CONFIG_GT64260_TSCLK0" = "y" ]; then
-            define_int CONFIG_GT64260_CLKSRC	3
-         fi
-         if [ "$CONFIG_GT64260_SCLK1" = "y" ]; then
-            define_int CONFIG_GT64260_CLKSRC	6
-         fi
-         if [ "$CONFIG_GT64260_TSCLK1" = "y" ]; then
-            define_int CONFIG_GT64260_CLKSRC	7
-         fi
-         if [ "$CONFIG_GT64260_TCLK" = "y" ]; then
-            define_int CONFIG_GT64260_CLKSRC	8
-         fi
-         bool 'Clock rate is bus clock' CONFIG_GT64260_BRG_EQ_BUS
-         if [ "$CONFIG_GT64260_BRG_EQ_BUS" = "n" ]; then
-            int 'Input Clock Rate' CONFIG_GT64260_BRG_CLK_RATE 100000000
-         fi
-      fi
-   fi
-fi
-
-if [ "$CONFIG_SERIAL" = "n" ]; then
-   source drivers/serial/Config.in
-fi
-
-if [ "$CONFIG_ARCH_ANAKIN" = "y" ]; then
-   tristate 'Anakin touchscreen support' CONFIG_TOUCHSCREEN_ANAKIN
-fi
-if [ "$CONFIG_ARCH_MX2ADS" = "y" ]; then
-   tristate 'Motorola MX2 touchscreen support via SPI' CONFIG_MX2_TOUCHSCREEN
-fi
-
 bool 'Unix98 PTY support' CONFIG_UNIX98_PTYS
 if [ "$CONFIG_UNIX98_PTYS" = "y" ]; then
    int 'Maximum number of Unix98 PTYs in use (0-2048)' CONFIG_UNIX98_PTY_COUNT 256
-   dep_bool 'Unix98 PTY bluetooth support' CONFIG_PTY_BLUETOOTH $CONFIG_ARCH_EZXBASE
 fi
 if [ "$CONFIG_PARPORT" != "n" ]; then
    dep_tristate 'Parallel printer support' CONFIG_PRINTER $CONFIG_PARPORT
@@ -251,40 +148,12 @@ if [ "$CONFIG_PARPORT" != "n" ]; then
    fi
    dep_tristate 'Support for user-space parallel port device drivers' CONFIG_PPDEV $CONFIG_PARPORT
 fi
-if [ "$CONFIG_SA1100_PFS168" = "y" ]; then
-   dep_tristate 'PFS-168 SPI char device driver' CONFIG_PFS168_SPI $CONFIG_SA1100_PFS168
-   dep_tristate 'PFS-168 Miscellaneous I/O access via proc' CONFIG_PFS168_MISC $CONFIG_SA1100_PFS168
-fi
-if [ "$CONFIG_SA1100_H3XXX" = "y" ]; then
-   comment 'Compaq iPAQ H3600 support'
-   dep_tristate '  Touchscreen support' CONFIG_TOUCHSCREEN_H3600 $CONFIG_H3600_HARDWARE
-   dep_tristate '  Backpaq FPGA driver interface' CONFIG_H3600_BACKPAQ_FPGA $CONFIG_MERCURY_BACKPAQ
-   dep_tristate '  Backpaq accelerometer interface' CONFIG_H3600_BACKPAQ_ACCEL $CONFIG_H3600_BACKPAQ_FPGA
-   dep_tristate '  Backpaq gasgauge interface' CONFIG_H3600_BACKPAQ_GASGAUGE $CONFIG_H3600_BACKPAQ_FPGA
-   tristate '  Stowaway keyboard support' CONFIG_H3600_STOWAWAY
-   tristate '  Compaq Micro keyboard support' CONFIG_H3800_MICROKBD
-   tristate '  Linux Consumer IR Driver (LIRC)' CONFIG_SA1100_LIRC
-   tristate '  Apple Newton Keyboard' CONFIG_NEWTONKBD
-fi
-if [ "$CONFIG_ARCH_OMAP1510" = "y" ]; then
-   tristate 'OMAP1510 Hardware Error IRQ' CONFIG_OMAP1510_HWERROR
-fi
 
 if [ "$CONFIG_PPC64" ] ; then 
    bool 'pSeries Hypervisor Virtual Console support' CONFIG_HVC_CONSOLE
 fi
 
 source drivers/i2c/Config.in
-
-if [ "$CONFIG_ARM" = "y" ]; then
-   # This has dependencies on I2C and therefore _must_ come after I2C.
-   source drivers/l3/Config.in
-   if [ "$CONFIG_SA1100_H3XXX" = "y" ]; then
-      source drivers/spi/Config.in
-   fi
-fi
-
-source drivers/sensors/Config.in
 
 mainmenu_option next_comment
 comment 'Mice'
@@ -304,10 +173,6 @@ if [ "$CONFIG_MOUSE" != "n" ]; then
    tristate '  C&T 82C710 mouse port support (as on TI Travelmate)' CONFIG_82C710_MOUSE
    tristate '  PC110 digitizer pad support' CONFIG_PC110_PAD
    tristate '  MK712 touch screen support' CONFIG_MK712_MOUSE
-fi
-
-if [ "$CONFIG_4xx" = "y" ]; then
-   tristate 'Redwood IR mouse driver' CONFIG_RWMOUSE
 fi
 endmenu
 
@@ -336,11 +201,13 @@ if [ "$CONFIG_WATCHDOG" != "n" ]; then
    tristate '  AMD "Elan" SC520 Watchdog Timer' CONFIG_SC520_WDT
    tristate '  Berkshire Products PC Watchdog' CONFIG_PCWATCHDOG
    if [ "$CONFIG_ARM" = "y" ]; then
-      dep_tristate '  DC21285 watchdog' CONFIG_21285_WATCHDOG $CONFIG_FOOTBRIDGE
-      dep_tristate '  NetWinder WB83C977 watchdog' CONFIG_977_WATCHDOG $CONFIG_ARCH_NETWINDER
       dep_tristate '  SA1100 watchdog' CONFIG_SA1100_WATCHDOG $CONFIG_ARCH_SA1100
-      dep_tristate '  PXA250/210 watchdog' CONFIG_PXA_WATCHDOG $CONFIG_ARCH_PXA
-      dep_tristate '  OMAP watchdog' CONFIG_OMAP_WATCHDOG $CONFIG_ARCH_OMAP
+   fi
+   if [ "$CONFIG_FOOTBRIDGE" = "y" ]; then
+      tristate '  DC21285 watchdog' CONFIG_21285_WATCHDOG
+      if [ "$CONFIG_ARCH_NETWINDER" = "y" ]; then
+         tristate '  NetWinder WB83C977 watchdog' CONFIG_977_WATCHDOG
+      fi
    fi
    tristate '  Eurotech CPU-1220/1410 Watchdog Timer' CONFIG_EUROTECH_WDT
    tristate '  IB700 SBC Watchdog Timer' CONFIG_IB700_WDT
@@ -364,20 +231,9 @@ if [ "$CONFIG_WATCHDOG" != "n" ]; then
    fi
    tristate '  ZF MachZ Watchdog' CONFIG_MACHZ_WDT
    dep_tristate '  AMD 766/768 TCO Timer/Watchdog' CONFIG_AMD7XX_TCO $CONFIG_EXPERIMENTAL
-   if [ "$CONFIG_4xx" = "y" ]; then
-      tristate '  IBM PPC 405 Watchdog Timer' CONFIG_PPC405_WDT
-   fi
-   dep_tristate '  NEC VR41xx Watchdog (DSU)' CONFIG_VR41XX_WDT $CONFIG_CPU_VR41XX
-   tristate '  Force CPCI735 watchdog' CONFIG_CPCI735_WATCHDOG
-   dep_tristate '  Motorola DBMX21 Watchdog Timer' CONFIG_DBMX21_WDT $CONFIG_ARCH_MX2ADS
-
 fi
 endmenu
 
-tristate 'LED device driver support' CONFIG_LINUX_LED
-dep_tristate '  Force CPCI735 LED support' CONFIG_CPCI735_LED $CONFIG_LINUX_LED 
-dep_tristate '  E680 Indicator LED support' CONFIG_PXA_E680_LED $CONFIG_LINUX_LED $CONFIG_ARCH_EZX_E680
- 
 if [ "$CONFIG_ARCH_NETWINDER" = "y" ]; then
    tristate 'NetWinder thermometer support' CONFIG_DS1620
    tristate 'NetWinder Button' CONFIG_NWBUTTON
@@ -402,29 +258,11 @@ fi
 if [ "$CONFIG_OBSOLETE" = "y" -a "$CONFIG_ALPHA_BOOK1" = "y" ]; then
    bool 'Tadpole ANA H8 Support (OBSOLETE)'  CONFIG_H8
 fi
-if [ "$CONFIG_MIPS" = "y" -a "$CONFIG_NEW_TIME_C" = "y" ]; then
-   tristate 'Generic MIPS RTC Support' CONFIG_MIPS_RTC
-fi
+
 if [ "$CONFIG_ARM" = "y" ]; then
-   if [ "$CONFIG_ARCH_SA1100" = "y" ]; then
-      tristate 'SA1100 Real Time Clock' CONFIG_SA1100_RTC
-   fi
-   if [ "$CONFIG_ARCH_PXA" = "y" ]; then
-      tristate 'PXA250/210 Real Time Clock' CONFIG_PXA_RTC
-   fi
-   if [ "$CONFIG_ARCH_OMAP" = "y" ]; then
-      tristate 'TI OMAP Real Time Clock' CONFIG_OMAP_RTC
-   fi
-   if [ "$CONFIG_ARCH_OMAP730" = "y" ]; then
-      tristate 'TI OMAP730 keypad support' CONFIG_OMAP730_KEYPAD
-   fi
-   if [ "$CONFIG_ARCH_MX2ADS" = "y" ]; then
-      tristate 'Motorola DBMX2 RTC Support' CONFIG_MX2ADS_RTC
-   fi
-fi
-if [ "$CONFIG_I2C" != "n" ]; then
-   dep_tristate 'Xicor X1226 Real Time Clock' CONFIG_X1226_RTC $CONFIG_I2C
-   dep_tristate 'Ricoh RV5C387 Real Time Clock' CONFIG_RV5C387_RTC $CONFIG_I2C
+  if [ "$CONFIG_ARCH_SA1100" = "y" ]; then 
+    tristate 'SA1100 Real Time Clock' CONFIG_SA1100_RTC
+  fi
 fi
 
 tristate 'Double Talk PC internal speech card support' CONFIG_DTLK
@@ -432,9 +270,6 @@ tristate 'Siemens R3964 line discipline' CONFIG_R3964
 tristate 'Applicom intelligent fieldbus card support' CONFIG_APPLICOM
 if [ "$CONFIG_EXPERIMENTAL" = "y" -a "$CONFIG_X86" = "y" -a "$CONFIG_X86_64" != "y" ]; then
    dep_tristate 'Sony Vaio Programmable I/O Control Device support (EXPERIMENTAL)' CONFIG_SONYPI $CONFIG_PCI
-fi
-if [ "$CONFIG_IBM_OCP" = "y" ]; then
-   tristate 'IBM GPIO' CONFIG_IBM_OCP_GPIO
 fi
 
 mainmenu_option next_comment
@@ -446,10 +281,10 @@ fi
 endmenu
 
 if [ "$CONFIG_GART_IOMMU" = "y" ]; then
-   bool '/dev/agpgart (AGP Support)' CONFIG_AGP
-   define_bool CONFIG_AGP_AMD_8151 y
+	bool '/dev/agpgart (AGP Support)' CONFIG_AGP
+	define_bool CONFIG_AGP_AMD_8151 y
 else
-   tristate '/dev/agpgart (AGP Support)' CONFIG_AGP
+	tristate '/dev/agpgart (AGP Support)' CONFIG_AGP
 fi      
 if [ "$CONFIG_AGP" != "n" ]; then
    bool '  Intel 440LX/BX/GX and I815/I820/I830M/I830MP/I840/I845/I850/I860 support' CONFIG_AGP_INTEL
@@ -479,6 +314,10 @@ if [ "$CONFIG_DRM" = "y" ]; then
       source drivers/char/drm/Config.in
    fi
 fi
+
+if [ "$CONFIG_HOTPLUG" = "y" -a "$CONFIG_PCMCIA" != "n" ]; then
+   source drivers/char/pcmcia/Config.in
+fi
 if [ "$CONFIG_MIPS_AU1000" = "y" ]; then
    tristate ' Alchemy Au1000 GPIO device support' CONFIG_AU1000_GPIO
    tristate ' Au1000/ADS7846 touchscreen support' CONFIG_TS_AU1000_ADS7846
@@ -487,53 +326,8 @@ if [ "$CONFIG_MIPS_ITE8172" = "y" ]; then
   tristate ' ITE GPIO' CONFIG_ITE_GPIO
 fi
 
-if [ "$CONFIG_HOTPLUG" = "y" -a "$CONFIG_PCMCIA" != "n" ]; then
-   source drivers/char/pcmcia/Config.in
-fi
-if [ "$CONFIG_MIPS_AU1000" = "y" ]; then
-   tristate ' Alchemy Au1000 GPIO device support' CONFIG_AU1000_GPIO
-fi
-if [ "$CONFIG_MIPS_ITE8172" = "y" ]; then
-  tristate ' ITE GPIO' CONFIG_ITE_GPIO
-fi
-
 if [ "$CONFIG_X86" = "y" ]; then
    tristate 'ACP Modem (Mwave) support' CONFIG_MWAVE
 fi
-
-if [ "$CONFIG_ARCTIC2" = "y" ]; then
-   tristate 'Arctic II Semtech Touchscreen controller' CONFIG_IBMTS_SEMTECH
-   tristate 'Arctic II miscellaneous support (buttons, frontlight)' CONFIG_ARCTIC2_MISC
-fi
-
-if [ "$CONFIG_OMAP_INNOVATOR" = "y" ]; then
-   tristate 'TI Innovator/OMAP1510/1610 PS/2 support' CONFIG_INNOVATOR_PS2
-   tristate 'TI Innovator/OMAP1510/1610 keypad support' CONFIG_INNOVATOR_KEYPAD
-fi
-
-if [ "$CONFIG_ARCH_MAINSTONE" = "y" ]; then
-   tristate 'Intel Mainstone (HCDDBBVA0) keypad support' CONFIG_MAINSTONE_KEYPAD
-fi
-
-if [ "$CONFIG_CPU_BULVERDE" = "y" ]; then
-   tristate 'BULVERDE Internal SRAM char device' CONFIG_BULVERDE_SRAM_DEV
-fi
-if [ "$CONFIG_ARCH_MX2ADS" = "y" ]; then
-   tristate 'Motorola DBMX2 PWM' CONFIG_MX2ADS_PWM
-   tristate 'Motorola DBMX2 ADS Keypad' CONFIG_MX2ADS_KEYPAD
-   if [ "$CONFIG_MX2ADS_KEYPAD" != "n" ]; then
-         choice 'API for DBMX2 ADS Keypad' \
-            "INPUT	CONFIG_MX2ADS_KEYPAD_INPUT	\
-             MISC	CONFIG_MX2ADS_KEYPAD_MISC"	INPUT
-   fi
-   tristate 'Motorola DBMX2 SLCD' CONFIG_MX2ADS_SLCD
-   tristate 'Motorola DBMX2 1WIRE' CONFIG_MX2ADS_OWIRE
-fi
-
-if [ "$CONFIG_CPU_BULVERDE" = "y" ]; then
-   tristate 'PCAP Support Primary SPI' CONFIG_SSP_PCAP_SUPPORT_PRIMARY_SPI
-fi
-
-source drivers/modem/Config.in
 
 endmenu

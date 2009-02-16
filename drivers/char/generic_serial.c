@@ -1087,54 +1087,6 @@ void gs_got_break(struct gs_port *port)
 }
 
 
-int gs_read_proc(char *page, char **start, off_t off, int count,
-                 int *eof, void *data)
-{
-        int i, len = 0, l;
-        off_t   begin = 0;
-        int    version = 11;
-        int    port_count;
-        int    len_max = 4000;
-	struct tty_driver* driver;
-	struct gs_port* port;
-	int r;
-
-	driver = (struct tty_driver*)data;
-	port = (struct gs_port*)driver->local_data;
-
-	port_count = port->rd->read_proc_port_count(NULL);
-
-        len += sprintf(page, "serinfo:%d.%d driver:%s version:%s\n", 
-                       version/10, version%10,
-                       port->rd->read_proc_driver_name(NULL),
-                       port->rd->read_proc_driver_version(NULL));
-
-        for (i = 0; i < port_count && len < len_max; i++) {
-                l = port->rd->read_proc_line((void*)version,page + len, i, 
-                                                   len_max-len);
-
-                len += l;
-                if (len+begin > off+count)
-		{
-                        goto done;
-		}
-                if (len+begin < off) {
-                        begin += len;
-                        len = 0;
-                }
-        }
-        *eof = 1;
-done:
-        if ( off >= len+begin)
-	{
-                return 0;
-	}
-        *start = page + (begin-off);
-        r = ((count < begin+len-off) ? count : begin+len-off);
-        return( r );
-}
-
-
 EXPORT_SYMBOL(gs_put_char);
 EXPORT_SYMBOL(gs_write);
 EXPORT_SYMBOL(gs_write_room);
@@ -1152,6 +1104,5 @@ EXPORT_SYMBOL(gs_init_port);
 EXPORT_SYMBOL(gs_setserial);
 EXPORT_SYMBOL(gs_getserial);
 EXPORT_SYMBOL(gs_got_break);
-EXPORT_SYMBOL(gs_read_proc);
 
 MODULE_LICENSE("GPL");

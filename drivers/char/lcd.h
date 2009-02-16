@@ -1,11 +1,16 @@
 /*
-*
-*
-*	File: 	lcd.h
-*	Andrew Bose	
-*
-*/
-
+ * LED, LCD and Button panel driver for Cobalt
+ *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ *
+ * Copyright (C) 1996, 1997 by Andrew Bose
+ *
+ * Linux kernel version history:
+ *       March 2001: Ported from 2.0.34  by Liam Davies
+ *
+ */
 
 // function headers
 
@@ -176,3 +181,4 @@ struct lcd_display {
 #define kClassA			5
 #define kClassB			6
 #define kClassC			7
+

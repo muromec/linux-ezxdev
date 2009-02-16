@@ -48,12 +48,6 @@
 
 #include <linux/pc_keyb.h>
 
-#undef  KBD_REPORT_TIMEOUTS
-#undef  KBD_REPORT_UNKN
-#undef  INITIALIZE_MOUSE
-#undef  DEBUG_KEY_STROKE
-#undef  USE_POLLING_MODE
-
 /* Simple translation table for the SysRq keys */
 
 #ifdef CONFIG_MAGIC_SYSRQ
@@ -102,17 +96,11 @@ static int aux_count;
 /* used when we send commands to the mouse that expect an ACK. */
 static unsigned char mouse_reply_expected;
 
+#define AUX_INTS_OFF (KBD_MODE_KCC | KBD_MODE_DISABLE_MOUSE | KBD_MODE_SYS | KBD_MODE_KBD_INT)
+#define AUX_INTS_ON  (KBD_MODE_KCC | KBD_MODE_SYS | KBD_MODE_MOUSE_INT | KBD_MODE_KBD_INT)
+
 #define MAX_RETRIES	60		/* some aux operations take long time*/
 #endif /* CONFIG_PSMOUSE */
-
-
-#ifdef CONFIG_TOSHIBA_RBTX4927
-#define AUX_INTS_OFF ( 0xbd )  /* magic value that helps for tx4927 */
-#define AUX_INTS_ON  ( 0xbf )  /* mouse not supported at this time */
-#else
-#define AUX_INTS_OFF ( KBD_MODE_KCC | KBD_MODE_SYS | KBD_MODE_KBD_INT | KBD_MODE_DISABLE_MOUSE )
-#define AUX_INTS_ON  ( KBD_MODE_KCC | KBD_MODE_SYS | KBD_MODE_KBD_INT | KBD_MODE_MOUSE_INT     )
-#endif
 
 /*
  * Wait for keyboard controller input buffer to drain.
@@ -263,44 +251,6 @@ static unsigned char e0_keys[128] = {
   0, 0, 0, 0, 0, 0, 0, 0			      /* 0x78-0x7f */
 };
 
-
-#ifdef CONFIG_TOSHIBA_RBTX4927
-static unsigned char cfg_8042[32] = {
-	0xbd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
-};
-#endif
-
-#ifdef USE_POLLING_MODE
-#define PC_KEYB_TIMER_INTERVAL 10
-static struct timer_list pc_keyb_timer;
-#endif
-
-#ifdef USE_POLLING_MODE
-static void
-pc_keyb_timer_handler( unsigned long dummy )
-{
-    mod_timer( &pc_keyb_timer, jiffies + PC_KEYB_TIMER_INTERVAL );
-    handle_kbd_event(); 
-  return;
-}
-#endif
-
-#ifdef USE_POLLING_MODE
-static void __init
-pc_keyb_timer_init( void )
-{
-  init_timer( &pc_keyb_timer );
-  pc_keyb_timer.function = pc_keyb_timer_handler;
-  pc_keyb_timer_handler( 0 );
-  printk( "pc_keyb.c using ps/2 polling driver\n" );
-  return;
-}
-#endif
-
-
 int pckbd_setkeycode(unsigned int scancode, unsigned int keycode)
 {
 	if (scancode < SC_LIM || scancode > 255 || keycode > 127)
@@ -437,15 +387,7 @@ int pckbd_translate(unsigned char scancode, unsigned char *keycode,
 	      return 0;
 	  }
  	} else
-	{
 	  *keycode = scancode;
-	  #ifdef DEBUG_KEY_STROKE
-	  {
-	    printk(KERN_INFO "scancode 0x%02x=[%c]\n", scancode, *keycode);
-	  }
-	  #endif
-	}
-
  	return 1;
 }
 
@@ -605,11 +547,6 @@ static int send_data(unsigned char data)
 		reply_expected = 1;
 		kbd_write_output_w(data);
 		for (;;) {
-			#ifdef USE_POLLING_MODE
-			{
-				kb_wait();
-			}
-			#endif
 			if (acknowledge)
 				return 1;
 			if (resend)
@@ -902,7 +839,6 @@ static char * __init initialize_kbd(void)
 	do {
 		kbd_write_output_w(KBD_CMD_RESET);
 		status = kbd_wait_for_input();
-
 		if (status == KBD_REPLY_ACK)
 			break;
 		if (status != KBD_REPLY_RESEND)
@@ -928,17 +864,10 @@ static char * __init initialize_kbd(void)
 	} while (1);
 
 	kbd_write_command_w(KBD_CCMD_WRITE_MODE);
-	kbd_write_output_w( AUX_INTS_OFF );
-
-#ifdef CONFIG_TOSHIBA_RBTX4927
-{
-	int i;
-	for (i = 0x60; i < 0x80; i++) {
-		kbd_write_command_w(i);
-		kbd_write_output_w(cfg_8042[i - 0x60]);
-	}
-}
-#endif
+	kbd_write_output_w(KBD_MODE_KBD_INT
+			      | KBD_MODE_SYS
+			      | KBD_MODE_DISABLE_MOUSE
+			      | KBD_MODE_KCC);
 
 	/* ibm powerpc portables need this to use scan-code set 1 -- Cort */
 	if (!(kbd_write_command_w_and_wait(KBD_CCMD_READ_MODE) & KBD_MODE_KCC))
@@ -993,12 +922,6 @@ void __init pckbd_init_hw(void)
 
 	/* Ok, finally allocate the IRQ, and off we go.. */
 	kbd_request_irq(keyboard_interrupt);
-
-        #ifdef USE_POLLING_MODE
-	{
-	  pc_keyb_timer_init();
-	}
-	#endif
 }
 
 #if defined CONFIG_PSMOUSE
