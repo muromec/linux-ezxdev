@@ -92,7 +92,7 @@ int __init irttp_init(void)
 
 	irttp->tsaps = hashbin_new(HB_LOCAL);
 	if (!irttp->tsaps) {
-		ERROR("%s(), can't allocate IrTTP hashbin!\n", __FUNCTION__);
+		ERROR(__FUNCTION__ "(), can't allocate IrTTP hashbin!\n");
 		return -ENOMEM;
 	}
 	
@@ -105,7 +105,8 @@ int __init irttp_init(void)
  *    Called by module destruction/cleanup code
  *
  */
-void __exit irttp_cleanup(void) 
+#ifdef MODULE
+void irttp_cleanup(void) 
 {
 	/* Check for main structure */
 	ASSERT(irttp != NULL, return;);
@@ -123,6 +124,7 @@ void __exit irttp_cleanup(void)
 
 	irttp = NULL;
 }
+#endif
 
 /*
  * Function irttp_open_tsap (stsap, notify)
@@ -143,13 +145,13 @@ struct tsap_cb *irttp_open_tsap(__u8 stsap_sel, int credit, notify_t *notify)
 	 * JeanII */
 	if((stsap_sel != LSAP_ANY) &&
 	   ((stsap_sel < 0x01) || (stsap_sel >= 0x70))) {
-		IRDA_DEBUG(0, "%s(), invalid tsap!\n", __FUNCTION__);
+		IRDA_DEBUG(0, __FUNCTION__ "(), invalid tsap!\n");
 		return NULL;
 	}
 
 	self = kmalloc(sizeof(struct tsap_cb), GFP_ATOMIC);
 	if (self == NULL) {
-		IRDA_DEBUG(0, "%s(), unable to kmalloc!\n", __FUNCTION__);
+		IRDA_DEBUG(0, __FUNCTION__ "(), unable to kmalloc!\n");
 		return NULL;
 	}
 	memset(self, 0, sizeof(struct tsap_cb));
@@ -180,7 +182,7 @@ struct tsap_cb *irttp_open_tsap(__u8 stsap_sel, int credit, notify_t *notify)
 	 */
 	lsap = irlmp_open_lsap(stsap_sel, &ttp_notify, 0);
 	if (lsap == NULL) {
-		WARNING("%s(), unable to allocate LSAP!!\n", __FUNCTION__);
+		WARNING(__FUNCTION__ "(), unable to allocate LSAP!!\n");
 		return NULL;
 	}
 	
@@ -190,7 +192,7 @@ struct tsap_cb *irttp_open_tsap(__u8 stsap_sel, int credit, notify_t *notify)
 	 *  the stsap_sel we have might not be valid anymore
 	 */
 	self->stsap_sel = lsap->slsap_sel;
-	IRDA_DEBUG(4, "%s(), stsap_sel=%02x\n", __FUNCTION__, self->stsap_sel);
+	IRDA_DEBUG(4, __FUNCTION__ "(), stsap_sel=%02x\n", self->stsap_sel);
 
 	self->notify = *notify;
 	self->lsap = lsap;
@@ -247,7 +249,7 @@ int irttp_close_tsap(struct tsap_cb *self)
 {
 	struct tsap_cb *tsap;
 
-	IRDA_DEBUG(4, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(4, __FUNCTION__ "()\n");
 
 	ASSERT(self != NULL, return -1;);
 	ASSERT(self->magic == TTP_TSAP_MAGIC, return -1;);
@@ -256,7 +258,7 @@ int irttp_close_tsap(struct tsap_cb *self)
 	if (self->connected) {
 		/* Check if disconnect is not pending */
 		if (!test_bit(0, &self->disconnect_pend)) {
-			WARNING("%s(), TSAP still connected!\n", __FUNCTION__);
+			WARNING(__FUNCTION__ "(), TSAP still connected!\n");
 			irttp_disconnect_request(self, NULL, P_NORMAL);
 		}
 		self->close_pend = TRUE;
@@ -292,16 +294,16 @@ int irttp_udata_request(struct tsap_cb *self, struct sk_buff *skb)
 	ASSERT(self->magic == TTP_TSAP_MAGIC, return -1;);
 	ASSERT(skb != NULL, return -1;);
 
-	IRDA_DEBUG(4, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(4, __FUNCTION__ "()\n");
 
 	/* Check that nothing bad happens */
 	if ((skb->len == 0) || (!self->connected)) {
-		IRDA_DEBUG(1, "%s(), No data, or not connected\n", __FUNCTION__);
+		IRDA_DEBUG(1, __FUNCTION__ "(), No data, or not connected\n");
 		return -1;
 	}
 	
 	if (skb->len > self->max_seg_size) {
-		IRDA_DEBUG(1, "%s(), UData is to large for IrLAP!\n", __FUNCTION__);
+		IRDA_DEBUG(1, __FUNCTION__ "(), UData is to large for IrLAP!\n");
 		return -1;
 	}
 		    
@@ -327,7 +329,7 @@ int irttp_data_request(struct tsap_cb *self, struct sk_buff *skb)
 
 	/* Check that nothing bad happens */
 	if ((skb->len == 0) || (!self->connected)) {
-		WARNING("%s(), No data, or not connected\n", __FUNCTION__);
+		WARNING(__FUNCTION__ "(), No data, or not connected\n");
 		return -ENOTCONN;
 	}
 
@@ -336,8 +338,8 @@ int irttp_data_request(struct tsap_cb *self, struct sk_buff *skb)
 	 *  inside an IrLAP frame
 	 */
 	if ((self->tx_max_sdu_size == 0) && (skb->len > self->max_seg_size)) {
-		ERROR("%s(), SAR disabled, and data is to large for IrLAP!\n",
-				__FUNCTION__);
+		ERROR(__FUNCTION__ 
+		      "(), SAR disabled, and data is to large for IrLAP!\n");
 		return -EMSGSIZE;
 	}
 
@@ -349,8 +351,8 @@ int irttp_data_request(struct tsap_cb *self, struct sk_buff *skb)
 	    (self->tx_max_sdu_size != TTP_SAR_UNBOUND) && 
 	    (skb->len > self->tx_max_sdu_size))
 	{
-		ERROR("%s(), SAR enabled, but data is larger than "
-				"TxMaxSduSize!\n", __FUNCTION__);
+		ERROR(__FUNCTION__ "(), SAR enabled, "
+		      "but data is larger than TxMaxSduSize!\n");
 		return -EMSGSIZE;
 	}
 	/* 
@@ -482,13 +484,13 @@ static void irttp_run_tx_queue(struct tsap_cb *self)
 		 * Jean II */
 		if (skb->sk != NULL) {
 			/* IrSOCK application, IrOBEX, ... */
-			IRDA_DEBUG(4, "%s() : Detaching SKB from socket.\n", __FUNCTION__);
+			IRDA_DEBUG(4, __FUNCTION__ "() : Detaching SKB from socket.\n");
 
 			/* That's the right way to do it - Jean II */
 			skb_orphan(skb);
 		} else {
 			/* IrCOMM over IrTTP, IrLAN, ... */
-			IRDA_DEBUG(4, "%s() : Got SKB not attached to a socket.\n", __FUNCTION__);
+			IRDA_DEBUG(4, __FUNCTION__ "() : Got SKB not attached to a socket.\n");
 		}
 
 		/* Pass the skb to IrLMP - done */
@@ -527,7 +529,7 @@ void irttp_give_credit(struct tsap_cb *self)
 	ASSERT(self != NULL, return;);
 	ASSERT(self->magic == TTP_TSAP_MAGIC, return;);	
 
-	IRDA_DEBUG(4, "%s() send=%d,avail=%d,remote=%d\n", __FUNCTION__, 
+	IRDA_DEBUG(4, __FUNCTION__ "() send=%d,avail=%d,remote=%d\n", 
 		   self->send_credit, self->avail_credit, self->remote_credit);
 	
 	/* Give credit to peer */
@@ -575,7 +577,7 @@ static int irttp_udata_indication(void *instance, void *sap,
 {
 	struct tsap_cb *self;
 
-	IRDA_DEBUG(4, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(4, __FUNCTION__ "()\n");
 
 	self = (struct tsap_cb *) instance;
 
@@ -667,7 +669,7 @@ void irttp_status_indication(void *instance,
 {
 	struct tsap_cb *self;
 
-	IRDA_DEBUG(4, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(4, __FUNCTION__ "()\n");
 
 	self = (struct tsap_cb *) instance;
 	
@@ -681,7 +683,7 @@ void irttp_status_indication(void *instance,
 		self->notify.status_indication(self->notify.instance, 
 					       link, lock);
 	else
-		IRDA_DEBUG(2, "%s(), no handler\n", __FUNCTION__);
+		IRDA_DEBUG(2, __FUNCTION__ "(), no handler\n");
 }
 
 /*
@@ -693,24 +695,24 @@ void irttp_status_indication(void *instance,
  */
 void irttp_flow_request(struct tsap_cb *self, LOCAL_FLOW flow)
 {
-	IRDA_DEBUG(1, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(1, __FUNCTION__ "()\n");
 
 	ASSERT(self != NULL, return;);
 	ASSERT(self->magic == TTP_TSAP_MAGIC, return;);
 
 	switch (flow) {
 	case FLOW_STOP:
-		IRDA_DEBUG(1, "%s(), flow stop\n", __FUNCTION__);
+		IRDA_DEBUG(1, __FUNCTION__ "(), flow stop\n");
 		self->rx_sdu_busy = TRUE;
 		break;
 	case FLOW_START:
-		IRDA_DEBUG(1, "%s(), flow start\n", __FUNCTION__);
+		IRDA_DEBUG(1, __FUNCTION__ "(), flow start\n");
 		self->rx_sdu_busy = FALSE;
 		
 		irttp_run_rx_queue(self);
 		break;
 	default:
-		IRDA_DEBUG(1, "%s(), Unknown flow command!\n", __FUNCTION__);
+		IRDA_DEBUG(1, __FUNCTION__ "(), Unknown flow command!\n");
 	}
 }
 	
@@ -729,7 +731,7 @@ int irttp_connect_request(struct tsap_cb *self, __u8 dtsap_sel,
 	__u8 *frame;
 	__u8 n;
 	
-	IRDA_DEBUG(4, "%s(), max_sdu_size=%d\n", __FUNCTION__, max_sdu_size); 
+	IRDA_DEBUG(4, __FUNCTION__ "(), max_sdu_size=%d\n", max_sdu_size); 
 	
 	ASSERT(self != NULL, return -EBADR;);
 	ASSERT(self->magic == TTP_TSAP_MAGIC, return -EBADR;);
@@ -821,7 +823,7 @@ static void irttp_connect_confirm(void *instance, void *sap,
 	__u8 plen;
 	__u8 n;
 
-	IRDA_DEBUG(4, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(4, __FUNCTION__ "()\n");
 	
 	self = (struct tsap_cb *) instance;
 
@@ -845,7 +847,7 @@ static void irttp_connect_confirm(void *instance, void *sap,
 
 	n = skb->data[0] & 0x7f;
 	
-	IRDA_DEBUG(4, "%s(), Initial send_credit=%d\n", __FUNCTION__, n);
+	IRDA_DEBUG(4, __FUNCTION__ "(), Initial send_credit=%d\n", n);
 	
 	self->send_credit = n;
 	self->tx_max_sdu_size = 0;
@@ -865,8 +867,8 @@ static void irttp_connect_confirm(void *instance, void *sap,
 
 		/* Any errors in the parameter list? */
 		if (ret < 0) {
-			WARNING("%s(), error extracting parameters\n",
-					__FUNCTION__);
+			WARNING(__FUNCTION__ 
+				"(), error extracting parameters\n");
 			dev_kfree_skb(skb);
 
 			/* Do not accept this connection attempt */
@@ -876,10 +878,10 @@ static void irttp_connect_confirm(void *instance, void *sap,
 		skb_pull(skb, IRDA_MIN(skb->len, plen+1));
 	}
 	
-	IRDA_DEBUG(4, "%s() send=%d,avail=%d,remote=%d\n", __FUNCTION__, 
+	IRDA_DEBUG(4, __FUNCTION__ "() send=%d,avail=%d,remote=%d\n", 
 	      self->send_credit, self->avail_credit, self->remote_credit);
 
-	IRDA_DEBUG(2, "%s(), MaxSduSize=%d\n", __FUNCTION__, self->tx_max_sdu_size);
+	IRDA_DEBUG(2, __FUNCTION__ "(), MaxSduSize=%d\n", self->tx_max_sdu_size);
 
 	if (self->notify.connect_confirm) {
 		self->notify.connect_confirm(self->notify.instance, self, qos,
@@ -916,7 +918,7 @@ void irttp_connect_indication(void *instance, void *sap, struct qos_info *qos,
 	self->max_seg_size = max_seg_size - TTP_HEADER;;
 	self->max_header_size = max_header_size+TTP_HEADER;
 
-	IRDA_DEBUG(4, "%s(), TSAP sel=%02x\n", __FUNCTION__, self->stsap_sel);
+	IRDA_DEBUG(4, __FUNCTION__ "(), TSAP sel=%02x\n", self->stsap_sel);
 
 	/* Need to update dtsap_sel if its equal to LSAP_ANY */
 	self->dtsap_sel = lsap->dlsap_sel;
@@ -940,8 +942,8 @@ void irttp_connect_indication(void *instance, void *sap, struct qos_info *qos,
 
 		/* Any errors in the parameter list? */
 		if (ret < 0) {
-			WARNING("%s(), error extracting parameters\n",
-					__FUNCTION__);
+			WARNING(__FUNCTION__ 
+				"(), error extracting parameters\n");
 			dev_kfree_skb(skb);
 			
 			/* Do not accept this connection attempt */
@@ -978,7 +980,7 @@ int irttp_connect_response(struct tsap_cb *self, __u32 max_sdu_size,
 	ASSERT(self != NULL, return -1;);
 	ASSERT(self->magic == TTP_TSAP_MAGIC, return -1;);
 
-	IRDA_DEBUG(4, "%s(), Source TSAP selector=%02x\n", __FUNCTION__, 
+	IRDA_DEBUG(4, __FUNCTION__ "(), Source TSAP selector=%02x\n", 
 		   self->stsap_sel);
 	
 	/* Any userdata supplied? */
@@ -1056,15 +1058,15 @@ struct tsap_cb *irttp_dup(struct tsap_cb *orig, void *instance)
 {
 	struct tsap_cb *new;
 
-	IRDA_DEBUG(1, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(1, __FUNCTION__ "()\n");
 
 	if (!hashbin_find(irttp->tsaps, (int) orig, NULL)) {
-		IRDA_DEBUG(0, "%s(), unable to find TSAP\n", __FUNCTION__);
+		IRDA_DEBUG(0, __FUNCTION__ "(), unable to find TSAP\n");
 		return NULL;
 	}
 	new = kmalloc(sizeof(struct tsap_cb), GFP_ATOMIC);
 	if (!new) {
-		IRDA_DEBUG(0, "%s(), unable to kmalloc\n", __FUNCTION__);
+		IRDA_DEBUG(0, __FUNCTION__ "(), unable to kmalloc\n");
 		return NULL;
 	}
 	/* Dup */
@@ -1102,7 +1104,7 @@ int irttp_disconnect_request(struct tsap_cb *self, struct sk_buff *userdata,
 
 	/* Already disconnected? */
 	if (!self->connected) {
-		IRDA_DEBUG(4, "%s(), already disconnected!\n", __FUNCTION__);
+		IRDA_DEBUG(4, __FUNCTION__ "(), already disconnected!\n");
 		if (userdata)
 			dev_kfree_skb(userdata);
 		return -1;
@@ -1114,7 +1116,7 @@ int irttp_disconnect_request(struct tsap_cb *self, struct sk_buff *userdata,
 	 * for following a disconnect_indication() (i.e. net_bh).
 	 * Jean II */
 	if(test_and_set_bit(0, &self->disconnect_pend)) {
-		IRDA_DEBUG(0, "%s(), disconnect already pending\n", __FUNCTION__);
+		IRDA_DEBUG(0, __FUNCTION__ "(), disconnect already pending\n");
 		if (userdata)
 			dev_kfree_skb(userdata);
 
@@ -1149,7 +1151,7 @@ int irttp_disconnect_request(struct tsap_cb *self, struct sk_buff *userdata,
 			return -1;
 		}
 	}
-	IRDA_DEBUG(1, "%s(), Disconnecting ...\n", __FUNCTION__);
+	IRDA_DEBUG(1, __FUNCTION__ "(), Disconnecting ...\n");
 	self->connected = FALSE;
 
 	if (!userdata) {
@@ -1183,7 +1185,7 @@ void irttp_disconnect_indication(void *instance, void *sap, LM_REASON reason,
 {
 	struct tsap_cb *self;
 
-	IRDA_DEBUG(4, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(4, __FUNCTION__ "()\n");
 
 	self = (struct tsap_cb *) instance;
 	
@@ -1243,7 +1245,7 @@ void irttp_do_data_indication(struct tsap_cb *self, struct sk_buff *skb)
 	 * give an error back 
 	 */
 	if (err == -ENOMEM) {
-		IRDA_DEBUG(0, "%s() requeueing skb!\n", __FUNCTION__);
+		IRDA_DEBUG(0, __FUNCTION__ "() requeueing skb!\n");
 
 		/* Make sure we take a break */
 		self->rx_sdu_busy = TRUE;
@@ -1268,7 +1270,7 @@ void irttp_run_rx_queue(struct tsap_cb *self)
 	struct sk_buff *skb;
 	int more = 0;
 
-	IRDA_DEBUG(2, "%s() send=%d,avail=%d,remote=%d\n", __FUNCTION__, 
+	IRDA_DEBUG(2, __FUNCTION__ "() send=%d,avail=%d,remote=%d\n", 
 		   self->send_credit, self->avail_credit, self->remote_credit);
 
 	/* Get exclusive access to the rx queue, otherwise don't touch it */
@@ -1309,7 +1311,7 @@ void irttp_run_rx_queue(struct tsap_cb *self)
 			 *  limits of the maximum size of the rx_sdu
 			 */
 			if (self->rx_sdu_size <= self->rx_max_sdu_size) {
-				IRDA_DEBUG(4, "%s(), queueing frag\n", __FUNCTION__);
+				IRDA_DEBUG(4, __FUNCTION__ "(), queueing frag\n");
 				skb_queue_tail(&self->rx_fragments, skb);
 			} else {
 				/* Free the part of the SDU that is too big */
@@ -1339,7 +1341,7 @@ void irttp_run_rx_queue(struct tsap_cb *self)
 			/* Now we can deliver the reassembled skb */
 			irttp_do_data_indication(self, skb);
 		} else {
-			IRDA_DEBUG(1, "%s(), Truncated frame\n", __FUNCTION__);
+			IRDA_DEBUG(1, __FUNCTION__ "(), Truncated frame\n");
 			
 			/* Free the part of the SDU that is too big */
 			dev_kfree_skb(skb);
@@ -1364,7 +1366,7 @@ void irttp_flush_queues(struct tsap_cb *self)
 {
 	struct sk_buff* skb;
 	
-	IRDA_DEBUG(4, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(4, __FUNCTION__ "()\n");
 
 	ASSERT(self != NULL, return;);
 	ASSERT(self->magic == TTP_TSAP_MAGIC, return;);
@@ -1397,10 +1399,10 @@ static struct sk_buff *irttp_reassemble_skb(struct tsap_cb *self)
       	ASSERT(self != NULL, return NULL;);
 	ASSERT(self->magic == TTP_TSAP_MAGIC, return NULL;);
 
-	IRDA_DEBUG(2, "%s(), self->rx_sdu_size=%d\n", __FUNCTION__, 
+	IRDA_DEBUG(2, __FUNCTION__ "(), self->rx_sdu_size=%d\n", 
 		   self->rx_sdu_size);
 
-	skb = dev_alloc_skb(/*TTP_HEADER*/2 + self->rx_sdu_size);
+	skb = dev_alloc_skb(TTP_HEADER + self->rx_sdu_size);
 	if (!skb)
 		return NULL;
 
@@ -1408,7 +1410,7 @@ static struct sk_buff *irttp_reassemble_skb(struct tsap_cb *self)
 	 * Need to reserve space for TTP header in case this skb needs to 
 	 * be requeued in case delivery failes
 	 */
-	skb_reserve(skb, /*TTP_HEADER*/2);
+	skb_reserve(skb, TTP_HEADER);
 	skb_put(skb, self->rx_sdu_size);
 
 	/*
@@ -1420,9 +1422,9 @@ static struct sk_buff *irttp_reassemble_skb(struct tsap_cb *self)
 		
 		dev_kfree_skb(frag);
 	}
-	IRDA_DEBUG(2, "%s(), frame len=%d\n", __FUNCTION__, n);
+	IRDA_DEBUG(2, __FUNCTION__ "(), frame len=%d\n", n);
 
-	IRDA_DEBUG(2, "%s(), rx_sdu_size=%d\n", __FUNCTION__, self->rx_sdu_size);
+	IRDA_DEBUG(2, __FUNCTION__ "(), rx_sdu_size=%d\n", self->rx_sdu_size);
 	ASSERT(n <= self->rx_sdu_size, return NULL;);
 
 	/* Set the new length */
@@ -1444,7 +1446,7 @@ static void irttp_fragment_skb(struct tsap_cb *self, struct sk_buff *skb)
 	struct sk_buff *frag;
 	__u8 *frame;
 
-	IRDA_DEBUG(2, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(2, __FUNCTION__ "()\n");
 
 	ASSERT(self != NULL, return;);
 	ASSERT(self->magic == TTP_TSAP_MAGIC, return;);
@@ -1509,7 +1511,7 @@ static int irttp_param_max_sdu_size(void *instance, irda_param_t *param,
 	else
 		self->tx_max_sdu_size = param->pv.i;
 
-	IRDA_DEBUG(1, "%s(), MaxSduSize=%d\n", __FUNCTION__, param->pv.i);
+	IRDA_DEBUG(1, __FUNCTION__ "(), MaxSduSize=%d\n", param->pv.i);
 	
 	return 0;
 }

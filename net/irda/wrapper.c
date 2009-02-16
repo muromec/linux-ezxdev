@@ -93,16 +93,16 @@ int async_wrap_skb(struct sk_buff *skb, __u8 *tx_buff, int buffsize)
 		 * Nothing to worry about, but we set the default number of 
 		 * BOF's
 		 */
-		IRDA_DEBUG(1, "%s(), wrong magic in skb!\n", __FUNCTION__);
+		IRDA_DEBUG(1, __FUNCTION__ "(), wrong magic in skb!\n");
 		xbofs = 10;
 	} else
 		xbofs = cb->xbofs + cb->xbofs_delay;
 
-	IRDA_DEBUG(4, "%s(), xbofs=%d\n", __FUNCTION__, xbofs);
+	IRDA_DEBUG(4, __FUNCTION__ "(), xbofs=%d\n", xbofs);
 
 	/* Check that we never use more than 115 + 48 xbofs */
 	if (xbofs > 163) {
-		IRDA_DEBUG(0, "%s(), too many xbofs (%d)\n", __FUNCTION__, xbofs);
+		IRDA_DEBUG(0, __FUNCTION__ "(), too many xbofs (%d)\n", xbofs);
 		xbofs = 163;
 	}
 
@@ -265,7 +265,7 @@ static void state_begin_frame(struct net_device *dev,
 	case EOF:
 		/* Abort frame */
 		rx_buff->state = OUTSIDE_FRAME;
-		IRDA_DEBUG(1, "%s(), abort frame\n", __FUNCTION__);
+		IRDA_DEBUG(1, __FUNCTION__ "(), abort frame\n");
 		stats->rx_errors++;
 		stats->rx_frame_errors++;
 		break;
@@ -295,7 +295,7 @@ static void state_link_escape(struct net_device *dev,
 		irda_device_set_media_busy(dev, TRUE);
 		break;
 	case CE:
-		WARNING("%s(), state not defined\n", __FUNCTION__);
+		WARNING(__FUNCTION__ "(), state not defined\n");
 		break;
 	case EOF: /* Abort frame */
 		rx_buff->state = OUTSIDE_FRAME;
@@ -311,7 +311,7 @@ static void state_link_escape(struct net_device *dev,
 			rx_buff->fcs = irda_fcs(rx_buff->fcs, byte);
 			rx_buff->state = INSIDE_FRAME;
 		} else {
-			IRDA_DEBUG(1, "%s(), rx buffer overflow\n", __FUNCTION__);
+			IRDA_DEBUG(1, __FUNCTION__ "(), rx buffer overflow\n");
 			rx_buff->state = OUTSIDE_FRAME;
 		}
 		break;
@@ -354,7 +354,7 @@ static void state_inside_frame(struct net_device *dev,
 			/* Wrong CRC, discard frame!  */
 			irda_device_set_media_busy(dev, TRUE); 
 
-			IRDA_DEBUG(1, "%s(), crc error\n", __FUNCTION__);
+			IRDA_DEBUG(1, __FUNCTION__ "(), crc error\n");
 			stats->rx_errors++;
 			stats->rx_crc_errors++;
 		}			

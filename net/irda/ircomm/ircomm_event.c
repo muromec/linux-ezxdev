@@ -174,7 +174,7 @@ static int ircomm_state_waitr(struct ircomm_cb *self, IRCOMM_EVENT event,
 		ircomm_disconnect_indication(self, skb, info);
 		break;
 	default:
-		IRDA_DEBUG(0, "%s(), unknown event = %s\n", __FUNCTION__,
+		IRDA_DEBUG(0, __FUNCTION__ "(), unknown event = %s\n",
 			   ircomm_event[event]);
 		if (skb)
 			dev_kfree_skb(skb);
@@ -218,7 +218,7 @@ static int ircomm_state_conn(struct ircomm_cb *self, IRCOMM_EVENT event,
 		ret = self->issue.disconnect_request(self, skb, info);
 		break;
 	default:
-		IRDA_DEBUG(0, "%s(), unknown event = %s\n", __FUNCTION__,
+		IRDA_DEBUG(0, __FUNCTION__ "(), unknown event = %s\n",
 			   ircomm_event[event]);
 		if (skb)
 			dev_kfree_skb(skb);

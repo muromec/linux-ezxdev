@@ -331,7 +331,7 @@ void irlap_adjust_qos_settings(struct qos_info *qos)
 	__u32 line_capacity;
 	int index;
 
-	IRDA_DEBUG(2, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(2, __FUNCTION__ "()\n");
 
 	/*
 	 * Make sure the mintt is sensible.
@@ -390,7 +390,7 @@ void irlap_adjust_qos_settings(struct qos_info *qos)
 				   "(), reducing data size to %d\n",
 				   qos->data_size.value);
 		} else {
-			WARNING("%s(), nothing more we can do!\n", __FUNCTION__);
+			WARNING(__FUNCTION__ "(), nothing more we can do!\n");
 		}
 	}
 #endif /* CONFIG_IRDA_DYNAMIC_WINDOW */
@@ -519,7 +519,7 @@ static int irlap_param_baud_rate(void *instance, irda_param_t *param, int get)
 
 	if (get) {
 		param->pv.i = self->qos_rx.baud_rate.bits;
-		IRDA_DEBUG(2, "%s(), baud rate = 0x%02x\n", __FUNCTION__, 
+		IRDA_DEBUG(2, __FUNCTION__ "(), baud rate = 0x%02x\n", 
 			   param->pv.i);		
 	} else {
 		/* 
@@ -692,7 +692,7 @@ __u32 irlap_max_line_capacity(__u32 speed, __u32 max_turn_time)
 	__u32 line_capacity;
 	int i,j;
 
-	IRDA_DEBUG(2, "%s(), speed=%d, max_turn_time=%d\n", __FUNCTION__,
+	IRDA_DEBUG(2, __FUNCTION__ "(), speed=%d, max_turn_time=%d\n",
 		   speed, max_turn_time);
 
 	i = value_index(speed, baud_rates, 10);
@@ -703,7 +703,7 @@ __u32 irlap_max_line_capacity(__u32 speed, __u32 max_turn_time)
 
 	line_capacity = max_line_capacities[i][j];
 
-	IRDA_DEBUG(2, "%s(), line capacity=%d bytes\n", __FUNCTION__, 
+	IRDA_DEBUG(2, __FUNCTION__ "(), line capacity=%d bytes\n", 
 		   line_capacity);
 	
 	return line_capacity;
@@ -717,7 +717,7 @@ __u32 irlap_requested_line_capacity(struct qos_info *qos)
 		irlap_min_turn_time_in_bytes(qos->baud_rate.value, 
 					     qos->min_turn_time.value);
 	
-	IRDA_DEBUG(2, "%s(), requested line capacity=%d\n", __FUNCTION__,
+	IRDA_DEBUG(2, __FUNCTION__ "(), requested line capacity=%d\n",
 		   line_capacity);
 	
 	return line_capacity;			       		  

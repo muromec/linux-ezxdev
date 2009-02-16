@@ -49,7 +49,7 @@ int ircomm_open_tsap(struct ircomm_cb *self)
 {
 	notify_t notify;
 
-	IRDA_DEBUG(4, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(4, __FUNCTION__ "()\n");
 
 	/* Register callbacks */
 	irda_notify_init(&notify);
@@ -92,7 +92,7 @@ int ircomm_ttp_connect_request(struct ircomm_cb *self,
 {
 	int ret = 0;
 
-	IRDA_DEBUG(4, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(4, __FUNCTION__ "()\n");
 
 	ret = irttp_connect_request(self->tsap, info->dlsap_sel,
 				    info->saddr, info->daddr, NULL, 
@@ -146,7 +146,7 @@ int ircomm_ttp_data_request(struct ircomm_cb *self, struct sk_buff *skb,
 
 	ret = irttp_data_request(self->tsap, skb);
 	if (ret) {
-		ERROR("%s(), failed\n", __FUNCTION__);
+		ERROR(__FUNCTION__ "(), failed\n");
 		dev_kfree_skb(skb);
 	}
 
@@ -192,7 +192,7 @@ void ircomm_ttp_connect_confirm(void *instance, void *sap,
 	ASSERT(qos != NULL, return;);
 
 	if (max_sdu_size != TTP_SAR_DISABLE) {
-		ERROR("%s(), SAR not allowed for IrCOMM!\n", __FUNCTION__);
+		ERROR(__FUNCTION__ "(), SAR not allowed for IrCOMM!\n");
 		dev_kfree_skb(skb);
 		return;
 	}
@@ -229,7 +229,7 @@ void ircomm_ttp_connect_indication(void *instance, void *sap,
 	ASSERT(qos != NULL, return;);
 
 	if (max_sdu_size != TTP_SAR_DISABLE) {
-		ERROR("%s(), SAR not allowed for IrCOMM!\n", __FUNCTION__);
+		ERROR(__FUNCTION__ "(), SAR not allowed for IrCOMM!\n");
 		dev_kfree_skb(skb);
 		return;
 	}
@@ -292,7 +292,7 @@ void ircomm_ttp_flow_indication(void *instance, void *sap, LOCAL_FLOW cmd)
 {
 	struct ircomm_cb *self = (struct ircomm_cb *) instance;
 
-	IRDA_DEBUG(4, "%s()\n", __FUNCTION__);
+	IRDA_DEBUG(4, __FUNCTION__ "()\n");
 
 	ASSERT(self != NULL, return;);
 	ASSERT(self->magic == IRCOMM_MAGIC, return;);
