@@ -571,6 +571,9 @@ static int loop_thread(void *data)
 	flush_signals(current);
 	spin_unlock_irq(&current->sigmask_lock);
 
+	current->policy = SCHED_OTHER;
+	current->nice = -20;
+
 	spin_lock_irq(&lo->lo_lock);
 	lo->lo_state = Lo_bound;
 	atomic_inc(&lo->lo_pending);

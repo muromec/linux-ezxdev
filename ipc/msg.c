@@ -14,11 +14,6 @@
  * MSGMAX limit removed, sysctl's added
  * (c) 1999 Manfred Spraul <manfreds@colorfullife.com>
  */
-/*
- *
- *  2005-Apr-04 Motorola  Add security patch 
- */
-
 
 #include <linux/config.h>
 #include <linux/slab.h>
@@ -29,8 +24,6 @@
 #include <linux/list.h>
 #include <asm/uaccess.h>
 #include "util.h"
-
-#include <linux/trace.h>
 
 /* sysctl: */
 int msg_ctlmax = MSGMAX;
@@ -333,7 +326,6 @@ asmlinkage long sys_msgget (key_t key, int msgflg)
 		msg_unlock(id);
 	}
 	up(&msg_ids.sem);
-	TRACE_IPC(TRACE_EV_IPC_MSG_CREATE, ret, msgflg);
 	return ret;
 }
 
