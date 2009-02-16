@@ -86,7 +86,7 @@ unsigned int sa11x0_validatespeed(unsigned int khz)
 
 static int __init sa11x0_init_clock(void)
 {
-	cpufreq_init(cclk_frequency_100khz[PPCR & 0xf] * 100, 59000, 287000);
+	cpufreq_init(cclk_frequency_100khz[PPCR & 0xf] * 100, 0, 0);
 	return 0;
 }
 
@@ -129,12 +129,6 @@ static int __init sa1100_init(void)
 }
 
 __initcall(sa1100_init);
-
-void (*sa1100fb_backlight_power)(int on);
-void (*sa1100fb_lcd_power)(int on);
-
-EXPORT_SYMBOL(sa1100fb_backlight_power);
-EXPORT_SYMBOL(sa1100fb_lcd_power);
 
 
 /*

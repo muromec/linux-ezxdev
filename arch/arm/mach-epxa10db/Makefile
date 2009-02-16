@@ -7,14 +7,16 @@
 
 USE_STANDARD_AS_RULE := true
 
-O_TARGET		:= mx1ads.o
+O_TARGET		:= epxa10db.o
 
 # Object file lists.
 
-obj-y			:= arch.o cpu.o irq.o mm.o time.o
+obj-y			:= arch.o irq.o mm.o time.o 
 obj-m			:=
 obj-n			:=
 obj-			:=
+
+export-objs		:= 
 
 
 include $(TOPDIR)/Rules.make

@@ -30,7 +30,7 @@ void graphicsclient_leds_event(led_event_t evt)
 {
 	unsigned long flags;
 
-	local_irq_save(flags);
+	save_flags_cli(flags);
 
 	switch (evt) {
 	case led_start:
@@ -100,5 +100,5 @@ void graphicsclient_leds_event(led_event_t evt)
 		GPCR = hw_led_state ^ LED_MASK;
 	}
 
-	local_irq_restore(flags);
+	restore_flags(flags);
 }

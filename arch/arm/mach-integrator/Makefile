@@ -21,7 +21,4 @@ export-objs		:= leds.o
 obj-$(CONFIG_LEDS)	+= leds.o
 obj-$(CONFIG_PCI)	+= pci_v3.o pci.o
 
-# KGDB architecture dependent serial stub
-obj-$(CONFIG_KGDB_SERIAL)	+= kgdb-serial.o
-
 include $(TOPDIR)/Rules.make

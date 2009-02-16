@@ -1,9 +1,9 @@
 /*
- *  linux/arch/arm/mach-mx1ads/mm.c
+ *  linux/arch/arm/mach-epxa10db/mm.c
  *
- *  Copyright (C) 1999,2000 Arm Limited
- *  Copyright (C) 2000 Deep Blue Solutions Ltd
- *  Copyright (C) 2002 Shane Nay (shane@minirl.com)
+ *  MM routines for Altera'a Epxa10db board
+ *
+ *  Copyright (C) 2001 Altera Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,19 +27,23 @@
 #include <asm/io.h>
 #include <asm/pgtable.h>
 #include <asm/page.h>
-
+#include <asm/sizes.h>
+ 
 #include <asm/mach/map.h>
 
-
-
-static struct map_desc mx1ads_io_desc[] __initdata = {
-
-  { IO_ADDRESS(MX1ADS_SRAM_BASE),     MX1ADS_SRAM_BASE,      SZ_128K   , DOMAIN_IO, 0, 1},
-  { IO_ADDRESS(MX1ADS_IO_BASE),       MX1ADS_IO_BASE,        SZ_256K   , DOMAIN_IO, 0, 1},
-  LAST_DESC
+/* Page table mapping for I/O region */
+ 
+static struct map_desc epxa10db_io_desc[] __initdata = {
+ { IO_ADDRESS(EXC_REGISTERS_BASE),   EXC_REGISTERS_BASE,   SZ_16K     , DOMAIN_IO, 0, 1}, 
+{IO_ADDRESS(EXC_PLD_BLOCK0_BASE),   EXC_PLD_BLOCK0_BASE,   SZ_16K     , DOMAIN_IO, 0, 1}, 
+{IO_ADDRESS(EXC_PLD_BLOCK1_BASE),   EXC_PLD_BLOCK1_BASE,   SZ_16K     , DOMAIN_IO, 0, 1}, 
+{IO_ADDRESS(EXC_PLD_BLOCK2_BASE),   EXC_PLD_BLOCK2_BASE,   SZ_16K     , DOMAIN_IO, 0, 1}, 
+{IO_ADDRESS(EXC_PLD_BLOCK3_BASE),   EXC_PLD_BLOCK3_BASE,   SZ_16K     , DOMAIN_IO, 0, 1}, 
+{ FLASH_VADDR(EXC_EBI_BLOCK0_BASE),   EXC_EBI_BLOCK0_BASE,   SZ_16M     , DOMAIN_IO, 0, 1},
+ LAST_DESC
 };
 
-void __init mx1ads_map_io(void)
+void __init epxa10db_map_io(void)
 {
-	iotable_init(mx1ads_io_desc);
+	iotable_init(epxa10db_io_desc);
 }

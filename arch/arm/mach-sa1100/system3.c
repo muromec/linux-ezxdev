@@ -87,9 +87,6 @@ static void system3_set_mctrl(struct uart_port *port, u_int mctrl);
 static void system3_uart_pm(struct uart_port *port, u_int state, u_int oldstate);
 static int sdram_notifier(struct notifier_block *nb, unsigned long event, void *data);
 
-static int system3_lcd_power(int on);
-static int system3_backlight_power(int on);
-
 extern void convert_to_tag_list(struct param_struct *params, int mem_init);
 
 
@@ -110,19 +107,19 @@ static struct map_desc system3_io_desc[] __initdata = {
 };
 
 static struct sa1100_port_fns system3_port_fns __initdata = {
-	.set_mctrl	= system3_set_mctrl,
-	.get_mctrl	= system3_get_mctrl,
-	.pm		= system3_uart_pm,
+	set_mctrl:	system3_set_mctrl,
+	get_mctrl:	system3_get_mctrl,
+	pm:		system3_uart_pm,
 };
 
 static struct irqaction system3_irq = {
-	.name		= "PT Digital Board SA1111 IRQ",
-	.handler	= system3_IRQ_demux,
-	.flags		= SA_INTERRUPT
+	name:		"PT Digital Board SA1111 IRQ",
+	handler:	system3_IRQ_demux,
+	flags:		SA_INTERRUPT
 };
 
 static struct notifier_block system3_clkchg_block = {
-	.notifier_call	= sdram_notifier,
+	notifier_call:	sdram_notifier,
 };
 
 /**********************************************************************
@@ -288,100 +285,6 @@ static int system3_get_mctrl(struct uart_port *port)
 	return ret;
 }
 
-/**
- *	system3_lcd_backlight_on - switch system 3 lcd backlight on
- *
- */
-int system3_lcd_backlight_on( void )
-{
-	PTCTRL0_set( PT_CTRL0_LCD_BL );
-	return 0;
-}
-
-/**
- *	system3_lcd_backlight_off - switch system 3 lcd backlight off
- *
- */
-static void system3_lcd_backlight_off(void)
-{
-	PTCTRL0_clear( PT_CTRL0_LCD_BL );
-}
-
-/**
- *	system3_lcd_on - switch system 3 lcd on
- *
- */
-static void system3_lcd_on(void)
-{
-	DPRINTK( "%s\n", "START" );
-	PTCTRL0_set( PT_CTRL0_LCD_EN );
-
-	/* brightness / contrast */
-	SKPCR |= SKPCR_PWMCLKEN;
-	PB_DDR = 0xFFFFFFFF;
-	SKPEN0 = 1;
-	SKPEN1 = 1;
-}
-
-/**
- *	system3_lcd_off - switch system 3 lcd off
- *
- */
-static void system3_lcd_off(void)
-{
-	DPRINTK( "%s\n", "START" );
-	PTCTRL0_clear( PT_CTRL0_LCD_EN );
-	SKPEN0 = 0;
-	SKPEN1 = 0;
-	SKPCR &= ~SKPCR_PWMCLKEN;
-}
-
-/**
- *	system3_lcd_contrast - set system 3 contrast
- *	@value:		the new contrast
- *
- */
-static void system3_lcd_contrast(unsigned char value)
-{
-	DPRINTK( "value=0x%02x\n", value );
-	SYS3LCDCONTR = value;
-}
-
-/**
- *	system3_lcd_brightness - set system 3 brightness
- *	@value:		the new brightness
- *
- */
-static void system3_lcd_brightness(unsigned char value)
-{
-	DPRINTK( "value=0x%02x\n", value );
-	SYS3LCDBRIGHT = value;
-}
-
-static void system3_lcd_power(int on)
-{
-#error why is backlight stuff here???
-	if (on) {
-		system3_lcd_on();
-		system3_lcd_backlight_on();
-		system3_lcd_contrast(0x95);
-		system3_lcd_brightness(240);
-	} else {
-		system3_lcd_off();
-	}
-}
-
-static void system3_backlight_power(int on)
-{
-	if (on) {
-		system3_lcd_backlight_on();
-		system3_lcd_contrast(0x95);
-		system3_lcd_brightness(240);
-	} else {
-		system3_lcd_backlight_off();
-	}
-}
-
 static int __init system3_init(void)
 {
 	int ret = 0;
@@ -391,9 +294,6 @@ static int __init system3_init(void)
 		ret = -EINVAL;
 		goto DONE;
 	}
-
-	sa1100fb_lcd_power = system3_lcd_power;
-	sa1100fb_backlight_power = system3_backlight_power;
 
 	/* init control register */
 	PT_CTRL0 = PT_CTRL0_INIT;

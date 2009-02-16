@@ -15,12 +15,10 @@ obj-m :=
 obj-n :=
 obj-  :=
 
-export-objs :=	assabet.o dma-sa1100.o dma-sa1111.o flexanet.o freebird.o \
-		generic.o h3600.o huw_webpanel.o irq.o pcipool.o sa1111.o \
-		sa1111-pcibuf.o yopy.o usb_ctl.o usb_recv.o usb_send.o \
-		pfs168.o \
-		h3600_hal.o h3600-sleeve.o \
-		pm.o
+export-objs :=	assabet.o dma-sa1100.o dma-sa1111.o \
+		flexanet.o freebird.o generic.o h3600.o \
+		huw_webpanel.o irq.o pcipool.o sa1111.o sa1111-pcibuf.o \
+		system3.o yopy.o usb_ctl.o usb_recv.o usb_send.o
 
 # These aren't present yet, and prevents a plain -ac kernel building.
 # hwtimer.o
@@ -31,11 +29,8 @@ export-objs :=	assabet.o dma-sa1100.o dma-sa1111.o flexanet.o freebird.o \
 # We link the CPU support next, so that RAM timings can be tuned.
 ifeq ($(CONFIG_CPU_FREQ),y)
 obj-$(CONFIG_SA1100_ASSABET) += cpu-sa1110.o
-obj-$(CONFIG_SA1100_CEP) += cpu-sa1110.o
-obj-$(CONFIG_SA1100_CONSUS) += cpu-sa1110.o
 obj-$(CONFIG_SA1100_CERF) += cpu-sa1110.o
 obj-$(CONFIG_SA1100_PT_SYSTEM3) += cpu-sa1110.o
-obj-$(CONFIG_SA1100_SIMPUTER) += cpu-sa1110.o
 obj-$(CONFIG_SA1100_LART) += cpu-sa1100.o
 endif
 
@@ -49,16 +44,14 @@ obj-$(CONFIG_SA1100_ASSABET) += assabet.o
 obj-$(CONFIG_ASSABET_NEPONSET) += neponset.o
 obj-$(CONFIG_SA1100_BADGE4) +=  badge4.o
 obj-$(CONFIG_SA1100_BRUTUS) += brutus.o
-obj-$(CONFIG_SA1100_CEP) += cep.o
 obj-$(CONFIG_SA1100_CERF) += cerf.o
-obj-$(CONFIG_SA1100_CONSUS) += consus.o
 obj-$(CONFIG_SA1100_EMPEG) += empeg.o
 obj-$(CONFIG_SA1100_FLEXANET) += flexanet.o
 obj-$(CONFIG_SA1100_FREEBIRD) += freebird.o
 obj-$(CONFIG_SA1100_FRODO) += frodo.o
 obj-$(CONFIG_SA1100_GRAPHICSCLIENT) += graphicsclient.o
 obj-$(CONFIG_SA1100_GRAPHICSMASTER) += graphicsmaster.o
-obj-$(CONFIG_SA1100_H3XXX) += h3600.o
+obj-$(CONFIG_SA1100_H3600) += h3600.o
 obj-$(CONFIG_SA1100_HUW_WEBPANEL) += huw_webpanel.o
 obj-$(CONFIG_SA1100_ITSY) += itsy.o
 obj-$(CONFIG_SA1100_JORNADA720) += jornada720.o
@@ -72,7 +65,6 @@ obj-$(CONFIG_SA1100_PT_SYSTEM3) += system3.o
 obj-$(CONFIG_SA1100_SHANNON) += shannon.o
 obj-$(CONFIG_SA1100_SHERMAN) += sherman.o
 obj-$(CONFIG_SA1100_SIMPAD) += simpad.o
-obj-$(CONFIG_SA1100_SIMPUTER) += simputer.o
 obj-$(CONFIG_SA1100_VICTOR) += victor.o
 obj-$(CONFIG_SA1100_XP860) += xp860.o
 obj-$(CONFIG_SA1100_YOPY) += yopy.o
@@ -83,7 +75,6 @@ leds-$(CONFIG_SA1100_ADSBITSY) += leds-adsbitsy.o
 leds-$(CONFIG_SA1100_ASSABET) += leds-assabet.o
 leds-$(CONFIG_SA1100_BRUTUS) += leds-brutus.o
 leds-$(CONFIG_SA1100_CERF) += leds-cerf.o
-leds-$(CONFIG_SA1100_CONSUS) += leds-consus.o
 leds-$(CONFIG_SA1100_FLEXANET) += leds-flexanet.o
 leds-$(CONFIG_SA1100_FRODO) += leds-frodo.o
 leds-$(CONFIG_SA1100_GRAPHICSCLIENT) += leds-graphicsclient.o
@@ -101,27 +92,11 @@ obj-$(CONFIG_SA1100_USB) += sa1100usb_core.o
 obj-$(CONFIG_SA1100_USB_NETLINK) += usb-eth.o
 obj-$(CONFIG_SA1100_USB_CHAR) += usb-char.o
 
-# Compaq iPAQ specific
-list-multi += h3600_asic.o
-mmc-$(CONFIG_MMC) += h3600_asic_mmc.o
-h3600_asic-objs := h3600_asic_core.o h3600_asic_io.o
-h3600_asic-objs += $(mmc-y) 
-h3600_asic-objs += $(mmc-m)
-obj-$(CONFIG_H3600_HAL) += h3600_hal.o
-obj-$(CONFIG_H3600_MICRO) += h3600_micro.o
-obj-$(CONFIG_H3600_ASIC) += h3600_asic.o
-obj-$(CONFIG_H3600_SLEEVE) += h3600-sleeve.o
-
 # Miscelaneous functions
 obj-$(CONFIG_PM) += pm.o sleep.o
-obj-$(CONFIG_APM) += apm.o
-obj-$(CONFIG_KGDB_SERIAL) += kgdb-serial.o
 
 include $(TOPDIR)/Rules.make
 
 sa1100usb_core.o: $(sa1100usb_core-objs)
 	$(LD) -r -o $@ $(sa1100usb_core-objs)
-
-h3600_asic.o: $(h3600_asic-objs)
-	$(LD) -r -o $@ $(h3600_asic-objs)
 
