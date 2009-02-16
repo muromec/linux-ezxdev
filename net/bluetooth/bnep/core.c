@@ -26,7 +26,7 @@
 */
 
 /*
- * $Id: core.c,v 1.1 2002/12/17 18:21:21 trini Exp $
+ * $Id: core.c,v 1.18 2002/07/14 07:09:19 maxk Exp $
  */ 
 
 #define __KERNEL_SYSCALLS__
@@ -457,6 +457,8 @@ static int bnep_session(void *arg)
 	
         sigfillset(&current->blocked);
 	flush_signals(current);
+
+	current->nice = -15;
 
         set_fs(KERNEL_DS);
 

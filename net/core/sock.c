@@ -90,14 +90,6 @@
  *		as published by the Free Software Foundation; either version
  *		2 of the License, or (at your option) any later version.
  */
-/*
- * Copyright (C) 2005 Motorola Inc.
- *
- * Motorola EzX changes:
- *    remove admin priority requirement for SO_BINDTODEVICE
- *
- *    add security patch for EzX by Jili Ni 200504
- */
 
 #include <linux/config.h>
 #include <linux/errno.h>
@@ -343,17 +335,10 @@ int sock_setsockopt(struct socket *sock, int level, int optname,
 			char devname[IFNAMSIZ]; 
 
 			/* Sorry... */ 
-            /*
-             * we need to call bind to interface for all client
-             * thus remove this permission check
-             * by Xia Weizhong
-             */
-#if 0
 			if (!capable(CAP_NET_RAW)) {
 				ret = -EPERM;
 				break;
 			}
-#endif
 
 			/* Bind this socket to a particular device like "eth0",
 			 * as specified in the passed interface name. If the

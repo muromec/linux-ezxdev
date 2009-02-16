@@ -39,11 +39,6 @@
  *					silently drop skb instead of failing with -EPERM.
  *		Detlev Wengorz	:	Copy protocol for fragments.
  */
-/*
- *
- *  2005-Apr-04 Motorola  Add security patch
- */
-
 
 #include <asm/uaccess.h>
 #include <asm/system.h>

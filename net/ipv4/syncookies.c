@@ -13,11 +13,6 @@
  *
  *  Missing: IPv6 support. 
  */
-/*
- *
- * 2005-Apr-04 Motorola  Add security patch 
- */
-
 
 #include <linux/tcp.h>
 #include <linux/slab.h>

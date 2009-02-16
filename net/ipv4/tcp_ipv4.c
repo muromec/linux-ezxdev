@@ -46,11 +46,6 @@
  *	Andi Kleen		:	Fix new listen.
  *	Andi Kleen		:	Fix accept error reporting.
  */
-/*
- *
- * 2005-Apr-04 Motorola  Add security patch 
- */
-
 
 #include <linux/config.h>
 #include <linux/types.h>

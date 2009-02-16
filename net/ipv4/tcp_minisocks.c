@@ -19,12 +19,6 @@
  *		Arnt Gulbrandsen, <agulbra@nvg.unit.no>
  *		Jorge Cwik, <jorge@laser.satlink.net>
  */
-/*
- *
- * 2005-Apr-04  Motorola  Add security patch 
- */
-
-
 
 #include <linux/config.h>
 #include <linux/mm.h>

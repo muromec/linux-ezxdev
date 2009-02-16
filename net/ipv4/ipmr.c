@@ -27,11 +27,6 @@
  *					Relax this requrement to work with older peers.
  *
  */
-/*
- *
- *  2005-Apr-04 Motorola  Add security patch 
- */
-
 
 #include <linux/config.h>
 #include <asm/system.h>

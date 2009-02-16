@@ -20,11 +20,6 @@
  *		John McDonald	:	0 length frag bug.
  *		Alexey Kuznetsov:	SMP races, threading, cleanup.
  */
-/*
- *
- * 2005-Apr-04  Motorola   Add security patch 
- */
-
 
 #include <linux/config.h>
 #include <linux/types.h>

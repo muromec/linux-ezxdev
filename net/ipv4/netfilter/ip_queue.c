@@ -12,11 +12,6 @@
  * 2002-06-25: Code cleanup.
  *
  */
-/*
- *
- * 2005-Apr-04  Motorola  Add security patch 
- */
-
 #include <linux/module.h>
 #include <linux/skbuff.h>
 #include <linux/init.h>

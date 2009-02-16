@@ -19,7 +19,7 @@
  *			created test case so that I was able to fix nasty bug
  *		and many others. thanks.
  *
- * $Id: sch_htb.c,v 1.1 2002/12/17 18:21:23 trini Exp $
+ * $Id: sch_htb.c,v 1.14 2002/09/28 12:55:22 devik Exp devik $
  */
 #include <linux/config.h>
 #include <linux/module.h>

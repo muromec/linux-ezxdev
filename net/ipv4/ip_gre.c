@@ -9,10 +9,6 @@
  *	2 of the License, or (at your option) any later version.
  *
  */
-/*
- *  2005-Apr-04 Motorola  Add security patch 
- */
-
 
 #include <linux/config.h>
 #include <linux/module.h>

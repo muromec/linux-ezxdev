@@ -78,11 +78,6 @@
  *		  started by 0, so that this name space does not intersect
  *		  with BSD names.
  */
-/*
- *
- * 2005-Apr-04 Motorola  Add security patch
- */
-
 
 #include <linux/module.h>
 #include <linux/config.h>

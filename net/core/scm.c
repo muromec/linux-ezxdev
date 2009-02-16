@@ -8,10 +8,6 @@
  *		as published by the Free Software Foundation; either version
  *		2 of the License, or (at your option) any later version.
  */
-/*
- *
- *  2005-Apr_04  Motorola  Add security patch
- */
 
 #include <linux/signal.h>
 #include <linux/errno.h>

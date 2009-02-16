@@ -15,10 +15,10 @@ subdir-m :=	ipv4 # hum?
 
 
 subdir-$(CONFIG_NET)		+= 802 sched netlink
-subdir-$(CONFIG_IPV6)		+= ipv6
 subdir-$(CONFIG_INET)		+= ipv4
 subdir-$(CONFIG_NETFILTER)	+= ipv4/netfilter
 subdir-$(CONFIG_UNIX)		+= unix
+subdir-$(CONFIG_IPV6)		+= ipv6
 
 ifneq ($(CONFIG_IPV6),n)
 ifneq ($(CONFIG_IPV6),)

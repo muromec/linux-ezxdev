@@ -26,7 +26,7 @@
 */
 
 /*
- * $Id: netdev.c,v 1.1 2002/12/17 18:21:21 trini Exp $
+ * $Id: netdev.c,v 1.7 2002/07/14 05:39:26 maxk Exp $
  */ 
 
 #include <linux/config.h>

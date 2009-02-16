@@ -23,10 +23,6 @@
  *		Pete Wyckoff    :       Unconnected accept() fix.
  *
  */
-/*
- *
- *  2005-Apr-04  Motorola   Add security patch 
- */
 
 #include <linux/types.h>
 #include <linux/kernel.h>

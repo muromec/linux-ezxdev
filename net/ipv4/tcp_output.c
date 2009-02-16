@@ -35,11 +35,6 @@
  *		J Hadi Salim	:	ECN support
  *
  */
-/*
- * Copyright (C) 2005 Motorola Inc.
- *
- *    Motorola Ezx : limit mss be no bigger than 1372(0x55C) to solve compatibility issue with CMCC
- */
 
 #include <net/tcp.h>
 
@@ -93,15 +88,6 @@ static __u16 tcp_advertise_mss(struct sock *sk)
 	struct tcp_opt *tp = &(sk->tp_pinfo.af_tcp);
 	struct dst_entry *dst = __sk_dst_get(sk);
 	int mss = tp->advmss;
-
-    /* 
-     * changed by xia weizhong
-     * to solve compatiblity issue with CMCC 
-     */
-    if( mss > 0x055C )
-    {
-        mss = tp->advmss = 0x055C;
-    }
 
 	if (dst && dst->advmss < mss) {
 		mss = dst->advmss;

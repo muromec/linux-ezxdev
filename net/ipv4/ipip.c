@@ -91,11 +91,6 @@
 
    For comments look at net/ipv4/ip_gre.c --ANK
  */
-/*
- *
- * 2005-Apr-04  Motorola  Add security patch
- */
-
 
  
 #include <linux/config.h>

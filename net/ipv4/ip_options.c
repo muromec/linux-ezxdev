@@ -10,11 +10,6 @@
  * Authors:	A.N.Kuznetsov
  *		
  */
-/*
- *
- * 2005-Apr-04  Motorola  Add security patch
- */
-
 
 #include <linux/types.h>
 #include <asm/uaccess.h>

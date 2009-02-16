@@ -14,12 +14,6 @@
  *		as published by the Free Software Foundation; either version
  *		2 of the License, or (at your option) any later version.
  */
-/*
- * Copyright (C) 2005 Motorola Inc.
- *
- * Motorola EzX changes:
- *    remove admin priority requirement for add/del route
- */
 
 #include <linux/config.h>
 #include <asm/uaccess.h>
@@ -302,11 +296,8 @@ int ip_rt_ioctl(unsigned int cmd, void *arg)
 	switch (cmd) {
 	case SIOCADDRT:		/* Add a route */
 	case SIOCDELRT:		/* Delete a route */
-                /* porting from A760 datacall feature lin weiqiang  2003-12-17 */
-#if 0
 		if (!capable(CAP_NET_ADMIN))
 			return -EPERM;
-#endif
 		if (copy_from_user(&r, arg, sizeof(struct rtentry)))
 			return -EFAULT;
 		rtnl_lock();
