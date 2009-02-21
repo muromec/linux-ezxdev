@@ -154,9 +154,6 @@ int do_sys_settimeofday(struct timeval *tv, struct timezone *tz)
 {
 	static int firsttime = 1;
 
-	if (!capable(CAP_SYS_TIME))
-		return -EPERM;
-
 	if (tz) {
 		/* SMP safe, global irq locking makes it work. */
 		sys_tz = *tz;
