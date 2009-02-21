@@ -243,12 +243,7 @@ static audio_state_t phone_audio_state = {
 static int phone_open(struct inode *inode, struct file *file)
 {
 	AUDPRINTk1(EZXOSS_DEBUG "phone_open\n");
-	if( audioonflag ){
-		AUDPRINTk1(EZXOSS_DEBUG "open phone EBUSY because 0x%X device is using the sound hardware.\n",audioonflag );
-
-		return -EBUSY;
-	}
-
+	
 	return cotulla_audio_attach(inode, file, &phone_audio_state);
 }
 
