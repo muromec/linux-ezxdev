@@ -1,18 +1,6 @@
 #
 # Multimedia Video device configuration
 #
-#
-# Copyright (C) 2003-2005 Motorola Inc.
-# History:
-#   Wang Fei,     Motorola, Dec 16, 2003, add Agilent ADCM2700 driver
-#   Wang Wenxing, Motorola, Mar 15, 2004, add OV9640 driver
-#   Ma Zhiqiang,  Motorola, Apr 13, 2004, add Micron MT9M111 driver
-#   Wang Fei,     Motorola, Jul 14, 2004, add Micron MT9V111 driver
-#   Mu Chenliang, Motorola, Jul 24, 2004, add OV9650 driver
-#   Mu Chenliang, Motorola, Aug 03, 2004, add Agilent ADCM3800 driver
-#   Mu Chenliang, Motorola, Mar 24, 2005, add MT9M111 light sensor device driver
-#   Mu Chenliang, Motorola, May 31, 2005, add Micron MI2010SOC driver
-# 
 mainmenu_option next_comment
 comment 'Video For Linux'
 
@@ -23,7 +11,6 @@ comment 'Video Adapters'
 if [ "$CONFIG_I2C_ALGOBIT" = "y" -o "$CONFIG_I2C_ALGOBIT" = "m" ]; then
    dep_tristate '  BT848 Video For Linux' CONFIG_VIDEO_BT848 $CONFIG_VIDEO_DEV $CONFIG_PCI $CONFIG_I2C_ALGOBIT
 fi
-dep_tristate '  V4L2 Video Capture for OMAP1510' CONFIG_VIDEO_OMAP $CONFIG_ARCH_OMAP
 dep_tristate '  Mediavision Pro Movie Studio Video For Linux' CONFIG_VIDEO_PMS $CONFIG_VIDEO_DEV
 if [ "$CONFIG_ALL_PPC" = "y" ]; then
    dep_tristate '  PlanB Video-In on PowerMac' CONFIG_VIDEO_PLANB $CONFIG_VIDEO_DEV
@@ -64,6 +51,7 @@ dep_tristate '  Zoran ZR36120/36125 Video For Linux' CONFIG_VIDEO_ZR36120 $CONFI
 if [ "$CONFIG_EXPERIMENTAL" = "y" ]; then
   dep_tristate '  Sony Vaio Picturebook Motion Eye Video For Linux' CONFIG_VIDEO_MEYE $CONFIG_VIDEO_DEV $CONFIG_PCI $CONFIG_SONYPI
 fi
+
 comment 'PXA Camera'
 dep_tristate 'Camera Interface for Bulverde ' CONFIG_PXA_CAMERA $CONFIG_VIDEO_DEV
 if [ "$CONFIG_PXA_CAMERA" != "n" ]; then
@@ -80,13 +68,6 @@ if [ "$CONFIG_PXA_CAMERA" != "n" ]; then
 
    bool '  Camera strobe flash support'   CONFIG_CAMERA_STROBE_FLASH
 
-   comment 'camera as light sensor'
-   tristate '  camera as light sensor'    CONFIG_CAMERA_LIGHT_SENSOR
-   comment 'camera as light sensor end'
 fi
-
-# unfortunately, this depends on having CONFIG_FB_CYBER2000
-# set as well - we hook off of the VGA driver
-dep_tristate '  NetWinder Video for Linux (EXPERIMENTAL)' CONFIG_VIDEO_CYBERPRO $CONFIG_VIDEO_DEV $CONFIG_EXPERIMENTAL $CONFIG_ARCH_NETWINDER
 
 endmenu

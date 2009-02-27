@@ -20,9 +20,9 @@
     along with this program; if not, write to the Free Software
     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 */
-#include <linux/config.h>
-#include <linux/init.h>
+
 #include <linux/module.h>
+#include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/errno.h>
 #include <linux/fs.h>
@@ -149,11 +149,7 @@ static int saa7111_attach(struct i2c_device *device)
 		0x0d, 0x00,	/* 0d - HUE=0 */
 		0x0e, 0x01,	/* 0e - CDTO=0, CSTD=0, DCCF=0, FCTC=0, CHBW=1 */
 		0x0f, 0x00,	/* 0f - reserved */
-#ifndef CONFIG_ARCH_NETWINDER
 		0x10, 0x48,	/* 10 - OFTS=1, HDEL=0, VRLN=1, YDEL=0 */
-#else
-		0x10, 0xc8,	/* 10 - OFTS=YUV-CCIR656, HDEL=0, VLRN=1, YDEL=0 */
-#endif
 		0x11, 0x1c,	/* 11 - GPSW=0, CM99=0, FECO=0, COMPO=1, OEYC=1, OEHV=1, VIPB=0, COLO=0 */
 		0x12, 0x00,	/* 12 - output control 2 */
 		0x13, 0x00,	/* 13 - output control 3 */
