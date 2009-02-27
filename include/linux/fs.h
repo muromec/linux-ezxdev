@@ -346,7 +346,6 @@ extern void set_bh_page(struct buffer_head *bh, struct page *page, unsigned long
 #include <linux/jffs2_fs_i.h>
 #include <linux/cramfs_fs_sb.h>
 #include <linux/pram_fs_i.h>
-#include <linux/xfs_fs_i.h>
 
 /*
  * Attribute flags.  These should be or-ed together to figure out what
@@ -540,7 +539,6 @@ struct inode {
 		struct usbdev_inode_info        usbdev_i;
 		struct jffs2_inode_info		jffs2_i;
 		struct pram_inode_info		pram_i;
-		struct xfs_inode_info		xfs_i;
 		void				*generic_ip;
 	} u;
 };
@@ -787,7 +785,6 @@ struct quota_operations {
 #include <linux/cramfs_fs_sb.h>
 #include <linux/jffs2_fs_sb.h>
 #include <linux/pram_fs_sb.h>
-#include <linux/xfs_fs_sb.h>
 
 extern struct list_head super_blocks;
 extern spinlock_t sb_lock;
@@ -849,7 +846,6 @@ struct super_block {
 		struct jffs2_sb_info	jffs2_sb;
 		struct cramfs_sb_info	cramfs_sb;
 		struct pram_sb_info	pram_sb;
-		struct xfs_sb_info	xfs_sb;
 		void			*generic_sbp;
 	} u;
 	/*
