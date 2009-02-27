@@ -1,5 +1,5 @@
 #include <asm/mach-types.h>
 #include <asm/arch/excalibur.h>
 
-		.section	".start", "ax"
+		.section	".start", #alloc, #execinstr
 		mov	r7, #MACH_TYPE_CAMELOT

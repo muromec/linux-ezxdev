@@ -11,7 +11,7 @@
 #include <linux/linkage.h>
 #include <asm/mach-types.h>
 
-		.section        ".start", "ax"
+		.section        ".start", #alloc, #execinstr
 
 __SA1100_start:
 

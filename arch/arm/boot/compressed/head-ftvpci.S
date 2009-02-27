@@ -13,7 +13,7 @@
  * 2 of the License, or (at your option) any later version.
  */
 
-	.section        ".start", "ax"
+	.section        ".start", #alloc, #execinstr
 ftv_start:
 	mcr	p15, 0, r0, c7, c5, 0		@ flush I cache
 	mrc	p15, 0, r0, c1, c0

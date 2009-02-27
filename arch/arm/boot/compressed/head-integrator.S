@@ -1,4 +1,4 @@
 #include <asm/mach-types.h>
 
-		.section	".start", "ax"
+		.section	".start", #alloc, #execinstr
 		mov	r7, #MACH_TYPE_INTEGRATOR
