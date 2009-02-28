@@ -108,6 +108,7 @@ obj-$(CONFIG_USB_AUERSWALD)	+= auerswald.o
 obj-$(CONFIG_USB_BRLVGER)	+= brlvger.o
 obj-$(CONFIG_USB_LCD)		+= usblcd.o
 obj-$(CONFIG_IPC_USB)		+= ipcusb.o 
+obj-$(CONFIG_MUX_CLI)		+= mux_cli.o
 obj-$(CONFIG_DSPLOG_USB)	+= dsplog_usb.o 
 
 # Object files in subdirectories

@@ -8,7 +8,7 @@ obj-m           :=
 obj-n           :=
 obj-            :=
 
-mod-subdirs     := appletalk arcnet fc irda tokenring pcmcia wireless wan ibm_ocp
+mod-subdirs     := appletalk arcnet fc irda tokenring pcmcia wireless wan 
 
 O_TARGET := net.o
 
@@ -29,10 +29,6 @@ ifeq ($(CONFIG_E1000),y)
   obj-y += e1000/e1000.o
 endif
 
-ifeq ($(CONFIG_OCP_NET),y)
-  obj-y += ibm_ocp/ocp.o
-endif
-
 ifeq ($(CONFIG_ISDN_PPP),y)
   obj-$(CONFIG_ISDN) += slhc.o
 endif
@@ -50,7 +46,6 @@ subdir-$(CONFIG_SK98LIN) += sk98lin
 subdir-$(CONFIG_SKFP) += skfp
 subdir-$(CONFIG_E100) += e100
 subdir-$(CONFIG_E1000) += e1000
-subdir-$(CONFIG_OCP_NET) += ibm_ocp
 
 #
 # link order important here

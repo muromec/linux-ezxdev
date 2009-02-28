@@ -151,6 +151,10 @@ fi
    dep_tristate '  Bulverde USB IPC Support (EXPERIMENTAL)' CONFIG_IPC_USB $CONFIG_USB $CONFIG_EXPERIMENTAL
    dep_bool     '     No USB Suspend resume' CONFIG_NO_USB_SUSPEND_RESUME $CONFIG_IPC_USB $CONFIG_USB $CONFIG_EXPERIMENTAL
    dep_bool     '     No hardware handshake' CONFIG_NO_HW_SHAKEHAND $CONFIG_ARCH_EZXBASE $CONFIG_IPC_USB $CONFIG_USB $CONFIG_EXPERIMENTAL
+   dep_tristate '   MUX CLI Support' CONFIG_MUX_CLI $CONFIG_IPC_USB
+   if [ "$CONFIG_MUX_CLI" != "n" ] ; then
+    dep_bool    '    Use usb for mux' CONFIG_USB_FOR_MUX $CONFIG_MUX_CLI
+   fi
 
 
    comment 'USB DSPLOG driver'
