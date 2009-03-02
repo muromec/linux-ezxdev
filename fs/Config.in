@@ -72,12 +72,7 @@ fi
 tristate 'Compressed ROM file system support' CONFIG_CRAMFS
 dep_mbool '  Use linear addressing for cramfs' CONFIG_CRAMFS_LINEAR $CONFIG_CRAMFS
 dep_bool '    Support XIP on linear cramfs' CONFIG_CRAMFS_LINEAR_XIP $CONFIG_CRAMFS_LINEAR
-dep_bool '    Root file system on linear cramfs' CONFIG_ROOT_CRAMFS_LINEAR $CONFIG_CRAMFS_LINEAR $CONFIG_CRAMFS
-if [ "$CONFIG_CRAMFS_LINEAR_XIP" = "y" ]; then
-	bool '   Support XIP debugging on linear cramfs' CONFIG_XIP_DEBUGGABLE
-fi    
-
-
+dep_bool '    Root file system on linear cramfs' CONFIG_ROOT_CRAMFS_LINEAR $CONFIG_CRAMFS_LINEAR
 bool 'Virtual memory file system support (former shm fs)' CONFIG_TMPFS
 define_bool CONFIG_RAMFS y
 
