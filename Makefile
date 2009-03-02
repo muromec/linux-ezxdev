@@ -1,25 +1,11 @@
-#
-# Copyright (C) 2005 Motorola Inc.
-#
-# modified by w15879, for EZX platform
-#
-
 VERSION = 2
 PATCHLEVEL = 4
 SUBLEVEL = 20
-EXTRAVERSION = $(shell if [ -f .hhl_target_lspname ]; then \
-				echo "_mvlcee31-`cat .hhl_target_lspname`"; \
-		       else \
-				echo "_mvlcee31"; \
-		       fi)
+EXTRAVERSION = _ezxdev1
 
 KERNELRELEASE=$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 
-ARCH := $(shell if [ -f .hhl_target_cpu ]; then \
-			cat .hhl_target_cpu; \
-		else \
-			uname -m | sed -e s/i.86/i386/ -e s/sun4u/sparc64/ -e s/arm.*/arm/ -e s/sa110/arm/; \
-		fi)
+ARCH := $(shell uname -m | sed -e s/i.86/i386/ -e s/sun4u/sparc64/ -e s/arm.*/arm/ -e s/sa110/arm/)
 KERNELPATH=kernel-$(shell echo $(KERNELRELEASE) | sed -e "s/-//g")
 
 CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
@@ -443,12 +429,18 @@ uts_truncate	:= sed -e 's/\(.\{1,$(uts_len)\}\).*/\1/'
 
 include/linux/compile.h: $(CONFIGURATION) include/linux/version.h newversion
 	@echo -n \#`cat .version` > .ver1
-	@LANG=C echo ' 'Jan 1,2003 >> .ver1
+	@if [ -n "$(CONFIG_SMP)" ] ; then echo -n " SMP" >> .ver1; fi
+	@if [ -f .name ]; then  echo -n \-`cat .name` >> .ver1; fi
+	@LANG=C echo ' '`date` >> .ver1
 	@echo \#define UTS_VERSION \"`cat .ver1 | $(uts_truncate)`\" > .ver
-	@LANG=C echo \#define LINUX_COMPILE_TIME \"10:00:00 \" >> .ver
-	@echo \#define LINUX_COMPILE_BY \"BJDC\" >> .ver
-	@echo \#define LINUX_COMPILE_HOST \"LINUX\" >> .ver
-	@echo \#define LINUX_COMPILER \"GCC 3.x for XSCALE\" >> .ver
+	@LANG=C echo \#define LINUX_COMPILE_TIME \"`date +%T`\" >> .ver
+	@echo \#define LINUX_COMPILE_BY \"`whoami`\" >> .ver
+	@echo \#define LINUX_COMPILE_HOST \"`hostname | $(uts_truncate)`\" >> .ver
+	@([ -x /bin/dnsdomainname ] && /bin/dnsdomainname > .ver1) || \
+	 ([ -x /bin/domainname ] && /bin/domainname > .ver1) || \
+	 echo > .ver1
+	@echo \#define LINUX_COMPILE_DOMAIN \"`cat .ver1 | $(uts_truncate)`\" >> .ver
+	@echo \#define LINUX_COMPILER \"`$(CC) $(CFLAGS) -v 2>&1 | tail -1`\" >> .ver
 	@mv -f .ver $@
 	@rm -f .ver1
 
