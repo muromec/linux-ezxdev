@@ -227,8 +227,7 @@ struct radeon_regs {
 	/* PLL regs */
 	u32 ppll_div_3;
 	u32 ppll_ref_div;
-	u32 vclk_ecp_cntl;
-	
+
 	/* Flat panel regs */
 	u32 fp_crtc_h_total_disp;
 	u32 fp_crtc_v_total_disp;
@@ -320,11 +319,10 @@ struct radeonfb_info {
 #endif  
 
 #ifdef CONFIG_PMAC_PBOOK
+	unsigned char *save_framebuffer;
 	int pm_reg;
-	u32 save_regs[16]; /* Add more later */
 #endif
-	int asleep;
-	
+
 	struct radeonfb_info *next;
 };
 
@@ -974,32 +972,6 @@ static int radeonfb_pci_register (struct pci_dev *pdev,
 	/* currcon not yet configured, will be set by first switch */
 	rinfo->currcon = -1;
 
-	/* One PPC, OF based cards setup the internal memory
-	 * mapping in strange ways. We change it so that the
-	 * framebuffer is mapped at 0 and given half of the card's
-	 * address space (2Gb). AGP is mapped high (0xe0000000) and
-	 * can use up to 512Mb. Once DRI is fully implemented, we
-	 * will have to setup the PCI remapper to remap the agp_special_page
-	 * memory page somewhere between those regions so that the card
-	 * use a normal PCI bus master cycle to access the ring read ptr.
-	 * --BenH.
-	 */
-#ifdef CONFIG_ALL_PPC
-	if (rinfo->hasCRTC2)
-		OUTREG(CRTC2_GEN_CNTL,
-			(INREG(CRTC2_GEN_CNTL) & ~CRTC2_EN) | CRTC2_DISP_REQ_EN_B);
-	OUTREG(CRTC_EXT_CNTL, INREG(CRTC_EXT_CNTL) | CRTC_DISPLAY_DIS);
-	OUTREG(MC_FB_LOCATION, 0x7fff0000);
-    	OUTREG(MC_AGP_LOCATION, 0xffffe000);
-    	OUTREG(DISPLAY_BASE_ADDR, 0x00000000);
-	if (rinfo->hasCRTC2)
-	    	OUTREG(CRTC2_DISPLAY_BASE_ADDR, 0x00000000);
-    	OUTREG(SRC_OFFSET, 0x00000000);
-    	OUTREG(DST_OFFSET, 0x00000000);
-    	mdelay(10);
-	OUTREG(CRTC_EXT_CNTL, INREG(CRTC_EXT_CNTL) & ~CRTC_DISPLAY_DIS);
-#endif /* CONFIG_ALL_PPC */
-
 	/* set all the vital stuff */
 	radeon_set_fbinfo (rinfo);
 
@@ -1032,7 +1004,6 @@ static int radeonfb_pci_register (struct pci_dev *pdev,
 		return -ENODEV;
 	}
 
-
 	if (!noaccel) {
 		/* initialize the engine */
 		radeon_engine_init (rinfo);
@@ -1047,15 +1018,7 @@ static int radeonfb_pci_register (struct pci_dev *pdev,
 #ifdef CONFIG_PMAC_PBOOK
 	if (rinfo->dviDisp_type == MT_LCD) {
 		rinfo->pm_reg = pci_find_capability(pdev, PCI_CAP_ID_PM);
-		if (rinfo->pm_reg) {
-			printk("radeonfb: pm reg @%x, clk_pwrmgt: %x, pll_pwrmgt: %x"
-				", mdll_cko: %x\n", rinfo->pm_reg, INPLL(CLK_PWRMGT_CNTL),
-				INPLL(PLL_PWRMGT_CNTL), INPLL(MDLL_CKO));
-			/* Fixup some PLL reg values for proper power management */
-			OUTPLL(PLL_PWRMGT_CNTL, 0xc01f);
-			OUTPLL(MDLL_CKO, 0x043c);
-			pmu_register_sleep_notifier(&radeon_sleep_notifier);
-		}
+		pmu_register_sleep_notifier(&radeon_sleep_notifier);
 	}
 #endif
 
@@ -2145,10 +2108,8 @@ static int radeonfb_pan_display (struct fb_var_screeninfo *var, int con,
                 var->yres_virtual))
                 return -EINVAL;
                 
-        if (rinfo->asleep)
-        	return 0;
         offset = ((yoffset * var->xres + xoffset) * var->bits_per_pixel) >> 6;
-
+         
         OUTREG(CRTC_OFFSET, offset);
         
         return 0;
@@ -2217,9 +2178,6 @@ static void radeonfb_blank (int blank, struct fb_info *info)
         u32 val = INREG(CRTC_EXT_CNTL);
 	u32 val2 = INREG(LVDS_GEN_CNTL);
 
-	if (rinfo->asleep)
-		return;
-		
 #ifdef CONFIG_PMAC_BACKLIGHT
 	if (rinfo->dviDisp_type == MT_LCD && _machine == _MACH_Pmac) {
 		set_backlight_enable(!blank);
@@ -2301,7 +2259,7 @@ static int radeon_setcolreg (unsigned regno, unsigned red, unsigned green,
                              unsigned blue, unsigned transp, struct fb_info *info)
 {
         struct radeonfb_info *rinfo = (struct radeonfb_info *) info;
-	u32 pindex, vclk_cntl;
+	u32 pindex;
 
 	if (regno > 255)
 		return 1;
@@ -2315,35 +2273,29 @@ static int radeon_setcolreg (unsigned regno, unsigned red, unsigned green,
 
         /* default */
         pindex = regno;
+        
+	if (rinfo->bpp == 16) {
+		pindex = regno * 8;
 
-        if (!rinfo->asleep) {
-		vclk_cntl = INPLL(VCLK_ECP_CNTL);
-		OUTPLL(VCLK_ECP_CNTL, vclk_cntl & ~PIXCLK_DAC_ALWAYS_ONb);
+		if (rinfo->depth == 16 && regno > 63)
+			return 1;
+		if (rinfo->depth == 15 && regno > 31)
+			return 1;
 
-		if (rinfo->bpp == 16) {
-			pindex = regno * 8;
-
-			if (rinfo->depth == 16 && regno > 63)
-				return 1;
-			if (rinfo->depth == 15 && regno > 31)
-				return 1;
-
-			/* For 565, the green component is mixed one order below */
-			if (rinfo->depth == 16) {
-		                OUTREG(PALETTE_INDEX, pindex>>1);
-	       	         	OUTREG(PALETTE_DATA, (rinfo->palette[regno>>1].red << 16) |
-	                        	(green << 8) | (rinfo->palette[regno>>1].blue));
-	                	green = rinfo->palette[regno<<1].green;
-	        	}
-		}
-
-		if (rinfo->depth != 16 || regno < 32) {
-			OUTREG(PALETTE_INDEX, pindex);
-			OUTREG(PALETTE_DATA, (red << 16) | (green << 8) | blue);
-		}
-
-		OUTPLL(VCLK_ECP_CNTL, vclk_cntl);
+		/* For 565, the green component is mixed one order below */
+		if (rinfo->depth == 16) {
+	                OUTREG(PALETTE_INDEX, pindex>>1);
+       	         	OUTREG(PALETTE_DATA, (rinfo->palette[regno>>1].red << 16) |
+                        	(green << 8) | (rinfo->palette[regno>>1].blue));
+                	green = rinfo->palette[regno<<1].green;
+        	}
 	}
+
+	if (rinfo->depth != 16 || regno < 32) {
+		OUTREG(PALETTE_INDEX, pindex);
+		OUTREG(PALETTE_DATA, (red << 16) | (green << 8) | blue);
+	}
+
  	if (regno < 16) {
         	switch (rinfo->depth) {
 #ifdef FBCON_HAS_CFB16
@@ -2405,7 +2357,6 @@ static void radeon_save_state (struct radeonfb_info *rinfo,
 	save->lvds_pll_cntl = INREG(LVDS_PLL_CNTL);
 	save->tmds_crc = INREG(TMDS_CRC);
 	save->tmds_transmitter_cntl = INREG(TMDS_TRANSMITTER_CNTL);
-	save->vclk_ecp_cntl = INPLL(VCLK_ECP_CNTL);
 }
 
 
@@ -2586,8 +2537,6 @@ static void radeon_load_video_mode (struct radeonfb_info *rinfo,
 		newmode.ppll_ref_div = rinfo->pll.ref_div;
 		newmode.ppll_div_3 = rinfo->fb_div | (post_div->bitvalue << 16);
 	}
-	newmode.vclk_ecp_cntl = rinfo->init_state.vclk_ecp_cntl;
-	
 
 	RTRACE("post div = 0x%x\n", rinfo->post_div);
 	RTRACE("fb_div = 0x%x\n", rinfo->fb_div);
@@ -2627,13 +2576,6 @@ static void radeon_load_video_mode (struct radeonfb_info *rinfo,
 	if ((primary_mon == MT_DFP) || (primary_mon == MT_LCD)) {
 		unsigned int hRatio, vRatio;
 
-		/* We force the pixel clock to be always enabled. Allowing it
-		 * to be power managed during blanking would save power, but has
-		 * nasty interactions with the 2D engine & sleep code that haven't
-		 * been solved yet. --BenH
-		 */
-		newmode.vclk_ecp_cntl &= ~PIXCLK_DAC_ALWAYS_ONb;
-		
 		if (mode->xres > rinfo->panel_xres)
 			mode->xres = rinfo->panel_xres;
 		if (mode->yres > rinfo->panel_yres)
@@ -2703,8 +2645,7 @@ static void radeon_load_video_mode (struct radeonfb_info *rinfo,
 	}
 
 	/* do it! */
-	if (!rinfo->asleep)
-		radeon_write_mode (rinfo, &newmode);
+	radeon_write_mode (rinfo, &newmode);
 
 #if defined(CONFIG_BOOTX_TEXT)
 	btext_update_display(rinfo->fb_base_phys, mode->xres, mode->yres,
@@ -2810,8 +2751,6 @@ static void radeon_write_mode (struct radeonfb_info *rinfo,
 	/* unblank screen */
 	OUTREG8(CRTC_EXT_CNTL + 1, 0);
 
-	OUTPLL(VCLK_ECP_CNTL, mode->vclk_ecp_cntl);
-	
 	return;
 }
 
@@ -2889,44 +2828,28 @@ static void radeon_set_suspend(struct radeonfb_info *rinfo, int suspend)
 	 * including PCI config registers, clocks, AGP conf, ...)
 	 */
 	if (suspend) {
-		/* Save some registers */
-		rinfo->save_regs[0] = INREG(CRTC_GEN_CNTL);
-		rinfo->save_regs[1] = INREG(CRTC2_GEN_CNTL);
-		
-		/* Disable CRTCs */
-		OUTREG(CRTC_GEN_CNTL, (INREG(CRTC_GEN_CNTL) & ~CRTC_EN) | CRTC_DISP_REQ_EN_B);
-		OUTREG(CRTC2_GEN_CNTL, (INREG(CRTC2_GEN_CNTL) & ~CRTC2_EN) | CRTC2_DISP_REQ_EN_B);
-		(void)INREG(CRTC2_GEN_CNTL);
-		mdelay(10);
-		
-		/* Reset the MDLL */
-		OUTPLL(MDLL_CKO, INPLL(MDLL_CKO) | MCKOA_RESET);
-		OUTPLL(MDLL_CKO, INPLL(MDLL_CKO) & ~MCKOA_RESET);
+		/* Make sure CRTC2 is reset.  Remove that the day
+		 * we decide to actually use CRTC2 and replace it with
+		 * real code for disabling the CRTC2 output during sleep.
+		 */
 
-		/* Switch PCI power managment to D2. */
-		for (;;) {
-			pci_read_config_word(
-				rinfo->pdev, rinfo->pm_reg+PCI_PM_CTRL,
-				&pwr_cmd);
-			if (pwr_cmd & 2)
-				break;			
-			pci_write_config_word(
-				rinfo->pdev, rinfo->pm_reg+PCI_PM_CTRL,
-				(pwr_cmd & ~PCI_PM_CTRL_STATE_MASK) | 2);
-			mdelay(500);
-		}
+		pci_read_config_word(rinfo->pdev, rinfo->pm_reg+PCI_PM_CTRL,
+				     &pwr_cmd);
+
+		/* Switch PCI power managment to D2 */
+		pci_write_config_word(rinfo->pdev, rinfo->pm_reg+PCI_PM_CTRL,
+				      (pwr_cmd & ~PCI_PM_CTRL_STATE_MASK)
+				      | 2);
+		pci_read_config_word(rinfo->pdev, rinfo->pm_reg+PCI_PM_CTRL,
+				     &pwr_cmd);
 	} else {
 		/* Switch back PCI powermanagment to D0 */
-		mdelay(200);
+		mdelay(100);
 		pci_write_config_word(rinfo->pdev, rinfo->pm_reg+PCI_PM_CTRL, 0);
-		mdelay(500);
-		
-		/* Restore the MDLL */
-		OUTPLL(MDLL_CKO, INPLL(MDLL_CKO) & ~MCKOA_RESET);
-
-		/* Restore some registers */
-		OUTREG(CRTC2_GEN_CNTL, rinfo->save_regs[1]);
-		OUTREG(CRTC_GEN_CNTL, rinfo->save_regs[0]);
+		mdelay(100);
+		pci_read_config_word(rinfo->pdev, rinfo->pm_reg+PCI_PM_CTRL,
+				     &pwr_cmd);
+		mdelay(100);
 	}
 }
 
@@ -2942,9 +2865,6 @@ int radeon_sleep_notify(struct pmu_sleep_notifier *self, int when)
 	for (rinfo = board_list; rinfo != NULL; rinfo = rinfo->next) {
 		struct fb_fix_screeninfo fix;
 		int nb;
-	        struct display *disp;  
-
-        	disp = (rinfo->currcon < 0) ? rinfo->info.disp : &fb_display[rinfo->currcon];
 
 		switch (rinfo->chipset) {
 			case PCI_DEVICE_ID_RADEON_LW:
@@ -2960,41 +2880,72 @@ int radeon_sleep_notify(struct pmu_sleep_notifier *self, int when)
 		nb = fb_display[fg_console].var.yres * fix.line_length;
 
 		switch (when) {
-			case PBOOK_SLEEP_NOW:
-				acquire_console_sem();
-				disp->dispsw = &fbcon_dummy;
-
-				if (!noaccel) {
-					/* Make sure engine is reset */
-					radeon_engine_reset();
-					radeon_engine_idle();
+			case PBOOK_SLEEP_REQUEST:
+#if 0
+				rinfo->save_framebuffer = vmalloc(nb);
+				if (rinfo->save_framebuffer == NULL)
+					return PBOOK_SLEEP_REFUSE;
+#endif
+				break;
+			case PBOOK_SLEEP_REJECT:
+#if 0
+				if (rinfo->save_framebuffer) {
+					vfree(rinfo->save_framebuffer);
+					rinfo->save_framebuffer = 0;
 				}
+#endif
+				break;
+			case PBOOK_SLEEP_NOW:
+				radeon_engine_idle();
+				radeon_engine_reset();
+				radeon_engine_idle();
+
+#if 0
+				/* Backup framebuffer content */
+				if (rinfo->save_framebuffer)
+					memcpy_fromio(rinfo->save_framebuffer,
+						      (void *)rinfo->fb_base,
+						      nb);
+#endif
 
 				/* Blank display and LCD */
 				radeonfb_blank(VESA_POWERDOWN+1,
 					       (struct fb_info *)rinfo);
 
 				/* Sleep */
-				rinfo->asleep = 1;
 				radeon_set_suspend(rinfo, 1);
-				release_console_sem();
-				
+
 				break;
 			case PBOOK_WAKE:
-				acquire_console_sem();
 				/* Wakeup */
 				radeon_set_suspend(rinfo, 0);
 
-				if (!noaccel)
+				radeon_engine_reset();
+				if (!noaccel) {
 					radeon_engine_init(rinfo);
-				rinfo->asleep = 0;
-				radeon_set_dispsw(rinfo, disp);
-				radeon_load_video_mode(rinfo, &disp->var);
-				do_install_cmap(rinfo->currcon,
-						(struct fb_info *)rinfo);
+					radeon_engine_reset();
+				}
+
+#if 0
+				/* Restore framebuffer content */
+				if (rinfo->save_framebuffer) {
+					memcpy_toio((void *)rinfo->fb_base,
+						    rinfo->save_framebuffer,
+						    nb);
+					vfree(rinfo->save_framebuffer);
+					rinfo->save_framebuffer = 0;
+				}
+#endif
+
+				if (rinfo->currcon_display) {
+					radeonfb_set_var(&rinfo->currcon_display->var, rinfo->currcon,
+							 (struct fb_info *) rinfo);
+					radeon_set_dispsw(rinfo, rinfo->currcon_display);
+					do_install_cmap(rinfo->currcon,
+							(struct fb_info *)rinfo);
+				}
 
 				radeonfb_blank(0, (struct fb_info *)rinfo);
-				release_console_sem();
 				break;
 		}
 	}

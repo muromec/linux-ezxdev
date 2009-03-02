@@ -21,7 +21,7 @@ export-objs    := fbmem.o fbcmap.o fbcon.o fbmon.o modedb.o \
 		  fbcon-iplan2p8.o fbcon-vga-planes.o fbcon-cfb16.o \
 		  fbcon-cfb2.o fbcon-cfb24.o fbcon-cfb32.o fbcon-cfb4.o \
 		  fbcon-cfb8.o fbcon-mac.o fbcon-mfb.o \
-		  cyber2000fb.o sa1100fb.o fbcon-hga.o fbgen.o   hd66776fb.o
+		  cyber2000fb.o sa1100fb.o fbcon-hga.o fbgen.o 
 
 # Each configuration option enables a list of files.
 
@@ -100,12 +100,6 @@ obj-$(CONFIG_FB_MQ200)		  += mq200fb.o
 obj-$(CONFIG_FB_RPX)              += rpxfb.o
 obj-$(CONFIG_FB_AU1100)		  += au1100fb.o fbgen.o
 obj-$(CONFIG_FB_IBMLCDC)          += ibmlcdfb.o ibmlcds.o fbgen.o
-obj-$(CONFIG_FB_HD66776)	  += hd66776fb.o fbgen.o
-
-subdir-$(CONFIG_FB_DBMX21)        += mx21ads
-ifeq ($(CONFIG_FB_DBMX21),y)
-obj-y                             += mx21ads/mx21fb.o
-endif
 
 subdir-$(CONFIG_STI_CONSOLE)      += sti
 ifeq ($(CONFIG_STI_CONSOLE),y)
@@ -135,11 +129,6 @@ endif
 subdir-$(CONFIG_FB_ATY)		  += aty
 ifeq ($(CONFIG_FB_ATY),y)
 obj-y				  += aty/atyfb.o
-endif
-
-subdir-$(CONFIG_FB_OMAP)	  += omap
-ifeq ($(CONFIG_FB_OMAP),y)
-obj-y				  += omap/omapfb.o
 endif
 
 subdir-$(CONFIG_ARCH_EZXBASE)	  += ezx_lcd

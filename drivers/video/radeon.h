@@ -396,7 +396,7 @@
 #define RADEON_BIOS_6_SCRATCH		       0x0028
 #define RADEON_BIOS_7_SCRATCH		       0x002c
 
-/* PLL Registers */
+
 #define CLK_PIN_CNTL                               0x0001
 #define PPLL_CNTL                                  0x0002
 #define PPLL_REF_DIV                               0x0003
@@ -413,9 +413,8 @@
 #define MPLL_CNTL                                  0x000e
 #define MDLL_CKO                                   0x000f
 #define MCLK_CNTL                                  0x0012
+#define AGP_PLL_CNTL                               0x000b
 #define PLL_TEST_CNTL                              0x0013
-#define CLK_PWRMGT_CNTL                            0x0014
-#define PLL_PWRMGT_CNTL                            0x0015
 
 /* MCLK_CNTL bit constants */
 #define FORCEON_MCLKA				   (1 << 16)
@@ -772,9 +771,7 @@
 #define MPLL_RESET                                 0x00000001
 
 /* MDLL_CKO bit constants */
-#define MCKOA_RESET                                0x00000002
-#define MCKOA_REF_SKEW_MASK                        0x00000700
-#define MCKOA_FB_SKEW_MASK                         0x00007000
+#define MDLL_CKO__MCKOA_RESET                      0x00000002
 
 /* VCLK_ECP_CNTL constants */
 #define PIXCLK_ALWAYS_ONb                          0x00000040
