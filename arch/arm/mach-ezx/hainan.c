@@ -250,7 +250,7 @@ static void __init barbados_map_io(void)
         PCFR  = PCFR_DC_EN | PCFR_OPDE;
         PSLR  = 0x05900f00;
 }
-MACHINE_START(EZX, "Motorola Ezx Platform")
+MACHINE_START(EZX, "Motorola A1200 HAINAN")
 	MAINTAINER("Motorola Inc.")
 	BOOT_MEM(0xa0000000, 0x40000000, io_p2v(0x40000000))
 	BOOT_PARAMS(0xa0000100)
