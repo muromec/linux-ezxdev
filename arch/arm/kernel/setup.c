@@ -562,7 +562,7 @@ static int __init parse_tag_ezx(const struct tag *tag)
 {
   power_up_reason = tag->u.ezx.pow_up_reason;
 
-  printk(KERN_WARNING "\n\n\n\n\n\n%s: power up reason=%x\n\n\n\n\n",__FUNCTION__, power_up_reason);
+  printk(KERN_WARNING "power up reason=%x",power_up_reason);
 
 #ifdef CONFIG_ARCH_EZXBASE
   if (APP_REBOOT_FLAG == *(unsigned long *)(phys_to_virt(FLAG_ADDR))) {
