@@ -46,35 +46,9 @@
 
 #include "ipcusb.h"
 
-/*Macro defined for this driver*/
 #define DRIVER_VERSION "1.0"
 #define DRIVER_AUTHOR "Levis Xu <Levis@Motorola.com>"
 #define DRIVER_DESC "IPCoUSB Driver"
-#define MOTO_IPC_VID		0x22b8
-#define MOTO_IPC_PID		0x3006
-#define IPC_USB_XMIT_SIZE	4096
-#define IPC_URB_SIZE		512
-#define IPC_USB_WRITE_INIT 	0
-#define IPC_USB_WRITE_XMIT	1
-#define IPC_USB_PROBE_READY	3
-#define IPC_USB_PROBE_NOT_READY	4
-#define DBG_MAX_BUF_SIZE	1024
-#define ICL_EVENT_INTERVAL	(HZ) 
-
-#ifdef CONFIG_ARCH_EZX_MARTINIQUE
-#define IPC_USB_SUSPEND_INTERVAL	1000
-#else
-#define IPC_USB_SUSPEND_INTERVAL	5000
-#endif
-#define WAKE_UP_BP_UDELAY	125
-
-#undef BVD_DEBUG		
-//#define BVD_DEBUG		
-
-#define IS_EP_BULK(ep)  ((ep).bmAttributes == USB_ENDPOINT_XFER_BULK ? 1 : 0)
-#define IS_EP_BULK_IN(ep) (IS_EP_BULK(ep) && ((ep).bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_IN)
-#define IS_EP_BULK_OUT(ep) (IS_EP_BULK(ep) && ((ep).bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_OUT)
-/*End defined macro*/
 
 /*global values defined*/
 static struct usb_driver 		usb_ipc_driver;
@@ -116,16 +90,12 @@ int in_bprdy_interrupt(void)
 void set_in_bprdy_interrupt(void)
 {
 	bprdy_interrupt_handling = 1;
-#ifdef BVD_DEBUG
-	printk("bprdy handling set\n");
-#endif
+	bvd_dbg("bprdy handling set\n");
 }
 void clear_in_bprdy_interrupt(void)
 {
 	bprdy_interrupt_handling = 0;
-#ifdef BVD_DEBUG
-	printk("bprdy handling cleared\n");
-#endif
+	bvd_dbg("bprdy handling cleared\n");
 }
 
 static int ipc_traffic = 0;
@@ -149,18 +119,6 @@ MODULE_AUTHOR( DRIVER_AUTHOR );
 MODULE_DESCRIPTION( DRIVER_DESC );
 MODULE_LICENSE("GPL");
 
-#ifdef BVD_DEBUG
-#define bvd_dbg(format, arg...) printk(__FILE__ ": " format "\n" , ## arg)
-#else
-#define bvd_dbg(format, arg...) do {} while (0)
-#endif
-
-#define USB_RESUME_SUSPEND_DEBUG
-#ifdef USB_RESUME_SUSPEND_DEBUG
-#define resume_suspend_dbg(format, arg...) printk(__FILE__ ": " format "\n" , ## arg)
-#else
-#define resume_suspend_dbg(format, arg...) do {} while (0)
-#endif
 /* USB device context */
 typedef struct {
   struct list_head list;
@@ -626,8 +584,8 @@ static void ipcusb_xmit_data(void)
 			UHCRHPS3 = 0x8;
 			while(!(UHCRHPS3 & (1<<18))) mdelay(1);
 			UHCRHPS3 = 1<<18; // Write 1 to clear
-			printk("\nipc-resume[0x%x]\n",UHCRHPS3);
-			//printk("ipcusb_xmit_data: Send RESUME signal! UHCRHPS3=0x%x\n", UHCRHPS3);
+			bvd_dbg("ipc-resume[0x%x]\n",UHCRHPS3);
+			bvd_dbg("ipcusb_xmit_data: Send RESUME signal! UHCRHPS3=0x%x\n", UHCRHPS3);
 			host_port_suspended = 0;
 			mdelay(3);
 			set_BLE();
@@ -643,7 +601,7 @@ static void ipcusb_xmit_data(void)
 #endif
 		sumbit_times++;
 		bvd_ipc->write_finished_flag = 0;
-		//printk("%s: clear write_finished_flag:%d\n", __FUNCTION__, bvd_ipc->write_finished_flag);
+		bvd_dbg("%s: clear write_finished_flag:%d\n", __FUNCTION__, bvd_ipc->write_finished_flag);
 		bvd_ipc->writeurb_mux.dev = bvd_ipc->ipc_dev;
 		if((result = usb_submit_urb(&bvd_ipc->writeurb_mux)) < 0)
 		{
@@ -679,7 +637,7 @@ static void ipcusb_softint_send_readurb(void *private)
 
 	if( !(UHCRHPS3 & 0x2))
 	{
-		printk("\n ipcusb_softint_send_readurb:port has been disabled.UHCRHPS3[%x]\n", UHCRHPS3);
+		printk("ipcusb_softint_send_readurb:port has been disabled.UHCRHPS3[%x]\n", UHCRHPS3);
 		
 		if(in_bprdy_interrupt())
 			clear_in_bprdy_interrupt();
@@ -687,15 +645,13 @@ static void ipcusb_softint_send_readurb(void *private)
 	}
 	if((UHCRHPS3 & 0x4) == 0x4)
 	{
-//		ipc_traffic = 1;
 		UHCRHPS3 = 0x8;
 		while(!(UHCRHPS3 & (1<<18))) {
 			mdelay(1);
-//			printk("\n test\n");
 		}
 		UHCRHPS3 = 1<<18; // Write 1 to clear 
 		host_port_suspended = 0;
-		printk("\nipc-resume[0x%x]\n", UHCRHPS3);
+		bvd_dbg("ipc-resume[0x%x]\n", UHCRHPS3);
 		mdelay(3);
 		set_BLE();
 	}
@@ -707,18 +663,16 @@ static void ipcusb_softint_send_readurb(void *private)
 		bvd_ipc->readurb_mux.dev = bvd_ipc->ipc_dev;
 		if(usb_submit_urb(&bvd_ipc->readurb_mux))
 		{
-			bvd_dbg("\nerr:[bf_readurb]urb submit failed!\n");
+			bvd_dbg("err:[bf_readurb]urb submit failed!\n");
 		}
-		bvd_dbg("\n[bf_readurb] IN token sent----\n");
+		bvd_dbg("[bf_readurb] IN token sent----\n");
 		bvd_ipc->suspend_flag = 0;
 		bvd_dbg("ipcusb_softint_send_readurb: add suspend_timer");
 		mod_timer(&suspend_timer, jiffies+(IPC_USB_SUSPEND_INTERVAL*HZ/1000));		
 	}
 	if(in_bprdy_interrupt()){
 		clear_in_bprdy_interrupt();
-#ifdef BVD_DEBUG
-		printk(" bprdy_interrupt_handling cleared.\n");
-#endif
+		bvd_dbg(" bprdy_interrupt_handling cleared.\n");
 	}
 }
 
@@ -792,7 +746,7 @@ static int usb_ipc_chars_in_buffer(struct tty_struct *tty)
 
 void usb_send_readurb( void )
 {
-	printk("\nusb_send_readurb:UHCRHPS3[0x%x]\n", UHCRHPS3);
+        bvd_dbg("\nusb_send_readurb:UHCRHPS3[0x%x]\n", UHCRHPS3);
 	
 	queue_task(&bvd_ipc->tqueue_bp, &tq_immediate);
 	mark_bh(IMMEDIATE_BH);
@@ -807,7 +761,7 @@ static void *usb_ipc_probe(struct usb_device *usbdev, unsigned int ifnum,
 	int ep_cnt, readsize, writesize;
 	char have_bulk_in_mux, have_bulk_out_mux;
 
-	//printk("(q16136)usb_ipc_probe: vendor id 0x%x, device id 0x%x\n", usbdev->descriptor.idVendor, usbdev->descriptor.idProduct);
+	bvd_dbg("(q16136)usb_ipc_probe: vendor id 0x%x, device id 0x%x\n", usbdev->descriptor.idVendor, usbdev->descriptor.idProduct);
 
 	if ((usbdev->descriptor.idVendor != MOTO_IPC_VID) || (usbdev->descriptor.idProduct != MOTO_IPC_PID))
 	{	
@@ -951,7 +905,7 @@ static void *usb_ipc_probe(struct usb_device *usbdev, unsigned int ifnum,
 	
 	if(bvd_ipc->xmit.head != bvd_ipc->xmit.tail)
 	{
-		//printk("usb_ipc_probe: mark ipcusb_softint!\n");
+		bvd_dbg("usb_ipc_probe: mark ipcusb_softint!\n");
 		queue_task(&bvd_ipc->tqueue, &tq_immediate);
 		mark_bh(IMMEDIATE_BH);
 	}

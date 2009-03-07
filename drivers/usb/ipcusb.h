@@ -35,4 +35,43 @@ extern struct usb_flip_buffer *usb_for_mux_flip_buf;
 extern void (*usb_mux_dispatcher)(struct tty_struct *tty);
 extern void (*usb_mux_sender)(void);
 
+#undef BVD_DEBUG		
+//#define BVD_DEBUG		
+
+#ifdef BVD_DEBUG
+#define bvd_dbg(format, arg...) printk(__FILE__ ": " format "\n" , ## arg)
+#else
+#define bvd_dbg(format, arg...) do {} while (0)
+#endif
+
+#define USB_RESUME_SUSPEND_DEBUG
+#ifdef USB_RESUME_SUSPEND_DEBUG
+#define resume_suspend_dbg(format, arg...) printk(__FILE__ ": " format "\n" , ## arg)
+#else
+#define resume_suspend_dbg(format, arg...) do {} while (0)
+#endif
+
+#define IS_EP_BULK(ep)  ((ep).bmAttributes == USB_ENDPOINT_XFER_BULK ? 1 : 0)
+#define IS_EP_BULK_IN(ep) (IS_EP_BULK(ep) && ((ep).bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_IN)
+#define IS_EP_BULK_OUT(ep) (IS_EP_BULK(ep) && ((ep).bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_OUT)
+
+
+#define MOTO_IPC_VID		0x22b8
+#define MOTO_IPC_PID		0x3006
+#define IPC_USB_XMIT_SIZE	4096
+#define IPC_URB_SIZE		512
+#define IPC_USB_WRITE_INIT 	0
+#define IPC_USB_WRITE_XMIT	1
+#define IPC_USB_PROBE_READY	3
+#define IPC_USB_PROBE_NOT_READY	4
+#define DBG_MAX_BUF_SIZE	1024
+#define ICL_EVENT_INTERVAL	(HZ) 
+
+#ifdef CONFIG_ARCH_EZX_MARTINIQUE
+#define IPC_USB_SUSPEND_INTERVAL	1000
+#else
+#define IPC_USB_SUSPEND_INTERVAL	5000
+#endif
+#define WAKE_UP_BP_UDELAY	125
+
 
