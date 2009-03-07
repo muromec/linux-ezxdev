@@ -330,4 +330,14 @@ if [ "$CONFIG_X86" = "y" ]; then
    tristate 'ACP Modem (Mwave) support' CONFIG_MWAVE
 fi
 
+bool 'Modem' CONFIG_MOT_MODEM
+
+if [ "$CONFIG_MOT_MODEM" != "n" ]; then
+  tristate '  Modem bridge' CONFIG_MOT_MODEM_BRIDGE
+  tristate '  Modem ppp async' CONFIG_MOT_MODEM_PPP_ASYNC
+  tristate '  Modem ppp generic' CONFIG_MOT_MODEM_PPP_GENERIC
+  tristate '  Modem relay' CONFIG_MOT_MODEM_RELAY
+  tristate '  Motorola gprsv ' CONFIG_MOT_GPRSV
+fi
+
 endmenu

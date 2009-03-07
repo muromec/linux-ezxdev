@@ -24,7 +24,9 @@ obj-y	 += mem.o tty_io.o n_tty.o tty_ioctl.o raw.o pty.o misc.o random.o gpio_te
 export-objs     :=	busmouse.o console.o keyboard.o sysrq.o \
 			misc.o pty.o random.o selection.o serial.o \
 			sonypi.o tty_io.o tty_ioctl.o generic_serial.o \
-			au1000_gpio.o hp_psaux.o nvram.o
+			au1000_gpio.o hp_psaux.o nvram.o \
+			modem_bridge.o modem_ppp_async.o modem_ppp_generic.o
+
 
 mod-subdirs	:=	joystick ftape drm drm-4.0 pcmcia
 
@@ -285,6 +287,12 @@ obj-$(CONFIG_SC1200_WDT) += sc1200wdt.o
 obj-$(CONFIG_WAFER_WDT) += wafer5823wdt.o
 obj-$(CONFIG_SOFT_WATCHDOG) += softdog.o
 obj-$(CONFIG_AMD7XX_TCO) += amd7xx_tco.o
+obj-$(CONFIG_MOT_MODEM_BRIDGE) += modem_bridge.o
+obj-$(CONFIG_MOT_MODEM_PPP_ASYNC) += modem_ppp_async.o
+obj-$(CONFIG_MOT_MODEM_PPP_GENERIC) += modem_ppp_generic.o
+obj-$(CONFIG_MOT_MODEM_RELAY) += modem_relay.o
+obj-$(CONFIG_MOT_GPRSV) += gprsv.o
+
 
 subdir-$(CONFIG_MWAVE) += mwave
 ifeq ($(CONFIG_MWAVE),y)
