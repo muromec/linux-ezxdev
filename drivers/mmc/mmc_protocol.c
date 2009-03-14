@@ -189,6 +189,7 @@ static void * mmc_cim_read_write_block( struct mmc_dev *dev, int first )
 	struct mmc_slot *slot = dev->slot + t->id;
 	int    retval = 0;
 	int    i;
+        int    adress_mult = t->block_len;
 
 	DEBUG(2," first=%d\n",first);
 
@@ -209,6 +210,11 @@ static void * mmc_cim_read_write_block( struct mmc_dev *dev, int first )
 		}
 		return NULL;
 	}
+
+        if ( slot->csd.csd_structure ) {
+          printk("sdhc address fix\n");
+          adress_mult = 1;
+        }
 
 	switch (dev->request.cmd) {
 	case MMC_SELECT_CARD:
@@ -291,10 +297,10 @@ static void * mmc_cim_read_write_block( struct mmc_dev *dev, int first )
 
 		if (t->nr_sectors > 1)
 			mmc_send_cmd(dev, (t->cmd == MMC_IO_READ ? MMC_READ_MULTIPLE_BLOCK : MMC_WRITE_MULTIPLE_BLOCK), 
-			     t->sector * t->block_len, t->nr_sectors, t->block_len, RESPONSE_R1 );
+			     t->sector * adress_mult, t->nr_sectors, t->block_len, RESPONSE_R1 );
 		else
 			mmc_send_cmd(dev, (t->cmd == MMC_IO_READ ? MMC_READ_SINGLE_BLOCK : MMC_WRITE_BLOCK),
-		             t->sector * t->block_len, 1, t->block_len, RESPONSE_R1 );
+		             t->sector * adress_mult, 1, t->block_len, RESPONSE_R1 );
 		
 		break;
 
@@ -346,7 +352,7 @@ static void * mmc_cim_read_write_block( struct mmc_dev *dev, int first )
 
 		if ( t->nr_sectors ) {
 			mmc_send_cmd(dev, (t->cmd == MMC_IO_READ ? MMC_READ_SINGLE_BLOCK : MMC_WRITE_BLOCK), 
-				     t->sector * t->block_len, 1, t->block_len, RESPONSE_R1 );
+				     t->sector * adress_mult, 1, t->block_len, RESPONSE_R1 );
 		}
 		else {
 			mmc_finish_io_request( dev, 1 );
@@ -636,9 +642,31 @@ static void * mmc_cim_single_card_acq( struct mmc_dev *dev, int first )
 		if ( (dev->sdrive->flags & MMC_SDFLAG_VOLTAGE ))
 			DEBUG(0,": error - current driver doesn't do OCR\n");
 		if (slot->sd) 
-			mmc_simple_cmd(dev, MMC_APP_CMD,  0, RESPONSE_R1);
+			mmc_simple_cmd(
+                          dev,
+                          SD_SEND_IF_COND,
+                          ((dev->sdrive->ocr & 0xFF8000) != 0) << 8 | 0xAA,
+                          RESPONSE_R6
+                        );
 		else
 			mmc_simple_cmd(dev, MMC_SEND_OP_COND, dev->sdrive->ocr, RESPONSE_R3);
+		break;
+
+        case SD_SEND_IF_COND:
+                printk("if_cond\n");
+
+                if (dev->request.response[4] == 0xAA){
+                  printk("sdhc found\n");
+                  slot->sd2 = 1;
+                } else {
+                  slot->sd2 = 0;
+                }
+
+                retval = mmc_unpack_r6(&dev->request,&r1,slot->state,&slot->rca);
+                if ( retval )
+                  printk("if_cond failed %d (%s)\n",retval , mmc_result_to_string(retval) );
+
+                mmc_simple_cmd(dev, MMC_APP_CMD, 0, RESPONSE_R1);
 		break;
 
         case MMC_APP_CMD:
@@ -651,7 +679,7 @@ static void * mmc_cim_single_card_acq( struct mmc_dev *dev, int first )
 			slot->sd = 0;
 		}
                 else { 
-	            mmc_simple_cmd(dev, SD_SEND_OP_COND, 0x00ff8000, RESPONSE_R3);
+	            mmc_simple_cmd(dev, SD_SEND_OP_COND, 0x00ff8000 | (slot->sd2 << 30), RESPONSE_R3);
                 }
 		break;
 

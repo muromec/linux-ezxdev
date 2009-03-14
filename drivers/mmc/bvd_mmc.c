@@ -619,16 +619,22 @@ void bvd_mmc_send_command(struct mmc_request *request)
 			return;
 		}
 	}
-	if (request->cmd == SD_SEND_OP_COND) {
-		DEBUG(3, "Have an SD card\n");
-		bvd_mmc_data.sd = 1;
-	}
-	if (request->cmd == MMC_SEND_OP_COND) {
-		DEBUG(3, "Have an MMC card\n");
-		bvd_mmc_data.sd = 0;
-		/* always use 1bit for MMC */
-		bvd_mmc_data.use_4bit = 0;
-	}
+
+        switch(request->cmd) {
+          case SD_SEND_IF_COND:
+          case SD_SEND_OP_COND:
+                  DEBUG(3, "Have an SD card\n");
+                  bvd_mmc_data.sd = 1;
+                  break;
+
+          case MMC_SEND_OP_COND:
+                  DEBUG(3, "Have an MMC card\n");
+                  bvd_mmc_data.sd = 0;
+                  /* always use 1bit for MMC */
+                  bvd_mmc_data.use_4bit = 0;
+                  break;
+        }
+
 	if (request->cmd == SET_BUS_WIDTH) {
 		if (request->arg == 0x2) {
 			DEBUG(2, "Use 4-bit bus width\n");

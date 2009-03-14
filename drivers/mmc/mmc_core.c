@@ -170,40 +170,68 @@ static inline char * card_state_to_string( int i )
 int mmc_unpack_csd( struct mmc_request *request, struct mmc_csd *csd )
 {
 	u8 *buf = request->response;
-    int num = 0;
-	
+        int num = 0;
+
 	if ( request->result ) return request->result;
 
 	csd->csd_structure      = (buf[1] & 0xc0) >> 6;
 	csd->spec_vers          = (buf[1] & 0x3c) >> 2;
-	csd->taac               = buf[2];
-	csd->nsac               = buf[3];
 	csd->tran_speed         = buf[4];
 	csd->ccc                = (((u16)buf[5]) << 4) | ((buf[6] & 0xf0) >> 4);
-	csd->read_bl_len        = buf[6] & 0x0f;
-    /* for support 2GB card*/
-	if ( csd->read_bl_len >= 10) 
-	{
-	     num = csd->read_bl_len - 9;
-	     csd->read_bl_len = 9;
-	}
-
-
-	csd->read_bl_partial    = (buf[7] & 0x80) ? 1 : 0;
-	csd->write_blk_misalign = (buf[7] & 0x40) ? 1 : 0;
-	csd->read_blk_misalign  = (buf[7] & 0x20) ? 1 : 0;
 	csd->dsr_imp            = (buf[7] & 0x10) ? 1 : 0;
-	csd->c_size             = ((((u16)buf[7]) & 0x03) << 10) | (((u16)buf[8]) << 2) | (((u16)buf[9]) & 0xc0) >> 6;
-	if (num)
-	{
-		csd->c_size = csd->c_size << num;
-	}	
+
+        switch (csd->csd_structure) {
+          case CSD_STRUCT_VER_1_0:
+	    csd->taac               = buf[2];
+            csd->nsac               = buf[3];
+            // blkbits
+            csd->read_bl_len        = buf[6] & 0x0f;
+            if ( csd->read_bl_len >= 10)
+            {
+                 num = csd->read_bl_len - 9;
+                 csd->read_bl_len = 9;
+            }
+
+            csd->read_bl_partial    = (buf[7] & 0x80) ? 1 : 0;
+            csd->write_blk_misalign = (buf[7] & 0x40) ? 1 : 0;
+	    csd->read_blk_misalign  = (buf[7] & 0x20) ? 1 : 0;
+            // use offset from read_bl_len
+            csd->c_size = ( (((u16)buf[7] & 0x03) << 10) | ((u16)buf[8] << 2) | ((u16)buf[9] & 0xc0) >> 6 ) << num;
+            csd->c_size_mult        = ((buf[10] & 0x03) << 1) | ((buf[11] & 0x80) >> 7);
+            csd->r2w_factor         = (buf[13] & 0x1c) >> 2;
+            csd->write_bl_len       = ((buf[13] & 0x03) << 2) | ((buf[14] & 0xc0) >> 6);
+            // hack
+            if (csd->write_bl_len >= 10)
+	        csd->write_bl_len = 9;
+
+            csd->write_bl_partial   = (buf[14] & 0x20) ? 1 : 0;
+
+
+            break;
+          case CSD_STRUCT_VER_1_1: // SDHC
+            csd->taac               = 0;
+            csd->nsac               = 0;
+
+            csd->read_bl_len        = 9;
+            csd->read_bl_partial    = 0;
+            csd->write_blk_misalign = 0;
+            csd->read_blk_misalign  = 0;
+
+            csd->c_size = (u16)buf[10] | (u16)buf[9] << 8 | ((u16)buf[8] & 0x3f)<< 16;
+            csd->c_size_mult        = 8;
+            csd->r2w_factor         = 4;
+            csd->write_bl_len       = 9;
+            csd->write_bl_partial   = 0;
+
+            break;
+        }
+
+
 	
 	csd->vdd_r_curr_min     = (buf[9] & 0x38) >> 3;
 	csd->vdd_r_curr_max     = buf[9] & 0x07;
 	csd->vdd_w_curr_min     = (buf[10] & 0xe0) >> 5;
 	csd->vdd_w_curr_max     = (buf[10] & 0x1c) >> 2;
-	csd->c_size_mult        = ((buf[10] & 0x03) << 1) | ((buf[11] & 0x80) >> 7);
 	switch ( csd->csd_structure ) {
 	case CSD_STRUCT_VER_1_0:
 	case CSD_STRUCT_VER_1_1:
@@ -219,12 +247,6 @@ int mmc_unpack_csd( struct mmc_request *request, struct mmc_csd *csd )
 	csd->wp_grp_size        = buf[12] & 0x1f;
 	csd->wp_grp_enable      = (buf[13] & 0x80) ? 1 : 0;
 	csd->default_ecc        = (buf[13] & 0x60) >> 5;
-	csd->r2w_factor         = (buf[13] & 0x1c) >> 2;
-	csd->write_bl_len       = ((buf[13] & 0x03) << 2) | ((buf[14] & 0xc0) >> 6);
-	if (csd->write_bl_len >= 10)
-	    csd->write_bl_len = 9;
-
-	csd->write_bl_partial   = (buf[14] & 0x20) ? 1 : 0;
 	csd->file_format_grp    = (buf[15] & 0x80) ? 1 : 0;
 	csd->copy               = (buf[15] & 0x40) ? 1 : 0;
 	csd->perm_write_protect = (buf[15] & 0x20) ? 1 : 0;

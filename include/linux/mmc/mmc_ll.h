@@ -81,6 +81,7 @@ struct mmc_request {
 #define MMC_SDFLAG_MMC_MODE   (1<<1)    /* Can use MMC mode */
 #define MMC_SDFLAG_SD_MODE    (1<<2)    /* Can use SD mode */
 #define MMC_SDFLAG_VOLTAGE    (1<<3)    /* Can change voltage range */
+#define MMC_SDFLAG_BLOCKADDR  (1<<4)    /* Uses block address */
 
 struct module;
 

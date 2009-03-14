@@ -94,6 +94,7 @@
 #define MMC_SEND_OP_COND          1   /* bcr  [31:0] OCR         R3  */
 #define MMC_ALL_SEND_CID          2   /* bcr                     R2  */
 #define MMC_SET_RELATIVE_ADDR     3   /* ac   [31:16] RCA        R1  */
+#define SD_SEND_IF_COND           8   /* bcr  [11:0] See below   R7  */
 #define MMC_SET_DSR               4   /* bc   [31:16] RCA            */
 #define MMC_SELECT_CARD           7   /* ac   [31:16] RCA        R1  */
 #define MMC_SEND_CSD              9   /* ac   [31:16] RCA        R2  */
@@ -155,8 +156,16 @@ enum mmc_rsp_t {
 	RESPONSE_R4      = 6,
 	RESPONSE_R5      = 7,
         RESPONSE_R6      = 8,
+        RESPONSE_R7      = 9,
 };
 
+/*
+* SD_SEND_IF_COND argument format:
+*
+*     [31:12] Reserved (0)
+*     [11:8] Host Voltage Supply Flags
+*     [7:0] Check Pattern (0xAA)
+*/
 
 /*
   MMC status in R1
@@ -238,7 +247,7 @@ struct mmc_csd {
 	u8  write_blk_misalign;
 	u8  read_blk_misalign;
 	u8  dsr_imp;
-	u16 c_size;
+	u32 c_size;
 	u8  vdd_r_curr_min;
 	u8  vdd_r_curr_max;
 	u8  vdd_w_curr_min;

@@ -71,6 +71,7 @@ struct mmc_slot {
 	enum card_state state;  /* empty, ident, ready, whatever */
 	int             flags;  /* Ejected, inserted */
         int             sd;     /* MMC or SD card */
+        int             sd2;    /* SD or SDHC */
         int             rca;    /* RCA */
         u32             scr;    /* SCR 63:32*/        
 	/* Assigned media driver */

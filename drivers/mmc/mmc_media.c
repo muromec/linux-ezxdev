@@ -393,7 +393,6 @@ static struct mmc_media_dev * mmc_media_locate_device(const struct request *req)
 	if ( num >= MMC_MAX_SLOTS) {
 		static int count = 0;
 		if (count++ < 5) /* print the message at most five times */
-			printk(KERN_WARNING "mmc: request for unknown device\n");
 		return NULL;
 	}
 	return &g_media_dev[num];
